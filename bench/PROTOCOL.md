@@ -73,7 +73,7 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 | T2 | **多 Tab / 分屏** | Tab 标题规则、新建/关闭、分屏入口、拖拽排序 | `renderer/app.ts`(tab 模型)+ `index.html` | ✅ **已复刻主体(F14)**:多会话 tab(每 tab 独立 Terminal/会话 id)、活动/会话态配色、关闭在左、`Cmd+T/W/Shift+[ ]`、`+` 直接新建、新 tab 落地页(搜索框 + Recent sessions 空态)—— 均已实测通过。**未做**:拖拽排序、分屏入口、固定 tab(Vaults/SFTP 无对应物)、tab 右键菜单 |
 | T3 | **端口转发** | 本地/远程/动态转发 UI、规则按主机持久化、连接后状态 | 无 | ❌ **缺**;**F11 实测落点**:原版左栏一级导航项 `Port Forwarding`;原料 `analysis/native-inventory.md:89`(`SshDynamicPortForwarding` 19 符号)、`INDEX.md:128,285`(`dynamic-port-forwarding`、`"Set up port forwarding"`) |
 | T4 | **快捷键** | 新建/关闭 Tab、复制粘贴、清屏、搜索 | 无自定义 | ❌ **缺**(0 命中) |
-| T5 | SFTP 双栏 | 列目录字段、进度呈现、覆盖/改名交互 | `main/sftp.ts` + `renderer/sftp.ts`(M2) | 03 覆盖 |
+| T5 | **SFTP** | 双栏结构、目录浏览、上传下载、拖拽、权限/时间列 | `renderer/sftp.ts` + `main/sftp.ts` | ✅ **已复刻主体(F15)**:SFTP 改为常驻 tab、左右双栏(Local/远端)、列头 Name/Date Modified/Size/Kind、两行式行(名 + 权限串)、`..` 首行、默认隐藏点文件、未绑定时的 Connect to host/Select host 空态、Actions 菜单收拢原有操作。**未做**:列头点击排序、拖拽上传、多选、浅色主题配色 |
 | T6 | 认证与 known_hosts | 首次连接提示、指纹变更拒绝话术 | `main/knownhosts.ts`(M2,TOFU) | 04 覆盖 |
 | T7 | 主机簿/分组 | 分组层级、排序、搜索 | `main/store.ts`(扁平 + group 字段) | — |
 | T8 | 会话体验 | 断线提示、重连、退出码呈现 | `main/ssh.ts` | 01 部分覆盖 |
