@@ -720,12 +720,25 @@ function scheme(): TermScheme {
 }
 
 /** 应用外观:所有活动终端 + 窗口 chrome(tab 条底色随主题,原版实测如此) */
+/** 按背景亮度选前景色(简单相对亮度,阈值 0.55)。 */
+function pickOnColor(bg: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(bg.trim());
+  if (!m) return "#e6e9ef";
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum > 0.55 ? "#1f2430" : "#e6e9ef";
+}
+
 function applyAppearance(): void {
   const sc = scheme();
   TERM_THEME = toXtermTheme(sc);
   TERM_FONT = fontFamily;
   TERM_FONT_SIZE = Math.min(40, Math.max(4, fontSize));
   document.documentElement.style.setProperty("--term-bg", sc.background);
+  /* tab 条底色跟随终端主题(原版实测如此),所以其**文字色必须按该底色的明暗来定** ——
+     否则界面切浅色时(tab 条仍是终端底色)会变成"深字黑底",标签几乎看不见。实测踩到过。 */
+  document.documentElement.style.setProperty("--term-fg", pickOnColor(sc.background));
   for (const tab of tabs) {
     const term = tab.term;
     if (!term) continue;
@@ -747,6 +760,20 @@ function setFontSize(next: number): void {
   if (v) v.textContent = `${fontSize}px`;
 }
 
+/* T5/T1:界面主题(深色 / 浅色)。**注意**:终端配色(scheme)与界面主题是两件事 ——
+   原版里终端 scheme 决定终端底色,界面主题决定 chrome;这里保持同样的分工。
+   浅色值本身是自设计的(原版界面调色板未取到,见 index.html 注释)。 */
+let UI_THEME: "dark" | "light" = localStorage.getItem("sshkit.uiTheme") === "light" ? "light" : "dark";
+
+function applyUiTheme(): void {
+  document.body.dataset.ui = UI_THEME;
+  const box = document.querySelector(".ui-theme-val");
+  if (box) box.textContent = UI_THEME === "light" ? "Light" : "Dark";
+  for (const b of document.querySelectorAll<HTMLElement>(".ui-mode")) {
+    b.classList.toggle("on", b.dataset.mode === UI_THEME);
+  }
+}
+
 function openPrefs(): void {
   const existing = document.querySelector(".prefs");
   if (existing) { existing.remove(); return; }
@@ -754,7 +781,12 @@ function openPrefs(): void {
   const el = document.createElement("div");
   el.className = "prefs";
   el.innerHTML = `
-    <div><h4>Theme</h4><div class="scheme-list"></div></div>
+    <div><h4>Interface</h4><div class="prefs-row">
+      <button class="btn ui-mode" data-mode="dark">Dark</button>
+      <button class="btn ui-mode" data-mode="light">Light</button>
+      <span style="flex:1"></span><span class="ui-theme-val" style="font-size:12px;color:var(--fg-dim)"></span>
+    </div></div>
+    <div><h4>Terminal theme</h4><div class="scheme-list"></div></div>
     <div><h4>Font size</h4><div class="prefs-row">
       <button class="btn ps-down">A−</button>
       <input type="number" class="ps-size" min="4" max="40" step="1">
@@ -764,6 +796,14 @@ function openPrefs(): void {
     </div></div>
     <div><h4>Font</h4><div class="prefs-row"><select class="ps-font"></select></div></div>`;
 
+  for (const b of el.querySelectorAll<HTMLElement>(".ui-mode")) {
+    b.addEventListener("click", () => {
+      UI_THEME = b.dataset.mode === "light" ? "light" : "dark";
+      localStorage.setItem("sshkit.uiTheme", UI_THEME);
+      applyUiTheme();
+    });
+  }
+  applyUiTheme();
   const list = el.querySelector(".scheme-list")! as HTMLElement;
   const drawList = (): void => {
     list.replaceChildren(...TERM_SCHEMES.map((sc) => {
@@ -1233,6 +1273,7 @@ void (async () => {
   // T8:reload/关窗时收掉本次界面开的会话(否则主进程留孤儿)
   window.addEventListener("beforeunload", () => { try { bridge.disposeAllSessions(); } catch { /* ignore */ } });
   applyAppearance();
+  applyUiTheme();   // T5:恢复界面主题(深色 / 浅色)
   applyTabView();   // T2:恢复上次的 tab 视图模式(横排 / 工作区竖排)
   applyPanel();     // T4:恢复终端侧栏开关
   installHostKeyDialog();
