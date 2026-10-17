@@ -1,8 +1,14 @@
 allowBuilds:
+  cpu-features: true
   esbuild: true
+  keytar: true
   node-pty: true
+  ssh2: true
 onlyBuiltDependencies:
   - electron
   - esbuild
   - node-pty
   - '@electron/rebuild'
+  - keytar
+  - ssh2
+  - cpu-features

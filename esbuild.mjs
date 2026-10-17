@@ -6,7 +6,7 @@ const nodeCommon = {
   platform: "node",
   target: "node22",
   format: "cjs",
-  external: ["electron", "node-pty"],
+  external: ["electron", "node-pty", "keytar", "ssh2", "cpu-features"],
   sourcemap: "inline",
   minify: false,
 };
