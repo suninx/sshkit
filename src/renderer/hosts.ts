@@ -28,6 +28,11 @@ interface SshkitBridge {
   ssh: {
     connect(hostId: string, opts: { cols: number; rows: number }): Promise<{ id: number }>;
   };
+  snippets: {
+    list(): Promise<Array<{ id: string; name: string; command: string }>>;
+    save(input: { id?: string; name: string; command: string }): Promise<{ id: string; name: string; command: string }>;
+    remove(id: string): Promise<Array<{ id: string; name: string; command: string }>>;
+  };
   knownhost: {
     list(): Promise<KnownHostRow[]>;
     remove(host: string): Promise<KnownHostRow[]>;

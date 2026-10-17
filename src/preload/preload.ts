@@ -45,6 +45,11 @@ const api = {
     connect: (hostId: string, opts: { cols: number; rows: number }) => ipcRenderer.invoke("ssh:connect", hostId, opts),
   },
 
+  snippets: {
+    list: () => ipcRenderer.invoke("snippets:list") as Promise<Array<{ id: string; name: string; command: string }>>,
+    save: (input: { id?: string; name: string; command: string }) => ipcRenderer.invoke("snippets:save", input),
+    remove: (id: string) => ipcRenderer.invoke("snippets:remove", id),
+  },
   knownhost: {
     list: () => ipcRenderer.invoke("knownhost:list"),
     import: (sourcePath?: string) => ipcRenderer.invoke("knownhost:import", sourcePath) as Promise<{ canceled: boolean; added: number; skipped: number; file?: string; rows?: unknown[] }>,

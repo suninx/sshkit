@@ -94,6 +94,124 @@ function setSftpSession(s: CurrentSession | null): void {
   btnSftp.disabled = !s;
 }
 
+/* T4:终端侧栏(原版 `Show terminal side-panel`,动作 toggleSidepanel)。
+   已确认的三块内容里,这里实现两块:`Jump to`(把当前终端切到某台主机)与 `Snippets`(把片段发到终端);
+   `Serial` 需要串口原生依赖,记为硬桩(不假装实现)。 */
+let PANEL_OPEN = localStorage.getItem("sshkit.sidePanel") === "1";
+
+function applyPanel(): void {
+  document.body.dataset.panel = PANEL_OPEN ? "1" : "0";
+  const b = document.getElementById("btn-panel");
+  if (b) { b.classList.toggle("on", PANEL_OPEN); b.title = PANEL_OPEN ? "Hide terminal side-panel" : "Show terminal side-panel"; }
+  if (PANEL_OPEN) void renderSidePanel();
+  const t = activeTab();
+  if (t?.fit) { try { t.fit.fit(); } catch { /* 布局未稳 */ } }
+}
+
+function togglePanel(): void {
+  PANEL_OPEN = !PANEL_OPEN;
+  localStorage.setItem("sshkit.sidePanel", PANEL_OPEN ? "1" : "0");
+  applyPanel();
+}
+
+/** 侧栏内容。Jump to / Snippets 都从各自的存储实时读,避免两处状态不同步。 */
+async function renderSidePanel(): Promise<void> {
+  const jump = document.getElementById("jump-list");
+  const snips = document.getElementById("snip-list");
+  if (!jump || !snips) return;
+
+  const hosts = await bridge.hosts.list();
+  jump.replaceChildren(
+    ...hosts.map((h) => {
+      const el = document.createElement("div");
+      el.className = "sp-item";
+      el.dataset.hostId = h.id;
+      el.innerHTML = `<span class="sp-nm"></span><span class="sp-sub"></span>`;
+      (el.querySelector(".sp-nm")! as HTMLElement).textContent = h.name;
+      (el.querySelector(".sp-sub")! as HTMLElement).textContent = `${h.username}@${h.host}`;
+      el.addEventListener("click", () => { void jumpTo(h); });
+      return el;
+    }),
+  );
+
+  const items = await bridge.snippets.list();
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "sp-sub";
+    empty.textContent = "No snippets yet";
+    snips.replaceChildren(empty);
+  } else {
+    snips.replaceChildren(
+      ...items.map((sn) => {
+        const el = document.createElement("div");
+        el.className = "sp-item";
+        el.dataset.snippetId = sn.id;
+        el.title = sn.command;
+        el.innerHTML = `<span class="sp-nm"></span><button class="sp-del" title="Delete">✕</button>`;
+        (el.querySelector(".sp-nm")! as HTMLElement).textContent = sn.name || sn.command;
+        el.addEventListener("click", () => { void sendSnippet(sn.command); });
+        (el.querySelector(".sp-del")! as HTMLElement).addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          await bridge.snippets.remove(sn.id);
+          await renderSidePanel();
+        });
+        return el;
+      }),
+    );
+  }
+}
+
+/** 把片段发到当前终端(原版跳转/片段都是"作用于当前终端")。命令末尾补回车,等价用户按回车。 */
+async function sendSnippet(command: string): Promise<void> {
+  const tab = activeTab();
+  if (!tab || tab.kind !== "session" || tab.termId === null) {
+    setTitle("no session");
+    return;
+  }
+  /* 命令末尾补回车,等价用户按回车;片段自带换行时只换成回车,避免多发一次空行 */
+  const text = command.endsWith("\n") ? `${command.slice(0, -1)}\r` : `${command}\r`;
+  bridge.write(tab.termId, text);
+  tab.term?.focus();
+}
+
+/** Jump to:把当前 tab 的会话切到所选主机(终端复用,不新开 tab);没有会话 tab 时新开一个。 */
+async function jumpTo(host: HostRecord): Promise<void> {
+  const tab = activeTab();
+  if (!tab || tab.kind !== "session" || !tab.term) { await openSession("ssh", host); return; }
+  const t = tab.term;
+  if (tab.termId !== null) { try { bridge.dispose(tab.termId); } catch { /* 已断开 */ } }
+  for (const d of tab.disposers) { try { d(); } catch { /* ignore */ } }
+  tab.disposers = [];
+  tab.termId = null;
+  tab.host = host;
+  tab.label = host.name;
+  tab.customLabel = undefined;
+  tab.retries = 0;
+  tab.autoRetryOff = false;
+  tab.disconnected = undefined;
+  tab.sftp = null;
+  clearDisconnected(tab);
+  setTitle(`${host.name} (connecting…)`);
+  renderTabs();
+  try {
+    const { id } = await bridge.ssh.connect(host.id, { cols: t.cols, rows: t.rows });
+    wireSession(tab, t, id, "ssh", host);
+    tab.state = "on";
+    tab.sftp = { sid: id, label: `${host.name} (${host.host})` };
+    lastSession = tab.sftp;
+    setTitle(host.name);   // 与 openSession 的成功路径一致:连上后标题不能停在 (connecting…)
+    renderTabs();
+    renderDiscBar();
+    if (active === tab.id) { setStatus("on"); setSftpSession(tab.sftp); }
+    t.focus();
+  } catch (e) {
+    tab.state = "off";
+    setTitle(`${host.name} (failed)`);
+    renderTabs();
+    t.write(`\r\n\x1b[31m连接失败:${String((e as Error).message ?? e)}\x1b[0m\r\n`);
+  }
+}
+
 /* T2:工作区视图模式。原版有 tabVariant `workspaceVerticalTab`(竖排)与 `horizontalTab`(横排),
    以及动作 `toggleWorkspaceViewMode`;这里按此实现两种视图并持久化选择。 */
 let TABVIEW: "horizontal" | "workspace" = localStorage.getItem("sshkit.tabView") === "workspace" ? "workspace" : "horizontal";
@@ -708,6 +826,18 @@ function openPrefs(): void {
 
 /* T2:工作区视图开关(原版动作 toggleWorkspaceViewMode) */
 document.getElementById("btn-tabview")!.addEventListener("click", () => toggleTabView());
+document.getElementById("btn-panel")!.addEventListener("click", () => togglePanel());
+document.querySelector(".sp-close")!.addEventListener("click", () => { if (PANEL_OPEN) togglePanel(); });
+document.querySelector(".snip-save")!.addEventListener("click", () => {
+  const name = (document.querySelector(".snip-name") as HTMLInputElement).value.trim();
+  const command = (document.querySelector(".snip-cmd") as HTMLInputElement).value;
+  if (!name && !command) return;
+  void bridge.snippets.save({ name: name || command, command }).then(() => {
+    (document.querySelector(".snip-name") as HTMLInputElement).value = "";
+    (document.querySelector(".snip-cmd") as HTMLInputElement).value = "";
+    return renderSidePanel();
+  });
+});
 
 document.getElementById("btn-prefs")!.addEventListener("click", (ev) => {
   ev.stopPropagation();
@@ -1089,6 +1219,7 @@ void (async () => {
   window.addEventListener("beforeunload", () => { try { bridge.disposeAllSessions(); } catch { /* ignore */ } });
   applyAppearance();
   applyTabView();   // T2:恢复上次的 tab 视图模式(横排 / 工作区竖排)
+  applyPanel();     // T4:恢复终端侧栏开关
   installHostKeyDialog();
   installAllShortcuts();
   newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell

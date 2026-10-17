@@ -450,6 +450,28 @@
     .ws-row .ws-x { border: 0; background: transparent; color: var(--fg-dim); cursor: pointer; }
     .ws-row .ws-x:hover { color: var(--danger); }
     .ws-empty { padding: 10px; font-size: 12px; color: var(--fg-dim); }
+
+    /* T4 复刻 —— 终端侧栏(原版 `Show terminal side-panel` / 动作 toggleSidepanel,
+       内容含 Snippets / Serial / Jump to;具体文案与布局未取到,视觉为自设计) */
+    #sidepanel { display: none; }
+    body[data-panel="1"] #sidepanel { display: flex; flex-direction: column; width: 250px;
+      flex: 0 0 250px; border-left: 1px solid var(--wire); background: var(--bg2); overflow-y: auto; }
+    .sp-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px; font-size: 12px;
+      color: var(--fg-dim); border-bottom: 1px solid var(--wire); }
+    .sp-sec { padding: 8px 10px; border-bottom: 1px solid var(--wire); }
+    .sp-title { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-dim);
+      margin-bottom: 6px; }
+    .sp-list { display: flex; flex-direction: column; gap: 2px; }
+    .sp-item { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px;
+      font-size: 12px; cursor: pointer; }
+    .sp-item:hover { background: rgba(255,255,255,.05); }
+    .sp-item .sp-nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-item .sp-sub { color: var(--fg-dim); font-size: 11px; }
+    .sp-del { border: 0; background: transparent; color: var(--fg-dim); cursor: pointer; }
+    .sp-del:hover { color: var(--danger); }
+    .snip-add { display: flex; gap: 4px; margin-top: 6px; }
+    .snip-add input { flex: 1; min-width: 0; background: var(--bg); color: var(--fg);
+      border: 1px solid var(--wire); border-radius: 6px; padding: 4px 6px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -483,6 +505,7 @@
         <span id="status-dot"></span>
         <span id="term-title">no session</span>
         <span style="flex:1"></span>
+        <button id="btn-panel" class="btn" title="Show terminal side-panel">▤</button>
         <button id="btn-tabview" class="btn" title="Workspace view">▥</button>
         <button id="btn-prefs" class="btn" title="Appearance — theme / font">🎨</button>
         <button id="btn-sftp" class="btn" disabled title="SFTP browser (ssh session required)">⇄ SFTP</button>
@@ -490,6 +513,23 @@
       <div id="main-body">
         <div id="ws-rail"></div>
         <div id="stage"></div>
+        <div id="sidepanel">
+          <div class="sp-head"><span>Terminal</span><span style="flex:1"></span>
+            <button class="btn sp-close" title="Hide side-panel">✕</button></div>
+          <div class="sp-sec">
+            <div class="sp-title">Jump to</div>
+            <div id="jump-list" class="sp-list"></div>
+          </div>
+          <div class="sp-sec">
+            <div class="sp-title">Snippets</div>
+            <div id="snip-list" class="sp-list"></div>
+            <div class="snip-add">
+              <input class="snip-name" placeholder="Name" spellcheck="false" autocomplete="off">
+              <input class="snip-cmd" placeholder="Command" spellcheck="false" autocomplete="off">
+              <button class="btn snip-save">Save</button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </div>

@@ -8,6 +8,7 @@ import { SftpController } from "./sftp";
 import { ForwardService, type ForwardRule } from "./forward";
 import { importKnownHosts, listKnownHosts, removeKnownHost } from "./knownhosts";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
+import { SnippetStore } from "./snippets";
 import type { HostInput } from "../shared/host";
 
 /* 应用菜单。默认菜单里 Edit 的 copy/paste/selectAll 角色会**在 OS 层吃掉 Cmd+C/V/A**,
@@ -142,6 +143,11 @@ ipcMain.on("knownhost:answer", (_e, reqId: string, action: "continue" | "add" | 
   sshService.answerHostKey(reqId, action);
 });
 ipcMain.handle("knownhost:list", () => listKnownHosts());
+const snippetStore = new SnippetStore();
+ipcMain.handle("snippets:list", () => snippetStore.list());
+ipcMain.handle("snippets:save", (_e, input: { id?: string; name: string; command: string }) => snippetStore.saveSnippet(input));
+ipcMain.handle("snippets:remove", (_e, id: string) => snippetStore.remove(id));
+
 ipcMain.handle("knownhost:import", async (e, sourcePath?: string) => {
   // 显式传入路径时跳过文件选择器 —— 便于自动化复验,正常使用仍走原生对话框
   if (sourcePath) {
