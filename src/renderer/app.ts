@@ -277,7 +277,7 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
   bar.className = "term-search";
   bar.hidden = true;
   bar.innerHTML = `
-    <span class="ts-ico">🔍</span>
+    <span class="ts-ico"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="6.6" cy="6.6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.2 10.2 L14.4 14.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
     <input placeholder="Search terminal - ⌘ + F" spellcheck="false" autocomplete="off">
     <button class="ts-btn" data-nav="prev" title="Previous match">⌃</button>
     <button class="ts-btn" data-nav="next" title="Next match">⌄</button>
