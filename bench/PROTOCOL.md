@@ -76,7 +76,7 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 | T5 | **SFTP** | 双栏结构、目录浏览、上传下载、拖拽、权限/时间列 | `renderer/sftp.ts` + `main/sftp.ts` | ✅ **已复刻主体(F15)**:SFTP 改为常驻 tab、左右双栏(Local/远端)、列头 Name/Date Modified/Size/Kind、两行式行(名 + 权限串)、`..` 首行、默认隐藏点文件、未绑定时的 Connect to host/Select host 空态、Actions 菜单收拢原有操作。**未做**:列头点击排序、拖拽上传、多选、浅色主题配色 |
 | T6 | **Known Hosts** | 首连提示、指纹变更拒绝、已知主机管理 | `main/knownhosts.ts` + `renderer/knownhosts.ts` | ✅ **已复刻(F18)**:文案逐字取自原版组件自身(首连 `Are you sure you want to connect?` / 变更 `The fingerprint for <host> has changed` + `Replace`/`Add as new`),首次连接改为**询问式**(不再静默 TOFU,120s 无应答按拒绝);Known Hosts 视图(列表/指纹/删除/空态)。**隔离复验**:本地假 ssh 服务触发→Add and continue→`~/.ssh/known_hosts` 实增 `[127.0.0.1]:2222`。**未做**:`Import Known Hosts` 工具、多选、变更对话框的 `Replace` 路径未单独走一遍 |
 | T7 | 主机簿/分组 | 分组层级、排序、搜索 | `main/store.ts`(扁平 + group 字段) | — |
-| T8 | 会话体验 | 断线提示、重连、退出码呈现 | `main/ssh.ts` | 01 部分覆盖 |
+| T8 | **断线/重连** | 断线呈现、重连入口、退出码 | `renderer/app.ts` + `main/ssh.ts` | 🟡 **主体已实现并部分复验(F19)**:断线覆盖层 + 全局断开条(文案逐字)、自动重连(3 次退避)、`Try again`/`Force reconnect terminals`/`Close all disconnected terminals`、reload 收孤儿会话;并修掉三个真 bug(掉线误报 exit 0、connect 提前返回、残留对话框吞询问)。**待办**:需在干净环境重跑一遍全流程确认(连番重启后测试台状态变乱,最后一次未弹首连框即失败,未取到证据) |
 
 ## 6. 记录模板(追加到 FINDINGS.md)
 

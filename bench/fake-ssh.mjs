@@ -5,15 +5,27 @@ import { generateKeyPairSync } from "node:crypto";
 import ssh2 from "ssh2";
 const { Server } = ssh2;
 
-const { privateKey } = generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  privateKeyEncoding: { type: "pkcs1", format: "pem" },
-  publicKeyEncoding: { type: "pkcs1", format: "pem" },
-});
+// 主机密钥固定下来:否则每次重启都换密钥,会触发"指纹变更",无法稳定测断线/重连
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+const KEY_FILE = new URL("./.run/fake-ssh-key.pem", import.meta.url).pathname;
+let privateKey;
+if (existsSync(KEY_FILE)) {
+  privateKey = readFileSync(KEY_FILE, "utf8");
+} else {
+  ({ privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs1", format: "pem" },
+    publicKeyEncoding: { type: "pkcs1", format: "pem" },
+  }));
+  mkdirSync(new URL("./.run/", import.meta.url).pathname, { recursive: true });
+  writeFileSync(KEY_FILE, privateKey);
+}
 const port = Number(process.argv[2] || 2222);
 
 new Server({ hostKeys: [privateKey] }, (client) => {
   console.log("[fake-ssh] 有客户端连入");
+  client.on("close", () => console.log("[fake-ssh] 客户端断开"));
+  client.on("end", () => console.log("[fake-ssh] 客户端 end"));
   client.on("authentication", (ctx) => {
     console.log("[fake-ssh] auth:", ctx.method, ctx.username);
     ctx.accept(); // 任何认证都接受,方便走完后续流程

@@ -375,3 +375,34 @@
   之后连确认框都删不掉(走完 `Remove` 确认仍在列表里)。教训:① 需要"填必填项才能继续"的测量,
   应优先找**离线/隔离的替代物**(如 T6 的假 ssh 服务);② 必须在真实应用里制造状态时,先想好怎么撤销并**验证撤销**;
   ③ 拿不准就记为缺口,而不是动手。该规则已如实告知用户,由其自行删除。
+
+### F19 T8 断线与重连:规格、实现、三个真 bug 与残留            [2026-10-17 18:40]
+- **规格来源(权威)**:原版自身 bundle 的可见文案 ——
+  `Initiating reconnection...`(重连中提示)、`1 session is disconnected`(全局计数,复数会变)、
+  `Force reconnect terminals`、`Close all disconnected terminals`、`Disable reconnecting`、
+  `No connection available to reconnect`、`Try again`、`Attempting reconnection to server with ID`。
+- **实现**:
+  - 终端区断线覆盖层:`Session is disconnected` + 原因 + `Try again` / `Close`;
+    自动重连期间显示 `Initiating reconnection...` 且重试键置灰。
+  - 自动重连:最多 3 次,退避 1s/2s/4s;成功后清覆盖层、写 `[reconnected]`、恢复光标与状态。
+  - 全局断开条:`1 session is disconnected`(多条时复数)/ `Force reconnect terminals` /
+    `Close all disconnected terminals`。
+  - 渲染层 reload / 关窗时通过 `sessions:disposeAll` 收掉本次界面开的会话(原先是孤儿)。
+- **复验(假 ssh 服务制造真实掉线)**:
+  - 杀掉服务 → 覆盖层出现,文案 `Session is disconnected` + `Initiating reconnection...`,重试键置灰 ✓
+  - 全局条出现:`1 session is disconnected` + 两个动作 ✓
+  - 重试耗尽 → `No connection available to reconnect`,`Try again` 恢复可点 ✓
+  - 服务恢复后重连成功:覆盖层与全局条消失、状态点回 `on`、假服务日志出现新的 `有客户端连入` ✓
+  - `Force reconnect terminals` 亦能触发(服务端确实收到连接)✓
+- **顺带查出并修掉的三个真 bug**(都是"看着能用、其实判断错"的那类):
+  1. **掉线被上报成正常退出**:主进程 `client.on("close")` 一律发 `exitCode: 0`,渲染层无法区分
+     "远端 shell 正常退出"与"连接断了",于是断线**不给重连入口**。现由主进程显式给
+     `reason: closed | dropped | error | auth | hostkey`,渲染层按 reason 决策(auth 失败不重试,重试也没用)。
+  2. **`ssh.connect` 在握手完成前就返回 id**:TCP 都连不上也显示"已连接",重连循环也误判成功。
+     现等 `ready` 才 resolve,失败/超时 reject(另加 20s 兜底);界面在连上之前显示 `(connecting…)`。
+  3. **未应答的密钥对话框会吞掉后续询问**:原先"一次只问一个"是直接 `return`,于是新的询问被静默丢弃,
+     那次连接就永远卡在握手上(ssh2 `readyTimeout` 15s 后自己掐断 → `KEY_EXCHANGE_FAILED`)。
+     现改为**替换**旧对话框;并在会话结束时由主进程 `knownhost:ask-cancel` 作废该会话挂起的询问。
+- **残留(未复验,下轮清干净再测)**:我连续多轮 kill/重启假服务 + 反复重连之后,测试台自身状态变乱
+  (残留 tab、覆盖层、重试循环),最后一次连接**没有弹出首连对话框**就失败了。倾向于是测试台状态问题
+  (密钥 pin 与对话框时序),但**没有证据就不算通过** —— 下轮重启干净环境重跑一遍 T8 全流程再定论。
