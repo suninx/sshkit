@@ -908,3 +908,24 @@ Inconsolata / JetBrainsMono / MesloLGS / SauceCodePro / UbuntuMono(均为 *NerdF
 - 系统级按键(System Events)在共享桌面上会抢占前台 —— 本项目已因此发生过"按键误落到 QQ"的事故,**不再使用**。
 ⇒ 无法在不打扰用户的前提下打开原版偏好面板。我方保持**自设计**列表(色带 + 名称 + 选中态,
 见 bench/sessions/2026-10-17_15_36_27-t1-prefs),并在 PROTOCOL 里明确标注"形态未测"及其原因。
+
+### F41 T2 菜单补齐;并第三次更正我自己的「取不到」结论          [2026-10-18 16:50]
+## 更正:菜单文案就在包里,不是「走翻译表取不到」
+我早前某一轮写过 T2「未做:菜单完整项(文案走翻译表,取不到字面值)」。这次以 `Split horizontally`
+为锚点,把 ±4KB 区域整段挖出来,菜单文案全在:
+`Tab Context Menu` 区域 → Reconnect / Rename / Duplicate / Duplicate in a new window / Split horizontally /
+Start multiplayer / Close(另有标识符 HorizontalSplit、Sync、LiveTerminal、Reconnect Context)。
+⇒ 之前的结论错在扫描窗口太窄:我只看了动作 id 附近,没看到渲染这些项的那段字面量。
+教训(同类错误第三次):写「取不到/未做」之前,先用一个已知锚点做**大窗口**提取,再下结论。
+## 补齐的两项(均复验)
+1. Reconnect(原版菜单第一项):抽出 reconnectTab(tab),复用同一个终端重新握手。
+   复验:杀掉假服务 → tab 变 off、断线覆盖层出现 → 点 Reconnect → 恢复 on、覆盖层消失、termId 1000005 ✓
+2. Duplicate in a new window:新增主进程 window:new(bridge 里命名 create,原因见下)。
+   复验:点击后 CDP page 目标 1 → 2(真的开了第二个窗口)✓
+菜单顺序现与原版一致:Reconnect / Rename / Duplicate / Duplicate in a new window / Split horizontally / Close。
+## 硬桩:Start multiplayer
+原版这一项是共享会话(multiplayer),对应 OPEN_MULTIPLAYER_TERMINAL、RUN_IN_ALL_ACTIVE_TABS 与云端协作 ——
+复刻它需要服务端组件,与本项目「本地优先、可裁剪」的前提冲突,故记为硬桩:不做,也不在 UI 里假装提供。
+## 一个 TS 小坑
+bridge 接口里写 `window: { new(): Promise<boolean> }` 会报 Property 'new' does not exist ——
+对象类型里的 new() 是**构造签名**,不是方法名。改名为 create() 即可。
