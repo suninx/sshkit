@@ -21,6 +21,7 @@
       --bg: #101418; --bg2: #161b22; --bg3: #1e252e;
       --fg: #d8dee9; --fg-dim: #6b7a8c; --accent: #88c0d0; --danger: #bf616a;
       --wire: #262d36;
+      --term-bg: #141729; /* 终端主题底色,tab 条随之变化(原版实测如此) */
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg);
@@ -71,7 +72,7 @@
        快捷键亦取自原版自身的 shortcut_schemes:Cmd+T 新建 / Cmd+W 关闭 /
        Cmd+Shift+[ ] 前后切换。 */
     #tabstrip { display: flex; align-items: center; gap: 6px; height: 51px; padding: 0 10px;
-      background: #141729; border-bottom: 1px solid var(--wire); }
+      background: var(--term-bg); border-bottom: 1px solid var(--wire); }
     #tabs { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
     .tab-btn { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 6px;
       border-radius: 10px; background: rgba(255,255,255,.05); color: #fff; cursor: pointer;
@@ -142,6 +143,26 @@
 
     /* T3 复刻 —— 端口转发。入口:侧栏一级导航 Port Forwarding;工具栏 `＋ New forwarding`;
        空态文案与向导四步的标签/说明均逐字取自原版实测(F17)。 */
+    /* T1 复刻 —— 外观设置:配色方案 / 字号 / 字体。
+       配色数据取自原版自身的 colorSchemesArray(64 套,见 renderer/themes.ts)。
+       说明:原版把主题放在终端侧栏的调色板按钮里;我方没有侧栏,故收在终端标题栏的 🎨 里(有意偏离)。 */
+    .prefs { position: absolute; right: 12px; top: 40px; z-index: 30; width: 320px; max-height: 70vh;
+      background: var(--bg2); border: 1px solid var(--wire); border-radius: 12px; padding: 10px;
+      display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.45); }
+    .prefs h4 { margin: 0; font-size: 12px; font-weight: 600; color: var(--fg-dim); text-transform: uppercase; letter-spacing: .5px; }
+    .prefs-row { display: flex; align-items: center; gap: 8px; }
+    .scheme-list { max-height: 210px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+    .scheme { display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: var(--fg);
+      text-align: left; padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+    .scheme:hover { background: rgba(255,255,255,.07); }
+    .scheme.on { background: rgba(255,255,255,.12); }
+    .swatches { display: flex; gap: 1px; }
+    .swatches i { width: 9px; height: 14px; display: block; }
+    .prefs input[type=number] { width: 62px; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
+      border-radius: 7px; padding: 5px 7px; font-size: 13px; }
+    .prefs select { flex: 1; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
+      border-radius: 7px; padding: 6px; font-size: 13px; }
+
     /* T7 复刻 —— 主机簿搜索与排序(占位符与排序项取自原版实测,见 F20) */
     #host-tools { display: flex; gap: 6px; padding: 0 10px 8px; }
     #host-search { flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
@@ -380,6 +401,7 @@
         <span id="status-dot"></span>
         <span id="term-title">no session</span>
         <span style="flex:1"></span>
+        <button id="btn-prefs" class="btn" title="Appearance — theme / font">🎨</button>
         <button id="btn-sftp" class="btn" disabled title="SFTP browser (ssh session required)">⇄ SFTP</button>
       </div>
       <div id="stage"></div>

@@ -9,6 +9,9 @@ import { listKnownHosts, removeKnownHost } from "./knownhosts";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
 import type { HostInput } from "../shared/host";
 
+/* bench 专用:仅在 SSHKIT_BENCH=1 时输出,正常运行零噪音 */
+const benchLog = (...a: unknown[]): void => { if (process.env.SSHKIT_BENCH) console.log("[bench]", ...a); };
+
 const hostStore = new HostStore(app.getPath("userData"));
 const ptyService = new PtyService();
 const sshService = new SshService();
@@ -62,6 +65,7 @@ function createWindow(): void {
 ipcMain.handle("terminal:create", (event, opts: TerminalCreateOptions) => ({ id: ptyService.create(event.sender, opts) }));
 ipcMain.on("terminal:write", (_e, id: number, data: string) => { ptyService.write(id, data); sshService.write(id, data); });
 ipcMain.on("terminal:resize", (_e, id: number, cols: number, rows: number) => {
+  benchLog("resize", id, cols, rows);
   ptyService.resize(id, cols, rows);
   sshService.resize(id, cols, rows);
 });

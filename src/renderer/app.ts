@@ -7,6 +7,7 @@ import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
 import { createFwdView } from "./fwd";
 import { createKnownHostsView, installHostKeyDialog } from "./knownhosts";
 import { installShortcuts, MAC_SHORTCUTS, type ShortcutDef } from "./keys";
+import { TERM_SCHEMES, toXtermTheme, type TermScheme } from "./themes";
 import type { HostRecord } from "../shared/host";
 
 const stage = document.getElementById("stage")!;
@@ -194,10 +195,18 @@ function cycleTab(delta: number): void {
     selectionColor #21b56880、以及 16 色 colorPaletteOverrides)。这是权威值;
    早先我用像素反推的表有几处偏差(如 white 误记 #6b6d7a),已作废。
    另:像素对照证明两侧渲染管线等价 —— 同一真彩色在双方成像一致(见 bench/FINDINGS.md F12)。 */
-const TERM_FONT = '"MesloLGS NF", Menlo, "DejaVu Sans Mono", monospace';
-const TERM_FONT_SIZE = 14; // 原版 defaultFontSize=14,实机同
+/* T1:字体 / 字号 / 配色都可选。配色数据来自原版 colorSchemesArray(见 themes.ts)。
+   原版字号范围 4–40、字体打包 12 个等宽族;我方只随包内置 MesloLGS NF(其余为系统回退),记为缺口。 */
+const FONT_CHOICES = [
+  { id: '"MesloLGS NF", Menlo, monospace', label: "MesloLGS NF" },
+  { id: 'Menlo, monospace', label: "Menlo" },
+  { id: '"DejaVu Sans Mono", monospace', label: "DejaVu Sans Mono" },
+  { id: 'ui-monospace, monospace', label: "System monospace" },
+];
+let TERM_FONT = FONT_CHOICES[0].id;
+let TERM_FONT_SIZE = 14; // 原版 defaultFontSize=14,实机同;可选范围 4–40
 const TERM_LINE_HEIGHT = 1.05; // 目标格高 18px(原版光标墨迹盒实测 8×18;1.1→19、1.05→18)
-const TERM_THEME = {
+let TERM_THEME: Record<string, string> = {
   background: "#141729",
   foreground: "#21b568",
   cursor: "#21b568",
@@ -263,6 +272,127 @@ function openKnownHostsTab(): void {
 }
 
 /** 在(当前空的新 tab 或新建的 tab)里开会话。原版行为:点主机即在 tab 内连接。 */
+/* ---------- T1:外观(配色 / 字号 / 字体) ---------- */
+
+let schemeName = localStorage.getItem("sshkit.scheme") || "Termius Dark";
+let fontSize = Number(localStorage.getItem("sshkit.fontSize") || 14);
+let fontFamily = localStorage.getItem("sshkit.fontFamily") || FONT_CHOICES[0].id;
+
+function scheme(): TermScheme {
+  return TERM_SCHEMES.find((s) => s.name === schemeName) ?? TERM_SCHEMES[0];
+}
+
+/** 应用外观:所有活动终端 + 窗口 chrome(tab 条底色随主题,原版实测如此) */
+function applyAppearance(): void {
+  const sc = scheme();
+  TERM_THEME = toXtermTheme(sc);
+  TERM_FONT = fontFamily;
+  TERM_FONT_SIZE = Math.min(40, Math.max(4, fontSize));
+  document.documentElement.style.setProperty("--term-bg", sc.background);
+  for (const tab of tabs) {
+    const term = tab.term;
+    if (!term) continue;
+    term.options.theme = TERM_THEME;
+    term.options.fontFamily = TERM_FONT;
+    term.options.fontSize = TERM_FONT_SIZE;
+    try { tab.fit?.fit(); } catch { /* transient */ }
+  }
+}
+
+function openPrefs(): void {
+  const existing = document.querySelector(".prefs");
+  if (existing) { existing.remove(); return; }
+  const host = document.querySelector("#term-head")?.parentElement ?? document.body;
+  const el = document.createElement("div");
+  el.className = "prefs";
+  el.innerHTML = `
+    <div><h4>Theme</h4><div class="scheme-list"></div></div>
+    <div><h4>Font size</h4><div class="prefs-row">
+      <button class="btn ps-down">A−</button>
+      <input type="number" class="ps-size" min="4" max="40" step="1">
+      <button class="btn ps-up">A+</button>
+      <span style="flex:1"></span><span class="ps-val" style="font-size:12px;color:var(--fg-dim)"></span>
+    </div></div>
+    <div><h4>Font</h4><div class="prefs-row"><select class="ps-font"></select></div></div>`;
+
+  const list = el.querySelector(".scheme-list")! as HTMLElement;
+  const drawList = (): void => {
+    list.replaceChildren(...TERM_SCHEMES.map((sc) => {
+      const b = document.createElement("button");
+      b.className = `scheme${sc.name === schemeName ? " on" : ""}`;
+      const sw = document.createElement("span");
+      sw.className = "swatches";
+      // 用背景 + 前 8 色做个小色带,便于一眼认出
+      for (const c of [sc.background, ...sc.palette.slice(0, 7)]) {
+        const i = document.createElement("i");
+        i.style.background = c;
+        sw.append(i);
+      }
+      const nm = document.createElement("span");
+      nm.textContent = sc.name;
+      nm.style.flex = "1";
+      b.append(sw, nm);
+      b.addEventListener("click", () => {
+        schemeName = sc.name;
+        localStorage.setItem("sshkit.scheme", schemeName);
+        applyAppearance();
+        drawList();
+      });
+      return b;
+    }));
+  };
+  drawList();
+
+  const size = el.querySelector(".ps-size")! as HTMLInputElement;
+  const val = el.querySelector(".ps-val")! as HTMLElement;
+  const syncSize = (): void => {
+    size.value = String(fontSize);
+    val.textContent = `${fontSize}px`;
+  };
+  size.addEventListener("change", () => {
+    fontSize = Math.min(40, Math.max(4, Number(size.value) || 14));
+    localStorage.setItem("sshkit.fontSize", String(fontSize));
+    applyAppearance();
+    syncSize();
+  });
+  (el.querySelector(".ps-up")! as HTMLElement).addEventListener("click", () => {
+    fontSize = Math.min(40, fontSize + 1);
+    localStorage.setItem("sshkit.fontSize", String(fontSize));
+    applyAppearance(); syncSize();
+  });
+  (el.querySelector(".ps-down")! as HTMLElement).addEventListener("click", () => {
+    fontSize = Math.max(4, fontSize - 1);
+    localStorage.setItem("sshkit.fontSize", String(fontSize));
+    applyAppearance(); syncSize();
+  });
+  syncSize();
+
+  const fontSel = el.querySelector(".ps-font")! as HTMLSelectElement;
+  for (const f of FONT_CHOICES) {
+    const o = document.createElement("option");
+    o.value = f.id;
+    o.textContent = f.label;
+    fontSel.append(o);
+  }
+  fontSel.value = fontFamily;
+  fontSel.addEventListener("change", () => {
+    fontFamily = fontSel.value;
+    localStorage.setItem("sshkit.fontFamily", fontFamily);
+    applyAppearance();
+  });
+
+  host.append(el);
+}
+
+document.getElementById("btn-prefs")!.addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  openPrefs();
+});
+document.addEventListener("click", (ev) => {
+  const el = document.querySelector(".prefs");
+  if (el && !el.contains(ev.target as Node) && (ev.target as HTMLElement).id !== "btn-prefs") el.remove();
+});
+
 /* ---------- T8:断线与重连 ---------- */
 
 interface ExitInfo { exitCode: number; error?: string; reason?: string }
@@ -601,6 +731,7 @@ void (async () => {
   });
   // T8:reload/关窗时收掉本次界面开的会话(否则主进程留孤儿)
   window.addEventListener("beforeunload", () => { try { bridge.disposeAllSessions(); } catch { /* ignore */ } });
+  applyAppearance();
   installHostKeyDialog();
   installAllShortcuts();
   newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
