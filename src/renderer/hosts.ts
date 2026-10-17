@@ -80,6 +80,53 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
     if (e.target === backdrop) backdrop.classList.remove("visible");
   });
 
+  /* T7:搜索与排序。排序项文案取自原版 Sort options 菜单(A-z / Z-a / Newest to oldest / Oldest to newest) */
+  type SortMode = "az" | "za" | "newest" | "oldest";
+  const SORT_LABEL: Record<SortMode, string> = {
+    az: "A-z", za: "Z-a", newest: "Newest to oldest", oldest: "Oldest to newest",
+  };
+  let sortMode: SortMode = (localStorage.getItem("sshkit.hostSort") as SortMode) || "az";
+  let query = "";
+  const searchEl = document.getElementById("host-search")! as HTMLInputElement;
+  const sortBtn = document.getElementById("host-sort")! as HTMLButtonElement;
+
+  function comparer(): (a: HostRecord, b: HostRecord) => number {
+    switch (sortMode) {
+      case "za": return (a, b) => b.name.localeCompare(a.name);
+      case "newest": return (a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? "");
+      case "oldest": return (a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+      default: return (a, b) => a.name.localeCompare(b.name);
+    }
+  }
+
+  function openSortMenu(): void {
+    document.querySelectorAll(".sort-menu").forEach((e) => e.remove());
+    const r = sortBtn.getBoundingClientRect();
+    const menu = document.createElement("div");
+    menu.className = "sort-menu";
+    menu.style.left = `${Math.round(r.left - 130)}px`;
+    menu.style.top = `${Math.round(r.bottom + 4)}px`;
+    for (const mode of Object.keys(SORT_LABEL) as SortMode[]) {
+      const item = document.createElement("button");
+      item.className = `sort-item${mode === sortMode ? " on" : ""}`;
+      item.textContent = SORT_LABEL[mode];
+      item.addEventListener("click", () => {
+        sortMode = mode;
+        localStorage.setItem("sshkit.hostSort", mode);
+        menu.remove();
+        void refresh();
+      });
+      menu.append(item);
+    }
+    document.body.append(menu);
+    setTimeout(() => document.addEventListener("click", function once(ev) {
+      if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener("click", once); }
+    }), 0);
+  }
+
+  searchEl.addEventListener("input", () => { query = searchEl.value.trim().toLowerCase(); void refresh(); });
+  sortBtn.addEventListener("click", (ev) => { ev.stopPropagation(); openSortMenu(); });
+
   const authSel = document.getElementById("f-auth")! as HTMLSelectElement;
   authSel.addEventListener("change", syncAuthVisibility);
   document.getElementById("host-form")!.addEventListener("submit", onSubmit);
@@ -95,12 +142,27 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
       listEl.appendChild(hint);
       return;
     }
+    // T7:先按搜索词过滤(名称 / 主机名 / 用户名),再按所选方式排序
+    const shown = query
+      ? hosts.filter((h) =>
+          h.name.toLowerCase().includes(query) ||
+          h.host.toLowerCase().includes(query) ||
+          h.username.toLowerCase().includes(query))
+      : hosts;
+    if (!shown.length) {
+      const hint = document.createElement("div");
+      hint.className = "empty-hint";
+      hint.textContent = "No hosts match your search.";
+      listEl.appendChild(hint);
+      return;
+    }
     const byGroup = new Map<string, HostRecord[]>();
-    for (const h of hosts) {
+    for (const h of shown) {
       const g = h.group || "hosts";
       (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(h);
     }
-    for (const [group, items] of Array.from(byGroup).sort((a, b) => a[0].localeCompare(b[0]))) {
+    for (const [group, raw] of Array.from(byGroup).sort((a, b) => a[0].localeCompare(b[0]))) {
+      const items = [...raw].sort(comparer());
       const label = document.createElement("div");
       label.className = "group-label";
       label.textContent = group;

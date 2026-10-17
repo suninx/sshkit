@@ -142,6 +142,21 @@
 
     /* T3 复刻 —— 端口转发。入口:侧栏一级导航 Port Forwarding;工具栏 `＋ New forwarding`;
        空态文案与向导四步的标签/说明均逐字取自原版实测(F17)。 */
+    /* T7 复刻 —— 主机簿搜索与排序(占位符与排序项取自原版实测,见 F20) */
+    #host-tools { display: flex; gap: 6px; padding: 0 10px 8px; }
+    #host-search { flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
+      border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; }
+    #host-search:focus { border-color: var(--accent); }
+    #host-sort { border: 1px solid var(--wire); background: var(--bg); color: var(--fg-dim); border-radius: 8px;
+      width: 32px; cursor: pointer; font-size: 13px; }
+    #host-sort:hover { color: var(--fg); }
+    .sort-menu { position: absolute; z-index: 20; background: var(--bg2); border: 1px solid var(--wire);
+      border-radius: 9px; padding: 5px; min-width: 168px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+    .sort-item { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--fg);
+      font-size: 13px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+    .sort-item:hover { background: rgba(255,255,255,.08); }
+    .sort-item.on { color: var(--accent); }
+
     #nav { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 8px; }
     .nav-item { display: flex; align-items: center; gap: 9px; border: 0; background: transparent;
       color: var(--fg); font-size: 14px; text-align: left; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
@@ -348,6 +363,10 @@
         <button class="nav-item on" data-nav="hosts"><span class="ni">🖧</span>Hosts</button>
         <button class="nav-item" data-nav="forwarding"><span class="ni">⇥</span>Port Forwarding</button>
         <button class="nav-item" data-nav="knownhosts"><span class="ni">🔑</span>Known Hosts</button>
+      </div>
+      <div id="host-tools">
+        <input id="host-search" type="text" placeholder="Find a host or ssh user@hostname..." spellcheck="false" autocomplete="off">
+        <button id="host-sort" title="Sort options" aria-label="Sort options">⇅</button>
       </div>
       <div id="host-list"></div>
     </aside>
