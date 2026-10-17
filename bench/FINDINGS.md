@@ -529,3 +529,28 @@
   "复制"那次其实落到了 newtab 分支)。
 - **未做**:分屏/工作区视图(原版有 workspace tab 与 `toggleSplitViewBroadcastMode`/`toggleWorkspaceViewMode`)、
   广播模式、tab 菜单的完整项(文案表取不到)。
+
+### F25 T4 补完:字号快捷键(来源是**主进程菜单**,不是渲染层快捷键表)   [2026-10-18 00:40]
+- **规格来源(权威,第二处)**:原版 `main-process/main-process.js` 的**应用菜单**定义 ——
+  ```
+  View: Increase terminal font size   accelerator "CmdOrCtrl+Plus"
+        Decrease terminal font size   accelerator "CmdOrCtrl+-"
+        Reset terminal font size to default   (无 accelerator,仅菜单项)
+        Show terminal side-panel      ← 取 shortcut_schemes 里 toggleSidepanel 的键位
+  Edit: Select All  "CmdOrCtrl+A" ; Find ← 取 openTerminalSearch 的键位
+  ```
+  **重要**:这是一处新的权威来源。此前我只有渲染层的 `shortcut_schemes`(20 条应用级);
+  字号/侧栏/查找这些是**菜单加速键**,压根不在那张表里 —— 所以"表里没有"不等于"原版没有"。
+- **实现**:`keys.ts` 增 `TERMINAL_SHORTCUTS`(来自 View 菜单)+ 专用匹配函数:接受 `Equal`(即 `Cmd+=`)
+  与 `NumpadAdd`(原版绑的是 `CmdOrCtrl+Plus`,在 US 布局上 + 需按 Shift;macOS 上用户习惯按 `Cmd+=`,
+  故两者都收,并在注释里写明);`Cmd+-`/`NumpadSubtract` 减小;字号统一走 `setFontSize()`;
+  面板加 `Reset`(对应原版那条无加速键的菜单项)。
+- **复验(真实 CDP 按键 + pty 尺寸作不变量)**:
+  - `Cmd+=` ×3:字号 14→17,pty 变 **102×29** ✓
+  - `Cmd+-` ×2:17→15,pty 变 **114×35** ✓(字号变小 → 行列变多,方向正确)
+  - `Cmd+Shift+=`(即 ⌘+):16 ✓
+- **工具链教训(差点又误判产品)**:`bench/drive.mjs` 的键名映射里没有符号键,`cmd+equal` 退化成
+  `code="equal"`(小写),而产品按 `e.code === "Equal"` 判断 → **静默不触发**,我一度以为"字号快捷键没实现"。
+  定位手法:在页面里**直接派发带正确 `code` 的真实 KeyboardEvent**,一次就证明产品逻辑是好的
+  (14→15→14),问题在工具。随后给驱动补齐了约 18 个符号/具名键(`equal`/`plus`/`minus`/`comma`/`bracketleft`…)。
+  教训:**键盘测试失败时,先证明"到达页面的那个事件长什么样",再怀疑产品。**

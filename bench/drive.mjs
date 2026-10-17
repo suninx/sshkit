@@ -142,8 +142,16 @@ function parseCombo(combo) {
   let modifiers = 0; const keys = [];
   for (const p of parts) (mods[p] !== undefined ? (modifiers |= mods[p]) : keys.push(p));
   const k = keys[keys.length - 1] || "";
+  // 教训:符号键必须在这里显式映射。否则 "cmd+equal" 会退化成 code="equal"(小写),
+  // 而产品代码按 e.code === "Equal" 判断 → 静默不触发(我因此误判过"字号快捷键没实现")。
   const named = { enter: ["Enter", "Enter", 13], tab: ["Tab", "Tab", 9], esc: ["Escape", "Escape", 27],
-    escape: ["Escape", "Escape", 27], space: [" ", "Space", 32], backspace: ["Backspace", "Backspace", 8] };
+    escape: ["Escape", "Escape", 27], space: [" ", "Space", 32], backspace: ["Backspace", "Backspace", 8],
+    equal: ["=", "Equal", 187], plus: ["+", "Equal", 187], minus: ["-", "Minus", 189],
+    comma: [",", "Comma", 188], period: [".", "Period", 190], slash: ["/", "Slash", 191],
+    semicolon: [";", "Semicolon", 186], quote: ["'", "Quote", 222], backquote: ["`", "Backquote", 192],
+    backslash: ["\\", "Backslash", 220], bracketleft: ["[", "BracketLeft", 219], bracketright: ["]", "BracketRight", 221],
+    arrowleft: ["ArrowLeft", "ArrowLeft", 37], arrowright: ["ArrowRight", "ArrowRight", 39],
+    arrowup: ["ArrowUp", "ArrowUp", 38], arrowdown: ["ArrowDown", "ArrowDown", 40] };
   let key = k, code, vk;
   if (named[k]) { [key, code, vk] = named[k]; }
   else if (/^[a-z]$/.test(k)) { key = k; code = "Key" + k.toUpperCase(); vk = k.toUpperCase().charCodeAt(0); }
