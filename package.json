@@ -1,0 +1,24 @@
+{
+  "name": "sshkit",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lean local-first SSH terminal client (feature-equivalent rebuild study of a commercial terminal, original implementation)",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "rebuild:pty": "electron-rebuild -f -w node-pty",
+    "start": "npm run build && electron ."
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.1",
+    "@types/node": "^26.6.5",
+    "electron": "^44.8.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.1.0"
+  }
+}
