@@ -116,6 +116,22 @@ function togglePanel(): void {
   applyPanel();
 }
 
+/** 打开侧栏并定位到某个分区(等渲染完成再定位) */
+function showPanelSection(title: string): void {
+  if (!PANEL_OPEN) togglePanel();
+  void renderSidePanel().then(() => focusPanelSection(title));
+}
+
+/** 把侧栏滚到某个分区并高亮一下(供 Cmd+J / Cmd+Shift+S 这类"打开某面板"的快捷键用) */
+function focusPanelSection(title: string): void {
+  const sec = [...document.querySelectorAll("#sidepanel .sp-sec")]
+    .find((e) => e.querySelector(".sp-title")?.textContent === title);
+  if (!sec) return;
+  sec.scrollIntoView({ block: "nearest" });
+  sec.classList.add("sp-flash");
+  setTimeout(() => sec.classList.remove("sp-flash"), 900);
+}
+
 /** 侧栏内容。Jump to / Snippets 都从各自的存储实时读,避免两处状态不同步。 */
 async function renderSidePanel(): Promise<void> {
   const jump = document.getElementById("jump-list");
@@ -1293,6 +1309,21 @@ function installAllShortcuts(): void {
     increaseTerminalFontSize: () => setFontSize(fontSize + 1),
     decreaseTerminalFontSize: () => setFontSize(fontSize - 1),
     forwarding: () => openFwdTab(),
+    /* 以下 5 条原先因为"功能还不存在"而未接线(F16 时只有显式提示)。功能补齐后接上实体行为。 */
+    toggleSidepanel: () => togglePanel(),
+    toggleWorkspaceViewMode: () => toggleTabView(),
+    toggleSplitViewBroadcastMode: () => {
+      const t = activeTab();
+      const box = document.querySelector(".split-bc input") as HTMLInputElement | null;
+      if (!t?.split || !box) { toast("先 Split horizontally 再开广播"); return; }
+      box.click();
+    },
+    /* 注意时序:面板刚打开时 renderSidePanel 还没跑完,必须等它 resolve 再去找分区
+       (否则 focusPanelSection 找不到元素,表现为"按了没反应")。 */
+    snippets: () => showPanelSection("Snippets"),
+    jumpTo: () => showPanelSection("Jump to"),
+    /* 串口是硬桩(见 PROTOCOL T4):这里给出**说清原因**的提示,而不是笼统的"尚未实现" */
+    serialConnection: () => toast("Serial 未支持:需要串口原生依赖与真实设备,本项目不引入"),
   };
   installShortcuts(shortcuts, (def: ShortcutDef) => {
     toast(`「${def.name}」尚未实现${def.accel ? `(${def.accel})` : "(原版亦未设默认键)"}`);

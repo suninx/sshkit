@@ -105,6 +105,14 @@ const APP_LEVEL = new Set([
  * @param handlers 已实现的动作:actionId → 行为
  * @param onMissing 未实现的动作(用于显式告知,而不是静默吞掉按键)
  */
+/** 焦点是否落在真正的表单控件上(排除 xterm 的辅助 textarea)。 */
+function inFormField(): boolean {
+  const el = document.activeElement as HTMLElement | null;
+  if (!el) return false;
+  if (el.closest?.(".xterm")) return false;   // 终端:应用级快捷键必须照常生效
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+}
+
 export function installShortcuts(
   handlers: Record<string, () => void>,
   onMissing: (def: ShortcutDef) => void,
@@ -128,7 +136,12 @@ export function installShortcuts(
 
       for (const { def, parsed } of table) {
         if (!matches(e, parsed)) continue;
-        if (isTextField(document.activeElement) && !APP_LEVEL.has(def.id)) return;
+        /* 焦点在"真正的表单控件"里时不要抢键(否则在搜索框里按 Cmd+W 会关掉 tab)。
+           但**必须把终端自身的辅助 textarea 排除** —— xterm 靠一个隐藏 textarea 收键盘,
+           它也算 TEXTAREA,于是"终端有焦点"时所有应用级快捷键都被吞掉:
+           实测 cmd+. / cmd+shift+m / cmd+j / cmd+shift+s 全不响应,连 cmd+c 复制终端内容、
+           cmd+a 全选终端都失效(终端几乎总是有焦点,等于这些键从来没生效过)。 */
+        if (inFormField() && !APP_LEVEL.has(def.id)) return;
         e.preventDefault();
         const run = handlers[def.id];
         if (run) run();
