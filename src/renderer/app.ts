@@ -520,9 +520,17 @@ if (localStorage.getItem("sshkit.bench") === "1") {
       const tab = activeTab();
       const term = pane === 0 ? tab?.term : tab?.split?.term;
       if (!term) return false;
-      term.paste(data);
+      /* 用 xterm 的 input() 而不是 paste():
+         - paste() 会加**括号粘贴**包装(ESC[200~ … ESC[201~),里面的换行不会被执行;
+         - input() 把数据原样交给 onData,等价于"终端收到这些字节",
+           因此也**完整经过产品自己的输入扇出**(广播才会按真实语义生效)。
+         这一步只用于对照台复验,不改变产品任何行为。 */
+      term.input(data);
       return true;
     },
+    /* 计数器:用来判定某条快捷键是否真的到达了渲染层(此前用 window.sshkit 上的代理
+       判断过,但那个对象是冻结的,代理根本没装上 —— 结论无效)。 */
+    counters: { pasteToTerminal: 0, copyFromTerminal: 0 },
     tabs: () => tabs.map((t) => ({ id: t.id, kind: t.kind, label: t.customLabel ?? t.label,
       termId: t.termId, splitTermId: t.split?.termId ?? null, broadcast: t.split?.broadcast ?? null })),
   };
@@ -973,10 +981,16 @@ let shortcuts: Record<string, () => void> = {};
 function installAllShortcuts(): void {
   shortcuts = {
     copyFromTerminal: () => {
+      const c = (window as unknown as { __bench?: { counters: Record<string, number> } }).__bench?.counters;
+      if (c) c.copyFromTerminal++;
       const sel = activeTab()?.term?.getSelection();
       if (sel) void bridge.clipboard.write(sel);
     },
-    pasteToTerminal: () => { void bridge.clipboard.read().then((txt) => activeTab()?.term?.paste(txt)); },
+    pasteToTerminal: () => {
+      const c = (window as unknown as { __bench?: { counters: Record<string, number> } }).__bench?.counters;
+      if (c) c.pasteToTerminal++;
+      void bridge.clipboard.read().then((txt) => activeTab()?.term?.paste(txt));
+    },
     selectAllInTerminal: () => activeTab()?.term?.selectAll(),
     clearTerminalBuffer: () => activeTab()?.term?.clear(),
     openTerminalSearch: () => { const t = activeTab(); if (t?.kind === "session") toggleSearch(t); },

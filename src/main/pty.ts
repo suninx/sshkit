@@ -47,6 +47,7 @@ export class PtyService {
 
   write(id: number, data: string): void {
     const t = this.terminals.get(id);
+    if (process.env.SSHKIT_BENCH) console.log("[bench] pty.write", id, t ? "ok" : "**找不到该 pty**", JSON.stringify(data.slice(0, 30)));
     if (t) t.pty.write(data);
   }
 

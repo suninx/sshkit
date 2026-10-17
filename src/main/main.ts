@@ -77,7 +77,11 @@ function createWindow(): void {
 /* ---------- local terminal ---------- */
 
 ipcMain.handle("terminal:create", (event, opts: TerminalCreateOptions) => ({ id: ptyService.create(event.sender, opts) }));
-ipcMain.on("terminal:write", (_e, id: number, data: string) => { ptyService.write(id, data); sshService.write(id, data); });
+ipcMain.on("terminal:write", (_e, id: number, data: string) => {
+  benchLog("write →", id, JSON.stringify(data.slice(0, 40)));
+  try { ptyService.write(id, data); } catch (e) { benchLog("pty.write 抛错:", String(e)); }
+  try { sshService.write(id, data); } catch (e) { benchLog("ssh.write 抛错:", String(e)); }
+});
 ipcMain.on("terminal:resize", (_e, id: number, cols: number, rows: number) => {
   benchLog("resize", id, cols, rows);
   ptyService.resize(id, cols, rows);
