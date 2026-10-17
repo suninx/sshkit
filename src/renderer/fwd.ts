@@ -90,6 +90,14 @@ export function createFwdView(): FwdView {
       state.className = `fwd-state ${st.state}`;
       state.textContent = st.state === "running" ? `running · ${st.active} conn` : st.state === "error" ? `error: ${st.error ?? ""}` : st.state;
 
+      const editBtn = document.createElement("button");
+      editBtn.className = "btn";
+      editBtn.textContent = "Edit";
+      editBtn.dataset.ruleId = r.id;
+      editBtn.disabled = st.state === "running" || st.state === "starting"; // 运行中改端口没有意义
+      editBtn.title = editBtn.disabled ? "Stop the rule before editing" : "Edit rule";
+      editBtn.addEventListener("click", () => openWizard(r));
+
       const toggle = document.createElement("button");
       toggle.className = "btn";
       toggle.textContent = st.state === "running" || st.state === "starting" ? "Stop" : "Start";
@@ -105,7 +113,7 @@ export function createFwdView(): FwdView {
       del.title = "Delete";
       del.addEventListener("click", async () => { rules = await bridge.fwd.remove(r.id); await refresh(); });
 
-      row.append(badge, main, state, toggle, del);
+      row.append(badge, main, state, editBtn, toggle, del);
       list.append(row);
     }
     body.replaceChildren(list);
@@ -120,15 +128,18 @@ export function createFwdView(): FwdView {
 
   /* ---------- 向导 ---------- */
 
-  function openWizard(): void {
+  /** 新建与编辑复用同一套向导(原版也是同一向导、不同入口)。
+      传 edit 即进入编辑态:字段预填,保存时沿用原 id(原地更新而非新增)。 */
+  function openWizard(edit?: ForwardRule): void {
     const draft = {
-      kind: "local" as ForwardKind,
-      port: 0,
-      bindAddress: "0.0.0.0",
-      hostId: "",
-      destinationAddress: "",
-      destinationPort: 0,
+      kind: (edit?.kind ?? "local") as ForwardKind,
+      port: edit?.port ?? 0,
+      bindAddress: edit?.bindAddress ?? "0.0.0.0",
+      hostId: edit?.hostId ?? "",
+      destinationAddress: edit?.destinationAddress ?? "",
+      destinationPort: edit?.destinationPort ?? 0,
     };
+    const editing = !!edit;
     let step = 1;
 
     const back = document.createElement("div");
@@ -171,7 +182,9 @@ export function createFwdView(): FwdView {
     function draw(): void {
       btnBack.disabled = step === 1;
       btnNext.textContent = step === 4 ? "Save" : "Continue";
-      crumb.textContent = step === 1 ? "Port Forwarding" : `${KIND_LABEL[draft.kind]} Rule`;
+      crumb.textContent = step === 1
+        ? (editing ? "Edit rule" : "Port Forwarding")
+        : `${KIND_LABEL[draft.kind]} Rule${editing ? " · editing" : ""}`;
       bodyEl.replaceChildren();
 
       const title = (t: string): void => {
@@ -262,13 +275,14 @@ export function createFwdView(): FwdView {
       if (step === 4) {
         if (!draft.destinationAddress || !draft.destinationPort) return;
         const rule: ForwardRule = {
-          id: `f_${Date.now().toString(36)}`,
+          id: edit?.id ?? `f_${Date.now().toString(36)}`,
           hostId: draft.hostId,
           kind: draft.kind,
           bindAddress: draft.bindAddress || "0.0.0.0",
           port: draft.port,
           destinationAddress: draft.destinationAddress,
           destinationPort: draft.destinationPort,
+          label: edit?.label,   // 编辑时保留自定义名
         };
         await bridge.fwd.save(rule);
         close();
