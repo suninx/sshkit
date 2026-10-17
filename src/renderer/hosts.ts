@@ -88,7 +88,50 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
 
   /* T7:搜索与排序。排序项文案取自原版 Sort options 菜单(A-z / Z-a / Newest to oldest / Oldest to newest) */
   type SortMode = "az" | "za" | "newest" | "oldest";
-  const SORT_LABEL: Record<SortMode, string> = {
+  /* T7:标签颜色与自动补全。
+   **诚实标注**:原版里标签颜色的数据形态**取不到**(在 ui-process 的 JS/CSS 里用
+   `tag.color`/`colorId`/`"color": <num>`/`ADD_TAG` 等 12 种模式检索均 0 命中),
+   所以下面的调色板是**自设计**的,只保证行为合理:按标签名全局配色、可清除、随列表刷新。 */
+const TAG_PALETTE = ["#e05252", "#e08b3a", "#d9b53c", "#4caf72", "#3f9fd9", "#7a6ad9", "#c05fa8", "#7f8c99"];
+
+function tagColorMap(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem("sshkit.tagColors") ?? "{}") as Record<string, string>; }
+  catch { return {}; }
+}
+
+function tagColor(name: string): string | null {
+  return tagColorMap()[name] ?? null;
+}
+
+function setTagColor(name: string, color: string | null): void {
+  const m = tagColorMap();
+  if (color) m[name] = color; else delete m[name];
+  localStorage.setItem("sshkit.tagColors", JSON.stringify(m));
+}
+
+/** 就地展开的小调色板:点色点后在其下方出现一行色块(避免浮层定位与外部点击那类问题)。 */
+function openTagPalette(host: HostRecord, tag: string, after: HTMLElement, refresh: () => void): void {
+  after.parentElement?.querySelectorAll(".tag-pal").forEach((e) => e.remove());
+  const pal = document.createElement("div");
+  pal.className = "tag-pal";
+  for (const c of TAG_PALETTE) {
+    const sw = document.createElement("button");
+    sw.className = `tag-sw${tagColor(tag) === c ? " on" : ""}`;
+    sw.style.background = c;
+    sw.title = c;
+    sw.addEventListener("click", (ev) => { ev.stopPropagation(); setTagColor(tag, c); refresh(); });
+    pal.append(sw);
+  }
+  const clr = document.createElement("button");
+  clr.className = "tag-sw clear";
+  clr.textContent = "✕";
+  clr.title = "No color";
+  clr.addEventListener("click", (ev) => { ev.stopPropagation(); setTagColor(tag, null); refresh(); });
+  pal.append(clr);
+  after.append(pal);
+}
+
+const SORT_LABEL: Record<SortMode, string> = {
     az: "A-z", za: "Z-a", newest: "Newest to oldest", oldest: "Oldest to newest",
   };
   let sortMode: SortMode = (localStorage.getItem("sshkit.hostSort") as SortMode) || "az";
@@ -260,6 +303,16 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
       for (const tag of host.tags) {
         const c = document.createElement("span");
         c.className = "tag-chip";
+        const col = tagColor(tag);
+        if (col) { c.style.background = `${col}2e`; c.style.borderColor = `${col}88`; }
+        const dot = document.createElement("button");
+        dot.className = "tag-dot";
+        dot.style.background = col ?? "transparent";
+        dot.title = "Tag color";
+        dot.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openTagPalette(host, tag, c, refresh);
+        });
         const label = document.createElement("span");
         label.textContent = tag;
         /* T7:行内 `Remove tag`(原版字符串)。点✕只去掉这一个标签,不触发整行的连接动作。 */
@@ -272,7 +325,7 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
           const left = (host.tags ?? []).filter((x) => x !== tag);
           void bridge.hosts.update(host.id, { ...host, tags: left.length ? left : undefined }).then(() => refresh());
         });
-        c.append(label, rm);
+        c.append(dot, label, rm);
         chips.append(c);
       }
       el.append(chips);
@@ -299,6 +352,23 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
     setVal("f-name", host?.name ?? "");
     setVal("f-group", host?.group ?? "");
     setVal("f-tags", (host?.tags ?? []).join(", "));
+    /* T7 自动补全:把全部已用过的标签喂给 datalist(标准 <input list=…> 行为,无需自绘浮层) */
+    void bridge.hosts.list().then((all) => {
+      const dl = document.getElementById("tag-suggest") ?? (() => {
+        const d = document.createElement("datalist");
+        d.id = "tag-suggest";
+        document.body.append(d);
+        return d;
+      })();
+      const names = [...new Set(all.flatMap((h) => h.tags ?? []))].sort();
+      dl.replaceChildren(...names.map((n) => {
+        const o = document.createElement("option");
+        o.value = n;
+        return o;
+      }));
+      const inp = document.getElementById("f-tags");
+      if (inp) inp.setAttribute("list", "tag-suggest");
+    });
     setVal("f-host", host?.host ?? "");
     setVal("f-port", String(host?.port ?? 22));
     setVal("f-username", host?.username ?? "");

@@ -504,6 +504,16 @@
       --h11: rgba(0,0,0,.11);
       --h12: rgba(0,0,0,.12);
     }
+
+    /* T7 复刻 —— 标签颜色(自设计:原版数据形态取不到)与色点 */
+    .tag-chip { border: 1px solid transparent; }
+    .tag-dot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--wire);
+      padding: 0; cursor: pointer; flex: none; }
+    .tag-dot:hover { transform: scale(1.25); }
+    .tag-pal { display: flex; align-items: center; gap: 4px; padding: 4px 2px; width: 100%; }
+    .tag-sw { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--wire); cursor: pointer; }
+    .tag-sw.on { outline: 2px solid var(--fg); outline-offset: 1px; }
+    .tag-sw.clear { background: transparent; color: var(--fg-dim); font-size: 9px; line-height: 1; }
 </style>
 </head>
 <body>
