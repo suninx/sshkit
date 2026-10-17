@@ -50,6 +50,7 @@ export class SftpController {
         size: it.attrs.size,
         isDir: isDirMode(it.attrs.mode),
         mtime: it.attrs.mtime,
+        mode: it.attrs.mode,
       })),
     };
   }
@@ -61,7 +62,8 @@ export class SftpController {
     for (const d of dtos) {
       try {
         const st = await fsp.stat(path.join(cwd, d.name));
-        entries.push({ name: d.name, size: st.size, isDir: d.isDirectory(), mtime: Math.floor(st.mtimeMs / 1000) });
+        entries.push({ name: d.name, size: st.size, isDir: d.isDirectory(),
+          mtime: Math.floor(st.mtimeMs / 1000), mode: st.mode });
       } catch { continue; }
     }
     return { path: cwd, entries };

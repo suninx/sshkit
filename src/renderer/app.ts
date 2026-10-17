@@ -2,7 +2,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
-import { initSftpPane, type CurrentSession } from "./sftp";
+import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
 import type { HostRecord } from "../shared/host";
 
 const stage = document.getElementById("stage")!;
@@ -13,7 +13,6 @@ const bannerEl = document.getElementById("banner")!;
 const dot = document.getElementById("status-dot")!;
 
 const btnSftp = document.getElementById("btn-sftp")! as HTMLButtonElement;
-const sftpBackdrop = document.getElementById("sftp-backdrop")!;
 
 /* ---------- T2:标签页模型 ----------
    一个 tab = 一个独立会话(pane 里有自己的 Terminal 与 xterm 会话 id)。
@@ -24,7 +23,7 @@ const sftpBackdrop = document.getElementById("sftp-backdrop")!;
 type TabState = "idle" | "on" | "off";
 type Tab = {
   id: string;
-  kind: "session" | "newtab";
+  kind: "session" | "newtab" | "sftp";
   label: string;
   state: TabState;
   pane: HTMLDivElement;
@@ -33,11 +32,14 @@ type Tab = {
   termId: number | null;
   disposers: Array<() => void>;
   sftp: CurrentSession | null;
+  view?: SftpView; // sftp tab 用
 };
 
 let tabs: Tab[] = [];
 let active: string | null = null;
 let seq = 0;
+/* SFTP tab 自身没有会话,故记住"最近活动的会话"给它用 */
+let lastSession: CurrentSession | null = null;
 
 const activeTab = (): Tab | null => tabs.find((t) => t.id === active) ?? null;
 
@@ -59,8 +61,8 @@ function hideBanner(): void {
 }
 
 function setSftpSession(s: CurrentSession | null): void {
+  // SFTP 已改为 tab(T5),此按钮只表示"当前 tab 有可用的 ssh 会话"
   btnSftp.disabled = !s;
-  if (!s && sftpBackdrop.classList.contains("visible")) sftpBackdrop.classList.remove("visible");
 }
 
 function renderTabs(): void {
@@ -106,8 +108,10 @@ function activateTab(id: string): void {
   setStatus(t.state);
   setTitle(t.kind === "session" ? t.label : "New Tab");
   setSftpSession(t.sftp);
+  if (t.kind === "session" && t.sftp) lastSession = t.sftp;
   if (t.fit) { try { t.fit.fit(); } catch { /* transient */ } }
-  if (t.kind === "newtab") t.pane.querySelector("input")?.focus();
+  if (t.kind === "sftp") t.view?.onShow();
+  else if (t.kind === "newtab") t.pane.querySelector("input")?.focus();
   else t.term?.focus();
 }
 
@@ -201,6 +205,22 @@ const TERM_THEME = {
   brightWhite: "#ffffff",
 };
 
+/** T5:SFTP 是**一个 tab**(原版亦然,Vaults/SFTP 是常驻 tab)。全局单例,重复点击即激活。 */
+function openSftpTab(): void {
+  const existing = tabs.find((t) => t.kind === "sftp");
+  if (existing) { activateTab(existing.id); return; }
+  const pane = makePane();
+  const view = createSftpView(
+    () => lastSession,
+    () => tabs.filter((x) => x.kind === "session" && x.sftp).map((x) => x.sftp!),
+  );
+  pane.append(view.el);
+  const t: Tab = { id: `t${++seq}`, kind: "sftp", label: "SFTP", state: "idle", pane,
+    term: null, fit: null, termId: null, disposers: [], sftp: null, view };
+  tabs.push(t);
+  activateTab(t.id);
+}
+
 /** 在(当前空的新 tab 或新建的 tab)里开会话。原版行为:点主机即在 tab 内连接。 */
 async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<void> {
   hideBanner();
@@ -268,6 +288,7 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
 
     tab.state = "on";
     tab.sftp = kind === "ssh" ? { sid: id, label: `${host!.name} (${host!.host})` } : null;
+    if (tab.sftp) lastSession = tab.sftp;
     renderTabs();
     if (active === tab.id) {
       setStatus("on");
@@ -298,6 +319,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 btnNewTab.addEventListener("click", () => newTabPage());
+btnSftp.addEventListener("click", () => openSftpTab());
 
 new ResizeObserver(() => {
   const t = activeTab();
@@ -306,6 +328,5 @@ new ResizeObserver(() => {
 
 void (async () => {
   initHostPanel((host) => void openSession(host ? "ssh" : "local", host ?? undefined));
-  initSftpPane(() => activeTab()?.sftp ?? null);
   newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
 })();

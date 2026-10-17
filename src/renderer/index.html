@@ -125,32 +125,69 @@
     #form-error { color: var(--danger); min-height: 18px; margin-top: 8px; font-size: 12px; }
     #form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 
-    /* SFTP modal */
-    #sftp-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none;
-      align-items: center; justify-content: center; z-index: 9; }
-    #sftp-backdrop.visible { display: flex; }
-    #sftp-modal { width: min(880px, 94vw); height: min(580px, 92vh); background: var(--bg2);
-      border: 1px solid var(--wire); border-radius: 10px; display: flex; flex-direction: column;
-      padding: 12px; gap: 8px; }
-    .sftp-head { display: flex; align-items: center; }
-    .sftp-head span { flex: 1; font-weight: 600; }
-    .panes { flex: 1; display: flex; gap: 10px; min-height: 0; }
-    .pane { flex: 1; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--wire);
-      border-radius: 8px; overflow: hidden; }
-    .pane-head { display: flex; gap: 6px; padding: 6px; background: var(--bg3); }
-    .pane-head input { flex: 1; min-width: 0; background: var(--bg); color: var(--fg);
-      border: 1px solid var(--wire); border-radius: 5px; padding: 4px 8px; font-size: 12px; }
-    .pane-list { flex: 1; overflow-y: auto; }
-    .fe { display: flex; gap: 8px; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
-    .fe:nth-child(odd) { background: rgba(255,255,255,0.02); }
-    .fe:hover { background: var(--bg3); }
-    .fe.sel { background: #2e4350; }
-    .fe .fn { flex: 0 0 58%; overflow: hidden; text-overflow: ellipsis; }
-    .fe .fs { color: var(--fg-dim); font-variant-numeric: tabular-nums; }
-    .pane-tools { display: flex; gap: 6px; padding: 6px; background: var(--bg3); }
-    .xfer { display: flex; gap: 10px; justify-content: center; }
-    #sftp-queue { max-height: 110px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-    .job { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    /* T5 复刻 —— SFTP 双栏(作为 tab,不再是模态框)。
+       尺寸/结构照原版实测:栏标题 14px/450、面包屑 14px/450、列头 12px/700、
+       行两行式(名 + 权限串 10px)、行距 47、列宽 279/151/101/90(相对栏内缩进 20)、
+       栏间 1px 分隔;远端未绑会话时显示 "Connect to host" + "Select host" 空态(18px/500)。
+       原版那些颜色测自其浅色 UI,我方是深色 UI,故颜色改用本应用主题变量。 */
+    .sftp { position: relative; height: 100%; display: flex; min-height: 0; }
+    .sftp-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--wire); }
+    .sftp-pane:last-of-type { border-right: 0; }
+    .sp-head { display: flex; align-items: center; gap: 4px; height: 50px; padding: 0 12px 0 20px; }
+    .sp-head .sp-title { font-size: 14px; font-weight: 450; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-btn { border: 0; background: transparent; color: var(--fg); font-size: 14px; font-weight: 450;
+      cursor: pointer; padding: 5px 8px; border-radius: 7px; white-space: nowrap; }
+    .sp-btn:hover { background: rgba(255,255,255,.08); }
+    .sp-filter { padding: 0 20px 8px; }
+    .sp-filter input { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
+      border-radius: 7px; padding: 5px 9px; font-size: 13px; outline: none; }
+    .sp-crumbs { display: flex; align-items: center; gap: 2px; height: 50px; padding: 0 12px 0 16px; overflow: hidden; }
+    .sp-arrow { border: 0; background: transparent; color: var(--fg); font-size: 15px; cursor: pointer;
+      border-radius: 6px; padding: 2px 7px; }
+    .sp-arrow:hover { background: rgba(255,255,255,.08); }
+    .sp-crumbs .seg { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 450;
+      padding: 3px 7px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+    .sp-crumbs .seg:hover { background: rgba(255,255,255,.08); }
+    .sp-crumbs .seg-ico { width: 14px; height: 12px; border-radius: 3px; background: var(--accent); opacity: .85; }
+    .sp-cols { display: flex; align-items: center; height: 34px; padding: 0 8px 0 20px;
+      font-size: 12px; font-weight: 700; border-top: 1px solid var(--wire); border-bottom: 1px solid var(--wire); }
+    .sp-cname { flex: 1; min-width: 0; }
+    .sp-cdate { width: 151px; } .sp-csize { width: 101px; } .sp-ckind { width: 90px; }
+    .sp-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .sp-rows { flex: 1; overflow-y: auto; }
+    .sp-row { display: flex; align-items: center; height: 47px; padding: 0 8px 0 20px; cursor: default; }
+    .sp-row:hover { background: rgba(255,255,255,.05); }
+    .sp-row.sel { background: rgba(32,145,246,.18); }
+    .sp-row.up { cursor: pointer; }
+    .sp-row.up .nm { font-weight: 600; }
+    .sp-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; }
+    .sp-ico { width: 18px; height: 18px; border-radius: 4px; flex: none; }
+    .sp-ico.dir { background: #8ab4f8; } .sp-ico.file { background: #7f8c99; }
+    .sp-label { min-width: 0; display: flex; flex-direction: column; }
+    .sp-label .nm { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-label .pm { font-size: 10px; font-weight: 450; color: var(--fg-dim); }
+    .sp-date { width: 151px; font-size: 13px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+    .sp-size { width: 101px; font-size: 13px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+    .sp-kind { width: 90px; font-size: 13px; color: var(--fg-dim); }
+    .sftp-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .sp-empty-ico { width: 64px; height: 64px; border-radius: 14px; background: var(--bg3); display: flex;
+      align-items: center; justify-content: center; font-size: 26px; margin-bottom: 22px; }
+    .sftp-empty h3 { margin: 0 0 12px; font-size: 18px; font-weight: 500; }
+    .sftp-empty p { margin: 0 0 18px; font-size: 14px; color: var(--fg-dim); line-height: 1.5; text-align: center; }
+    .sp-select { background: var(--bg3); color: var(--fg); border: 0; border-radius: 8px;
+      padding: 8px 16px; font-size: 14px; font-weight: 500; cursor: pointer; }
+    .sp-select:hover { background: #2f3946; }
+    .sp-menu { position: fixed; z-index: 30; min-width: 148px; background: var(--bg2);
+      border: 1px solid var(--wire); border-radius: 8px; padding: 4px; display: flex; flex-direction: column; }
+    .sp-menu-title { padding: 6px 10px 4px; font-size: 12px; color: var(--fg-dim); }
+    .sp-menu-item { border: 0; background: transparent; color: var(--fg); text-align: left;
+      padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .sp-menu-item:hover { background: rgba(255,255,255,.09); }
+    .sp-menu-item.danger { color: var(--danger); }
+    .sftp-queue { position: absolute; right: 14px; bottom: 14px; width: 340px;
+      display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
+    .job { display: flex; align-items: center; gap: 8px; font-size: 12px; background: var(--bg2);
+      border: 1px solid var(--wire); border-radius: 7px; padding: 5px 8px; }
     .job .jname { flex: 0 0 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .job .jbar { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
     .job .jfill { height: 100%; background: var(--accent); width: 0%; }
@@ -214,45 +251,6 @@
         <button type="submit" id="btn-save" class="btn primary">Save</button>
       </div>
     </form>
-  </div>
-  <div id="sftp-backdrop">
-    <div id="sftp-modal">
-      <div class="sftp-head">
-        <span id="sftp-title">SFTP</span>
-        <button id="btn-sftp-close" class="btn">✕</button>
-      </div>
-      <div class="panes">
-        <div class="pane">
-          <div class="pane-head">
-            <input id="p-local-path" placeholder="~">
-            <button id="go-local" class="btn">go</button>
-          </div>
-          <div class="pane-list" id="list-local"></div>
-          <div class="pane-tools">
-            <button id="l-mkdir" class="btn">＋dir</button>
-            <button id="l-rename" class="btn">rename</button>
-            <button id="l-del" class="btn danger">del</button>
-          </div>
-        </div>
-        <div class="pane">
-          <div class="pane-head">
-            <input id="p-remote-path" placeholder=".">
-            <button id="go-remote" class="btn">go</button>
-          </div>
-          <div class="pane-list" id="list-remote"></div>
-          <div class="pane-tools">
-            <button id="r-mkdir" class="btn">＋dir</button>
-            <button id="r-rename" class="btn">rename</button>
-            <button id="r-del" class="btn danger">del</button>
-          </div>
-        </div>
-      </div>
-      <div class="xfer">
-        <button id="btn-upload" class="btn primary">⬆ Upload →</button>
-        <button id="btn-download" class="btn primary">⬇ ← Download</button>
-      </div>
-      <div id="sftp-queue"></div>
-    </div>
   </div>
   <script src="./app.js"></script>
 </body>

@@ -4,6 +4,8 @@ export interface SftpEntry {
   size: number;
   isDir: boolean;
   mtime: number;
+  /** 原始 st_mode 位。原版 SFTP 行内会显示 `drwxr-xr-x` 这样的权限串(T5 复刻需要) */
+  mode: number;
 }
 
 export interface DirListing {
