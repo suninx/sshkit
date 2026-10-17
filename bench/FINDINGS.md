@@ -609,3 +609,23 @@
   2) 写入后回读校验并打印行数;
   3) 路径也打印出来(确认写的是 `/Users/you/.ssh/known_hosts`)。
   教训:**静默 catch 是排查成本最高的写法** —— 它把一个可能的"数据丢失"级 bug 变成了"看起来没反应"。
+
+### F28 T8 补完:`Disable reconnecting` + 主进程落盘路径硬化        [2026-10-18 03:20]
+- **规格**:文案 `Disable reconnecting` 取自 F19 已验证的那组断线字符串(原版自身 bundle)。
+  语义:正在自动重连时给用户一个"别自己试了"的开关;关掉后保留手动 `Try again`(否则用户只能关 tab)。
+- **实现**:断线覆盖层在**重试中**额外显示 `Disable reconnecting`(非重试态隐藏,因为没什么可关);
+  点击置 `tab.autoRetryOff`,重连循环下一轮检查到即停(状态文案 `Reconnecting disabled`);
+  点 `Try again` 视为重新允许尝试(清掉该标志)。
+- **复验**:连接 → 杀服务 → 覆盖层 `Initiating reconnection...` 且 `Try again` 置灰、`Disable reconnecting` 可见 ✓;
+  点击后文案变 `Reconnecting disabled`、`Try again` 恢复可点、stop 按钮隐藏 ✓;
+  **恢复服务并等 8 秒 → 服务端收到 0 次连接**(确认不再自动重连)✓;手动 `Try again` → 连接恢复、覆盖层消失、
+  服务端收到 1 次连接 ✓。
+- **落盘路径硬化(上轮数据损坏 bug 的横向排查)**:把所有会写用户文件的代码过了一遍:
+  - `store.ts`(主机簿):本来就是 `tmp + rename` 原子写 ✓
+  - `forward.ts`(转发规则):**原来是直接 `writeFileSync` 覆盖** —— 崩在写入中途会留下半个 JSON,
+    下次启动规则全丢。已改 `tmp + rename` 原子写,并把失败从 `console.warn` 提到 `console.error`(不静默)。
+  - 三处静默 catch 改为可见:`keystore` 凭据解析失败(此前"钥匙串里有数据但解析不了"和
+    "用户从没存过密码"表现完全一样,排查会被带偏)、`known_hosts` 重写失败、转发规则写入失败。
+  - 其余 `catch {}` 都是 socket 收尾(关流/关连接),属正常写法,保留。
+- 结论(写给未来的自己):**凡是"重写用户文件"的代码,必须 ① 原子写 ② 失败可见 ③ 保证格式边界(如结尾换行)**。
+  上轮那个 bug 三条全犯,才让一个数据损坏问题伪装成"点了没反应"。
