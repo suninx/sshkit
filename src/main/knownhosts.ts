@@ -92,6 +92,11 @@ export function addHostKey(host: string, keyData: Buffer, file = KNOWN_HOSTS, re
   try {
     mkdirSync(path.dirname(file), { recursive: true });
     if (replace) removeKnownHost(host, file);
+    // 追加前确保文件以换行结尾(防御:任何外部工具写出的"无尾换行"文件都不会被我们拼坏)
+    try {
+      const cur = readFileSync(file, "utf8");
+      if (cur.length && !cur.endsWith("\n")) appendFileSync(file, "\n");
+    } catch { /* 文件不存在则无需处理 */ }
     if (process.env.SSHKIT_BENCH) console.log("[bench] addHostKey →", file, "replace=", replace, "host=", host, "blob=", keyData?.length);
     appendFileSync(file, `${host} ${keyType} ${keyData.toString("base64")}\n`);
     if (process.env.SSHKIT_BENCH) console.log("[bench] addHostKey 写后行数:", readFileSync(file, "utf8").split("\n").filter((l) => l.includes(host)).length);
@@ -127,7 +132,10 @@ export function removeKnownHost(host: string, file = KNOWN_HOSTS): number {
     else keep.push(line);
   }
   if (removed) {
-    try { writeFileSync(file, keep.join("\n")); } catch { /* ignore */ }
+    /* 关键:重写后**必须保留结尾换行**。否则紧接着的 appendFileSync 会把新条目拼到上一行末尾,
+       造成"看起来写进去了、其实和别的行粘在一起"的静默损坏 —— 而且会连累同文件里其它主机
+       (实测踩到:192.0.2.32 那行被拼成了 9 字段)。 */
+    try { writeFileSync(file, keep.length ? keep.join("\n") + "\n" : ""); } catch { /* ignore */ }
   }
   return removed;
 }
