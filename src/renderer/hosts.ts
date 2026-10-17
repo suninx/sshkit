@@ -31,6 +31,7 @@ interface SshkitBridge {
   knownhost: {
     list(): Promise<KnownHostRow[]>;
     remove(host: string): Promise<KnownHostRow[]>;
+    import(sourcePath?: string): Promise<{ canceled: boolean; added: number; skipped: number; file?: string; rows?: unknown[] }>;
     answer(reqId: string, action: "continue" | "add" | "replace" | "cancel"): void;
     onAsk(callback: (req: HostKeyAsk) => void): () => void;
     onAskCancel(callback: (reqId: string) => void): () => void;

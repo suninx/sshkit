@@ -22,6 +22,14 @@ export interface KhView {
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
+function toast(msg: string): void {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = msg;
+  document.body.append(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
 export function createKnownHostsView(): KhView {
   const root = document.createElement("div");
   root.className = "kh";
@@ -30,9 +38,22 @@ export function createKnownHostsView(): KhView {
       <span class="kh-bar-title">Known Hosts</span>
       <span style="flex:1"></span>
       <span class="kh-hint">读取自 ~/.ssh/known_hosts(与系统 ssh 共用)</span>
+      <button class="btn kh-import" title="Import Known Hosts">Import</button>
     </div>
     <div class="kh-body"></div>`;
   const body = root.querySelector(".kh-body")! as HTMLElement;
+  /* 原版 Known Hosts 页工具栏有 `Import`(F18 实测)。导入另一个 known_hosts 文件:
+     只并进"本文件没有的条目",不动已有条目,并回报新增/跳过数量。 */
+  (root.querySelector(".kh-import")! as HTMLButtonElement).addEventListener("click", async () => {
+    try {
+      const r = await bridge.knownhost.import();
+      if (r.canceled) return;
+      toast(r.added ? `Imported ${r.added} known host${r.added === 1 ? "" : "s"}${r.skipped ? `, skipped ${r.skipped}` : ""}` : `Nothing new to import (${r.skipped} skipped)`);
+      await refresh();
+    } catch (e) {
+      toast(`Import failed: ${String((e as Error).message ?? e)}`);
+    }
+  });
 
   async function refresh(): Promise<void> {
     const rows = await bridge.knownhost.list();

@@ -47,6 +47,7 @@ const api = {
 
   knownhost: {
     list: () => ipcRenderer.invoke("knownhost:list"),
+    import: (sourcePath?: string) => ipcRenderer.invoke("knownhost:import", sourcePath) as Promise<{ canceled: boolean; added: number; skipped: number; file?: string; rows?: unknown[] }>,
     remove: (host: string) => ipcRenderer.invoke("knownhost:remove", host),
     answer: (reqId: string, action: string) => ipcRenderer.send("knownhost:answer", reqId, action),
     onAskCancel: (callback: (reqId: string) => void) => {

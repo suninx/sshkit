@@ -108,6 +108,43 @@ export function addHostKey(host: string, keyData: Buffer, file = KNOWN_HOSTS, re
   }
 }
 
+/** 把另一个 known_hosts 文件里的条目并进来:只加"本文件没有的 (host,keyType,keyBytes)",不动已有条目。
+    返回 {added, skipped}。写入走与 addHostKey 相同的"确保结尾换行"路径。 */
+export function importKnownHosts(sourcePath: string, file = KNOWN_HOSTS): { added: number; skipped: number } {
+  let raw = "";
+  try { raw = readFileSync(sourcePath, "utf8"); } catch (e) {
+    throw new Error(`无法读取所选文件: ${String((e as Error).message ?? e)}`);
+  }
+  const existing = loadEntries(file);
+  const seen = new Set(existing.map((e) => `${e.rawHostField}|${e.keyType}|${e.keyBytes.toString("base64")}`));
+  let added = 0, skipped = 0;
+  const lines: string[] = [];
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const parts = t.split(" ");
+    if (parts.length < 3) { skipped++; continue; }
+    const [hostField, keyType, b64] = parts;
+    let keyBytes: Buffer;
+    try { keyBytes = Buffer.from(b64, "base64"); } catch { skipped++; continue; }
+    if (!keyBytes.length) { skipped++; continue; }
+    const id = `${hostField}|${keyType}|${keyBytes.toString("base64")}`;
+    if (seen.has(id)) { skipped++; continue; }
+    seen.add(id);
+    lines.push(`${hostField} ${keyType} ${b64}`);
+    added++;
+  }
+  if (lines.length) {
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      const cur = readFileSync(file, "utf8");
+      if (cur.length && !cur.endsWith("\n")) appendFileSync(file, "\n");
+    } catch { /* 文件不存在则新建 */ }
+    appendFileSync(file, lines.join("\n") + "\n");
+  }
+  return { added, skipped };
+}
+
 export function listKnownHosts(file = KNOWN_HOSTS): KnownHostRow[] {
   return loadEntries(file).map((e) => ({
     host: e.hashed ? "|1|(hashed)" : e.rawHostField,

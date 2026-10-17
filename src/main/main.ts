@@ -1,11 +1,12 @@
-import { app, BrowserWindow, clipboard, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
+import os from "node:os";
 import path from "node:path";
 import { PtyService, type TerminalCreateOptions } from "./pty";
 import { HostStore } from "./store";
 import { SshService } from "./ssh";
 import { SftpController } from "./sftp";
 import { ForwardService, type ForwardRule } from "./forward";
-import { listKnownHosts, removeKnownHost } from "./knownhosts";
+import { importKnownHosts, listKnownHosts, removeKnownHost } from "./knownhosts";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
 import type { HostInput } from "../shared/host";
 
@@ -124,6 +125,21 @@ ipcMain.on("knownhost:answer", (_e, reqId: string, action: "continue" | "add" | 
   sshService.answerHostKey(reqId, action);
 });
 ipcMain.handle("knownhost:list", () => listKnownHosts());
+ipcMain.handle("knownhost:import", async (e, sourcePath?: string) => {
+  // 显式传入路径时跳过文件选择器 —— 便于自动化复验,正常使用仍走原生对话框
+  if (sourcePath) {
+    const res = importKnownHosts(sourcePath);
+    return { canceled: false, ...res, file: sourcePath, rows: listKnownHosts() };
+  }
+  const win = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+  const r = win
+    ? await dialog.showOpenDialog(win, { title: "Import Known Hosts", properties: ["openFile"], defaultPath: path.join(os.homedir(), ".ssh") })
+    : await dialog.showOpenDialog({ title: "Import Known Hosts", properties: ["openFile"] });
+  if (r.canceled || !r.filePaths.length) return { canceled: true, added: 0, skipped: 0 };
+  const res = importKnownHosts(r.filePaths[0]);
+  return { canceled: false, ...res, file: r.filePaths[0], rows: listKnownHosts() };
+});
+
 ipcMain.handle("knownhost:remove", (_e, host: string) => { removeKnownHost(host); return listKnownHosts(); });
 
 /* T8:渲染层 reload/关闭时,把它开的会话一并收掉 —— 否则主进程会留下没有界面的孤儿会话 */
