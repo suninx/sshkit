@@ -502,3 +502,30 @@
   教训:自动化驱动里"如何判断界面变了"是个**一等公民**,判断错了会污染交互测试的结论。
 - 方法学补充:验证交互时先派一个**只记录不改状态**的监听(`__lc`)把"事件到底长什么样"打出来,
   比自己猜"是不是修饰键没到"快得多。
+
+### F24 T2 补完:tab 拖拽重排 / 右键菜单 / 重命名 / 复制            [2026-10-17 23:40]
+- **规格来源(权威,取自原版自身 bundle)**:
+  - 动作常量:`TAB_CONTEXT_MENU_OPENED`(**存在 tab 右键菜单**)、`SINGLE_TERMINAL_TAB_RENAMED`(**tab 可重命名**)、
+    `ADD_TAB_DURING_SESSION`。
+  - 拖放态属性(说明 tab 拖拽是真实功能,且有三种落点):`over-horizontal-tab`、`over-draft-horizontal-tab`、
+    `over-horizontal-tabs-area`(另有一组 workspace 变体)——即"拖到某个 tab 上""拖到新建占位 tab 上""拖到 tab 条空白区"。
+  - 附带确认(T1 相关):`INCREASE_TERMINAL_FONT_SIZE`、`DECREASE_TERMINAL_FONT_SIZE`、`SET_TERMINAL_FONT_SIZE`、
+    `SET_TERMINAL_FONT_NAME`、`RESET_TERMINAL_FONT_SIZE_TO_DEFAULT`、`SET_TERMINAL_COLOR_SCHEME` —— 我 T1 做的
+    那几个控件在原版里确实是独立动作(也意味着原版可能还有字号快捷键,未在 20 条表里)。
+  - **未能取到**:菜单项的**字面文案**(实现走文案表/翻译 key,附近没有可提取字符串)。
+    故我只实现**有据可查**的 `Rename` / `Duplicate` / `Close`,其余不臆造。
+- **实现**:tab 设 `draggable`,dragstart/dragover/drop 计算"落在左半/右半"→ 插入其前/后,拖动中显示插入指示线;
+  右键弹菜单(Rename / Duplicate / Close);重命名为 tab 内联输入框(Enter 提交 / Esc 取消 / 失焦提交);
+  复制按 tab 类型分派(session→同主机再连一个;其余视图→再开一个)。
+- **复验(CDP)**:
+  - 拖拽:`[node-1, New Tab, SFTP]` 把第 1 个拖到第 3 个右半边 → `[New Tab, SFTP, node-1]`,拖放指示器 `drop-after` 出现 ✓
+  - 右键:菜单项 `Rename / Duplicate / Close` ✓
+  - 重命名:输入 `生产机-gpu` → 回车 → 标签变为 `生产机-gpu` ✓
+  - 复制:菜单点 Duplicate → 新增一个 `session:node-1` tab ✓
+- **查出并修掉的真 bug**:重命名输入框刚出现就被**重建没了** —— 点输入框时事件冒泡到 tab 的 click →
+  `activateTab` → `renderTabs()` → 输入框被替换。修法:输入框吞掉 click/mousedown/mouseup/dblclick 冒泡。
+  教训:**内联编辑器放在可交互容器里,必须阻断冒泡**,否则容器自己的"重新渲染"会把它连根拔掉。
+- 另:给 tab 加了 `data-kind`,让 DOM 自报类型 —— 诊断与自动化断言都方便(这轮就是靠它一眼看出
+  "复制"那次其实落到了 newtab 分支)。
+- **未做**:分屏/工作区视图(原版有 workspace tab 与 `toggleSplitViewBroadcastMode`/`toggleWorkspaceViewMode`)、
+  广播模式、tab 菜单的完整项(文案表取不到)。
