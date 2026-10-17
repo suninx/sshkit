@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from "electron";
 import os from "node:os";
 import path from "node:path";
 import { PtyService, type TerminalCreateOptions } from "./pty";
@@ -9,6 +9,19 @@ import { ForwardService, type ForwardRule } from "./forward";
 import { importKnownHosts, listKnownHosts, removeKnownHost } from "./knownhosts";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
 import type { HostInput } from "../shared/host";
+
+/* 应用菜单。默认菜单里 Edit 的 copy/paste/selectAll 角色会**在 OS 层吃掉 Cmd+C/V/A**,
+   渲染层就永远收不到这几个键 —— 而我们的终端是 canvas 渲染,系统级"复制"从画布上**复制不到任何文本**,
+   必须由渲染层自己处理(读 xterm 的选区写剪贴板)。所以这里去掉这些角色,把按键让给渲染层。
+   保留最小菜单:应用菜单(关于/退出)、窗口(最小化/缩放/关闭)、编辑里只留 undo/redo 之外的空壳。 */
+function installAppMenu(): void {
+  if (process.platform !== "darwin") { Menu.setApplicationMenu(null); return; }
+  const menu = Menu.buildFromTemplate([
+    { role: "appMenu" },
+    { role: "windowMenu" },
+  ]);
+  Menu.setApplicationMenu(menu);
+}
 
 /* bench 专用:仅在 SSHKIT_BENCH=1 时输出,正常运行零噪音 */
 const benchLog = (...a: unknown[]): void => { if (process.env.SSHKIT_BENCH) console.log("[bench]", ...a); };
@@ -175,6 +188,7 @@ ipcMain.handle("local:remove", (_e, target: string) => sftpController.removeLoca
 ipcMain.handle("local:rename", (_e, from: string, to: string) => sftpController.renameLocal(from, to));
 
 app.whenReady().then(() => {
+  installAppMenu();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

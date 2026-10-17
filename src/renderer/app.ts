@@ -44,6 +44,17 @@ type Tab = {
   host?: HostRecord;
   /** T8:该 tab 当前的断开状态(用于全局断开条) */
   disconnected?: { reason: string };
+  /** T2:水平分屏。原版 tab 右键菜单里有 `Split horizontally`(同处还有 Start multiplayer / Duplicate in a new window)。
+      分屏是独立的一格终端(自己的会话),可与主终端互相广播输入。 */
+  split?: {
+    pane: HTMLElement;
+    term: Terminal;
+    fit: FitAddon;
+    termId: number | null;
+    host?: HostRecord;
+    broadcast: boolean;
+    disposers: Array<() => void>;
+  };
   /** T8:用户点了 `Disable reconnecting` —— 自动重连停止,只留手动 `Try again` */
   autoRetryOff?: boolean;
   /** T2:右键重命名后的显示名(原版动作名 SINGLE_TERMINAL_TAB_RENAMED) */
@@ -167,6 +178,116 @@ function moveTab(from: string, target: string, after: boolean): void {
   renderTabs();
 }
 
+/** 在 tab 内水平分出一格(原版 `Split horizontally`)。新格先给选择器:本地终端或某台主机。 */
+function splitTab(tab: Tab): void {
+  if (tab.split || !tab.pane) return;
+  const pane = document.createElement("div");
+  pane.className = "split-pane";
+  pane.innerHTML = `
+    <div class="split-head">
+      <span class="split-title">New pane</span>
+      <span style="flex:1"></span>
+      <label class="split-bc" title="Run in all panes"><input type="checkbox" disabled> Broadcast</label>
+      <button class="btn split-close" title="Close pane">✕</button>
+    </div>
+    <div class="split-picker">
+      <button class="btn primary sp-local">Local shell</button>
+      <select class="sp-host"></select>
+      <button class="btn sp-connect" disabled>Connect</button>
+    </div>
+    <div class="split-body"></div>`;
+  tab.pane.append(pane);
+
+  const term = new Terminal({
+    fontFamily: TERM_FONT, fontSize: TERM_FONT_SIZE, theme: TERM_THEME,
+    cursorBlink: true, allowProposedApi: true, scrollback: 5000, macOptionIsMeta: true,
+  });
+  const fit = new FitAddon();
+  term.loadAddon(fit);
+  try { term.loadAddon(new CanvasAddon()); } catch { /* 见 T1 说明 */ }
+  const body = pane.querySelector(".split-body")! as HTMLElement;
+  term.open(body);
+  try { fit.fit(); } catch { /* 布局未稳 */ }
+
+  const split = { pane, term, fit, termId: null as number | null, host: undefined as HostRecord | undefined,
+    broadcast: false, disposers: [] as Array<() => void> };
+  tab.split = split;
+
+  const bcBox = pane.querySelector(".split-bc input")! as HTMLInputElement;
+  bcBox.addEventListener("change", () => { split.broadcast = bcBox.checked; });
+  pane.querySelector(".split-close")!.addEventListener("click", () => closeSplit(tab));
+  pane.querySelector(".sp-local")!.addEventListener("click", () => { void connectSplit(tab, null); });
+
+  const sel = pane.querySelector(".sp-host")! as HTMLSelectElement;
+  const connectBtn = pane.querySelector(".sp-connect")! as HTMLButtonElement;
+  void bridge.hosts.list().then((hosts) => {
+    for (const h of hosts) {
+      const o = document.createElement("option");
+      o.value = h.id;
+      o.textContent = `${h.name} — ${h.username}@${h.host}`;
+      sel.append(o);
+    }
+    connectBtn.disabled = hosts.length === 0;
+  });
+  sel.addEventListener("change", () => { connectBtn.disabled = !sel.value; });
+  connectBtn.addEventListener("click", () => {
+    void bridge.hosts.list().then((hs) => {
+      const h = hs.find((x) => x.id === sel.value);
+      if (h) void connectSplit(tab, h);
+    });
+  });
+
+  const t0 = tab.term;
+  if (t0) { try { tab.fit?.fit(); } catch { /* ignore */ } }
+  try { fit.fit(); } catch { /* ignore */ }
+  term.focus();
+}
+
+/** 给分屏格接一个会话(本地或 ssh),并把输入广播逻辑接上 */
+async function connectSplit(tab: Tab, host: HostRecord | null): Promise<void> {
+  const split = tab.split;
+  if (!split) return;
+  const { term, fit } = split;
+  const picker = split.pane.querySelector(".split-picker") as HTMLElement | null;
+  try {
+    const opts = { cols: term.cols, rows: term.rows };
+    const { id } = host ? await bridge.ssh.connect(host.id, opts) : await bridge.createLocal(opts);
+    split.termId = id;
+    split.host = host ?? undefined;
+    picker?.remove();
+    const title = split.pane.querySelector(".split-title")! as HTMLElement;
+    title.textContent = host ? `${host.name}` : "Local shell";
+    (split.pane.querySelector(".split-bc input")! as HTMLInputElement).disabled = false;
+
+    term.onData((d) => {
+      bridge.write(id, d);
+      if (split.broadcast && tab.termId !== null) bridge.write(tab.termId, d);
+    });
+    term.onResize(({ cols, rows }) => bridge.resize(id, cols, rows));
+    split.disposers.push(bridge.onData(id, (d) => term.write(d)));
+    split.disposers.push(bridge.onExit(id, () => {
+      if (split.termId !== id) return;
+      split.termId = null;
+      term.write("\r\n\x1b[90m[pane session closed]\x1b[0m\r\n");
+    }));
+    try { fit.fit(); } catch { /* ignore */ }
+    if (active === tab.id) term.focus();
+  } catch (e) {
+    term.write(`\r\n\x1b[31m连接失败:${String((e as Error).message ?? e)}\x1b[0m\r\n`);
+  }
+}
+
+function closeSplit(tab: Tab): void {
+  const split = tab.split;
+  if (!split) return;
+  if (split.termId !== null) bridge.dispose(split.termId);
+  for (const d of split.disposers) { try { d(); } catch { /* ignore */ } }
+  try { split.term.dispose(); } catch { /* ignore */ }
+  split.pane.remove();
+  tab.split = undefined;
+  try { tab.fit?.fit(); } catch { /* ignore */ }
+}
+
 function openTabMenu(t: Tab, x: number, y: number): void {
   document.querySelectorAll(".tab-menu").forEach((n) => n.remove());
   const menu = document.createElement("div");
@@ -182,6 +303,8 @@ function openTabMenu(t: Tab, x: number, y: number): void {
   };
   item("Rename", () => startRenameTab(t));
   item("Duplicate", () => duplicateTab(t));
+  // 原版文案(与 Start multiplayer / Duplicate in a new window 同处一个菜单)
+  if (t.kind === "session" && !t.split) item("Split horizontally", () => splitTab(t));
   item("Close", () => closeTab(t.id));
   document.body.append(menu);
   setTimeout(() => document.addEventListener("click", function once(ev) {
@@ -386,6 +509,25 @@ function openKnownHostsTab(): void {
 }
 
 /** 在(当前空的新 tab 或新建的 tab)里开会话。原版行为:点主机即在 tab 内连接。 */
+/* 对照台钩子。**默认不存在**:只有 localStorage.sshkit.bench === "1" 时才挂。
+   为什么需要它:CDP 无法向 xterm 注入文本(key/char 事件能到 textarea 但 xterm 不产出输入,
+   合成 paste 事件被忽略,Cmd+V 又被 Electron 的默认菜单在 OS 层吃掉)—— 而没有文本输入,
+   "广播""键入回显"这类行为就没法做端到端复验。这里只暴露"把文本喂进终端"这一个口子,
+   走的是 xterm 自己的 paste 管线(即真实输入路径),不额外新增能力。 */
+if (localStorage.getItem("sshkit.bench") === "1") {
+  (window as unknown as Record<string, unknown>).__bench = {
+    input: (data: string, pane = 0): boolean => {
+      const tab = activeTab();
+      const term = pane === 0 ? tab?.term : tab?.split?.term;
+      if (!term) return false;
+      term.paste(data);
+      return true;
+    },
+    tabs: () => tabs.map((t) => ({ id: t.id, kind: t.kind, label: t.customLabel ?? t.label,
+      termId: t.termId, splitTermId: t.split?.termId ?? null, broadcast: t.split?.broadcast ?? null })),
+  };
+}
+
 /* ---------- T1:外观(配色 / 字号 / 字体) ---------- */
 
 let schemeName = localStorage.getItem("sshkit.scheme") || "Termius Dark";
@@ -520,7 +662,12 @@ interface ExitInfo { exitCode: number; error?: string; reason?: string }
 function wireSession(tab: Tab, t: Terminal, id: number, kind: "local" | "ssh", host?: HostRecord): void {
   tab.termId = id;
   tab.host = host ?? tab.host;
-  t.onData((d) => bridge.write(id, d));
+  t.onData((d) => {
+    bridge.write(id, d);
+    // T2 广播:原版 `Broadcast` / RUN_IN_ALL_ACTIVE_TABS —— 输入同时发到同 tab 的其它格
+    const sp = tab.split;
+    if (sp?.broadcast && sp.termId !== null) bridge.write(sp.termId, d);
+  });
   t.onResize(({ cols, rows }) => bridge.resize(id, cols, rows));
   tab.disposers.push(bridge.onData(id, (d) => t.write(d)));
   tab.disposers.push(bridge.onExit(id, (info: ExitInfo) => {

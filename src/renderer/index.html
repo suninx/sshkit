@@ -158,6 +158,18 @@
     .sp-row.dragging { opacity: .5; }
     .sp-body.drop-hot { outline: 2px dashed var(--accent); outline-offset: -3px; background: rgba(32,145,246,.06); }
 
+    /* T2 复刻 —— 水平分屏(原版 `Split horizontally`)与广播(原版 `Broadcast`) */
+    .tab-pane { display: flex; flex-direction: column; }
+    .split-pane { flex: 1 1 50%; min-height: 0; display: flex; flex-direction: column;
+      border-top: 1px solid var(--wire); }
+    .split-head { display: flex; align-items: center; gap: 8px; padding: 3px 8px; background: var(--bg2);
+      font-size: 12px; color: var(--fg-dim); }
+    .split-bc { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .split-picker { display: flex; align-items: center; gap: 8px; padding: 10px; }
+    .split-picker select { background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
+      border-radius: 7px; padding: 5px 7px; font-size: 12px; }
+    .split-body { flex: 1; min-height: 0; }
+
     /* T3 复刻 —— 端口转发。入口:侧栏一级导航 Port Forwarding;工具栏 `＋ New forwarding`;
        空态文案与向导四步的标签/说明均逐字取自原版实测(F17)。 */
     /* T1 复刻 —— 外观设置:配色方案 / 字号 / 字体。
@@ -401,7 +413,16 @@
     .job.err .jfill { background: var(--danger); }
     .job .jstat { width: 88px; text-align: right; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
     .job.err .jstat { color: var(--danger); }
-  </style>
+  
+    /* ---- 分屏布局修正(放在样式表末尾,确保压过前面的规则)----
+       前面有 `.tab-pane.active{display:block}`(0-2-0)与 `.tab-pane .term-host{height:100%}`(0-2-0),
+       低特异度规则会被压过 —— 实测表现为:分屏后主终端仍是 block + height:100%,把分屏顶出视口(y=-339),
+       页面还被撑出滚动(scrollY=439)。这里用同/更高特异度覆盖。 */
+    body, #app { overflow: hidden; }
+    .tab-pane.active { display: flex; flex-direction: column; }
+    .tab-pane.active .term-host { flex: 1 1 50%; min-height: 0; height: auto; overflow: hidden; }
+    .tab-pane.active .split-pane { flex: 1 1 50%; min-height: 0; }
+</style>
 </head>
 <body>
   <div id="app">
