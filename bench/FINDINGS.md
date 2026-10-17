@@ -754,3 +754,16 @@
   按钮压根没绑事件 —— 而 `renderWsRail` 正常渲染(能看到 3 行),所以现象**看起来像"点了不生效"**。
   教训:**改动后先确认"这一段代码真的进文件了"**(grep 编译产物/源码),再去做行为复验;
   否则会去排查一个根本不存在的逻辑 bug。
+
+### F34 下一块(T4 侧栏面板)的字符串规格                        [2026-10-18 09:20]
+在打包产物里逐一确认(直接字符串观测):
+| 字符串 | 所在 | 含义 |
+|---|---|---|
+| `Show terminal side-panel` | main-process.js | 视图菜单项(F22 已记录,动作 `toggleSidepanel`) |
+| `toggleSidepanel` | reconnectSaga-9aed66e2.js | 侧栏开关逻辑所在(与断线字符串同一个 bundle) |
+| `Jump to` / `Jump To` | reconnectSaga-9aed66e2.js | 侧栏里的"跳到主机" |
+| `Snippets` / `Snippet` | ShareEntitiesSuccessScreen / reconnectSaga | 侧栏里的"片段" |
+| `Serial` | reconnectSaga | 串口会话 |
+未找到:`side-panel`/`Sidebar`/`Hide terminal side-panel`/`New Serial` 等具体形态文案 ⇒
+与 T2 菜单同理,**侧栏各面板的文案与布局取不到**,只能按已确认的三块内容(Snippets / Serial / Jump to)
+与"终端侧栏可开可关"这一结构事实来实现,视觉形态按自设计并明确标注。
