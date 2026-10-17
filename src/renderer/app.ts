@@ -607,12 +607,43 @@ function cycleTab(delta: number): void {
    另:像素对照证明两侧渲染管线等价 —— 同一真彩色在双方成像一致(见 bench/FINDINGS.md F12)。 */
 /* T1:字体 / 字号 / 配色都可选。配色数据来自原版 colorSchemesArray(见 themes.ts)。
    原版字号范围 4–40、字体打包 12 个等宽族;我方只随包内置 MesloLGS NF(其余为系统回退),记为缺口。 */
-const FONT_CHOICES = [
-  { id: '"MesloLGS NF", Menlo, monospace', label: "MesloLGS NF" },
+/* T1:字体清单。**族名有据** —— 原版随包的等宽字体全是 Nerd Font 修补版,共 11 族(实测文件名):
+   AnonymicePro / CaskaydiaCove / DejaVuSansM / DroidSansM / FiraCode / FiraMono /
+   Inconsolata / JetBrainsMono / MesloLGS / SauceCodePro / UbuntuMono (均 *NerdFontMono*)。
+   处理方式:清单按同一份族名给出;字体**文件**不取自原版包(那是闭源产物的一部分),
+   本包只随 MesloLGS NF(上游开源的 Nerd Font),其余族**从系统已装字体解析**,
+   没装的在选项里标注并禁用 —— 这样"可选族名"与原版对齐,又不夹带他人资产。 */
+const FONT_CHOICES: Array<{ id: string; label: string; bundled?: boolean; generic?: boolean }> = [
+  { id: '"MesloLGS NF", "MesloLGS Nerd Font Mono", monospace', label: "MesloLGS NF", bundled: true },
+  { id: '"AnonymicePro Nerd Font Mono", monospace', label: "AnonymicePro Nerd Font Mono" },
+  { id: '"CaskaydiaCove Nerd Font Mono", monospace', label: "CaskaydiaCove Nerd Font Mono" },
+  { id: '"DejaVuSansM Nerd Font Mono", monospace', label: "DejaVuSansM Nerd Font Mono" },
+  { id: '"DroidSansM Nerd Font Mono", monospace', label: "DroidSansM Nerd Font Mono" },
+  { id: '"FiraCode Nerd Font Mono", monospace', label: "FiraCode Nerd Font Mono" },
+  { id: '"FiraMono Nerd Font Mono", monospace', label: "FiraMono Nerd Font Mono" },
+  { id: '"Inconsolata Nerd Font Mono", monospace', label: "Inconsolata Nerd Font Mono" },
+  { id: '"JetBrainsMono Nerd Font Mono", monospace', label: "JetBrainsMono Nerd Font Mono" },
+  { id: '"SauceCodePro Nerd Font Mono", monospace', label: "SauceCodePro Nerd Font Mono" },
+  { id: '"UbuntuMono Nerd Font Mono", monospace', label: "UbuntuMono Nerd Font Mono" },
   { id: 'Menlo, monospace', label: "Menlo" },
-  { id: '"DejaVu Sans Mono", monospace', label: "DejaVu Sans Mono" },
-  { id: 'ui-monospace, monospace', label: "System monospace" },
+  { id: 'ui-monospace, monospace', label: "System monospace", generic: true },
 ];
+
+/** 某个字体族在本机是否可用:用 canvas 量一段测试串,与"必然不存在的族"对比宽度。
+    (比 document.fonts.check 更可靠:后者对系统已装字体不总是返回 true。) */
+function fontAvailable(family: string): boolean {
+  try {
+    const c = document.createElement("canvas").getContext("2d");
+    if (!c) return true;
+    const probe = "mmmmmmmmmmlliWW";
+    c.font = `72px "__sshkit_missing_font__"`;
+    const base = c.measureText(probe).width;
+    c.font = `72px ${family}`;
+    return Math.abs(c.measureText(probe).width - base) > 0.5;
+  } catch {
+    return true;
+  }
+}
 let TERM_FONT = FONT_CHOICES[0].id;
 let TERM_FONT_SIZE = 14; // 原版 defaultFontSize=14,实机同;可选范围 4–40
 const TERM_LINE_HEIGHT = 1.05; // 目标格高 18px(原版光标墨迹盒实测 8×18;1.1→19、1.05→18)
@@ -705,7 +736,9 @@ if (localStorage.getItem("sshkit.bench") === "1") {
        判断过,但那个对象是冻结的,代理根本没装上 —— 结论无效)。 */
     counters: { pasteToTerminal: 0, copyFromTerminal: 0 },
     tabs: () => tabs.map((t) => ({ id: t.id, kind: t.kind, label: t.customLabel ?? t.label,
-      termId: t.termId, splitTermId: t.split?.termId ?? null, broadcast: t.split?.broadcast ?? null })),
+      termId: t.termId, splitTermId: t.split?.termId ?? null, broadcast: t.split?.broadcast ?? null,
+      cols: t.term?.cols ?? null, rows: t.term?.rows ?? null,
+      font: t.term?.options.fontFamily ?? null })),
   };
 }
 
@@ -853,7 +886,12 @@ function openPrefs(): void {
   for (const f of FONT_CHOICES) {
     const o = document.createElement("option");
     o.value = f.id;
-    o.textContent = f.label;
+    /* 可用性:本包随附的那族必然可用;其余从系统已装字体解析,没装的标注并禁用
+       (选了也只是回退到 monospace,不如直接说清)。 */
+    // generic 是 CSS 关键字(ui-monospace/monospace),永远可用,不能拿它做字体探测
+    const ok = f.bundled || f.generic || fontAvailable(f.id.split(",")[0]);
+    o.textContent = ok ? f.label : `${f.label} (not installed)`;
+    o.disabled = !ok;
     fontSel.append(o);
   }
   fontSel.value = fontFamily;
