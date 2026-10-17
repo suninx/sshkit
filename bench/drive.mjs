@@ -69,10 +69,20 @@ const ev = async (expr, extra = {}) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 便宜但够用的"变了没"指纹:节点数 + 可见按钮文本
+// 界面"变化"指纹。教训:早期只统计节点数 + 按钮文本,对**列表重排/排序结果**不敏感,
+// 于是把"排序生效了"误判成"无变化",还会触发下面的合成点击回退 → 一次点击被处理两次。
+// 现在把可见文本本身也算进来(顺序敏感)。
 const fingerprint = () => ev(`(() => {
   const n = document.querySelectorAll('*').length;
   const b = [...document.querySelectorAll('button')].map(e => (e.textContent||'').replace(/\\s+/g,' ').trim()).join('|');
-  return n + '::' + b.length + '::' + b.slice(0, 400);
+  const t = (document.body.innerText || '').replace(/\\s+/g, ' ');
+  let h = 0;                                   // 简易 32 位散列,顺序敏感
+  for (let i = 0; i < t.length; i++) { h = (h * 31 + t.charCodeAt(i)) | 0; }
+  // 选中态/开关态也算进指纹:否则"多选后背景变了、文本没变"会被误判成无变化,触发合成回退点击,
+  // 而那个回退点击没有修饰键,会把多选重置成单选(实测踩到,白查了一轮)
+  const sel = [...document.querySelectorAll('.sel,.on,[aria-selected=true]')]
+    .map(e => (e.textContent||'').replace(/\\s+/g,' ').trim().slice(0, 24)).join('|');
+  return n + '::' + b.length + '::' + b.slice(0, 200) + '::' + t.length + '::' + h + '::' + sel;
 })()`);
 
 mkdirSync(outDir, { recursive: true });
@@ -166,11 +176,21 @@ if (keyCombo) {
 }
 
 // ---- 打字动作(--type)----
+const clickMods = (() => {           // --mods cmd|shift|cmd+shift —— 带修饰键的真实鼠标点击(测多选/范围选)
+  const v = opt("--mods", "");
+  let m = 0;
+  if (/cmd|meta/.test(v)) m |= 4;
+  if (/shift/.test(v)) m |= 8;
+  if (/alt|option/.test(v)) m |= 1;
+  if (/ctrl|control/.test(v)) m |= 2;
+  return m;
+})();
+
 async function clickPoint(x, y) {
-  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "none" });
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "none", modifiers: clickMods });
   await sleep(120);
-  await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
-  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1, modifiers: clickMods });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1, modifiers: clickMods });
 }
 
 async function typeChar(ch) {

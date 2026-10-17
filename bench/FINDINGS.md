@@ -472,3 +472,33 @@
      (tab 被 reload 清掉了,`seq` 压根没打进终端),行距当然一模一样。**先看图,再看数**。
   ② 密集文本上用"行亮度自相关"求行距不可靠(谐波会骗人);改用**状态不变量**(pty 的 cols×rows)
      立刻得到决定性证据。为此在主进程加了 `benchLog`,仅在 `SSHKIT_BENCH=1` 时输出(正常运行零噪音)。
+
+### F23 T5 补完:列头排序 + 多选                              [2026-10-17 22:20]
+- **规格来源(权威)**:原版自身 bundle ——
+  - 状态:`defaultConfig={sorting:{sortBy:null,sortDirection:"ASC"}}`,**每栏独立**(store 里 left/right 各一份),
+    动作名 `SET_SFTP_SORTING`(另有 `SET_SFTP_SHOW_HIDDEN_FILES`)。
+    ⇒ **默认不排序**(用目录原顺序),这点很容易做错(我原先默认就按名称排)。
+  - 交互:列头走 react-virtualized 的可排序表头;指示器是内置 `SortIndicator`,
+    ASC 为 `path d="M7 14l5-5 5 5z"`(上三角)、否则 `M7 10l5 5 5-5z`(下三角),**仅当前排序列显示**。
+  - 相关字符串:`Select All`、`Clear selection`、`New folder`、`New filename *`。
+- **实现**:
+  - 列头改为按钮,点击:同列则 ASC↔DESC 切换,异列则切到该列并置 ASC;指示器 ▲/▼ 只出现在当前列。
+  - 比较器:目录恒在文件前(`..` 恒首),同类型内按所选列比较,DESC 只反转键比较(不反转"目录优先")。
+  - 多选:普通点击=单选;Cmd/Ctrl+点击=切换;Shift+点击=从锚点范围选择;Cmd+A=Select All;Esc=清除。
+  - Actions 菜单随选中数变化:`Delete N items` / `← Download N items` / `Clear selection`(单选时仍是 Rename/Delete)。
+- **复验(CDP 驱动自家实例)**:
+  - 点 Name 一次 → `Name[ASC]`:`.., example-pkg-pkg, pkg-node-a, pkg-node2, pkg-node3, anaconda-ks.cfg`(目录在前、名称升序)✓
+  - 再点一次 → `Name[DESC]`:目录内反序 ✓;切 Size → 指示器移到 Size 列 ✓;默认态无指示器 ✓
+  - 多选:普通点第 3 行=1;Cmd+点第 5 行=2;Shift+点第 8 行=4(范围)✓
+  - 菜单:多选态显示 `Delete 4 items` / `Clear selection` / `← Download 4 items`;Esc 后为 0;单选态复原 ✓
+  - Cmd+A → 10 行中选中 9(第 1 行是不可选的 `..`)✓
+- **工具链修复(重要)**:这轮被驱动坑了两回,都是同一处 ——
+  `bench/drive.mjs` 的"界面变化指纹"只统计节点数 + 按钮文本,于是
+  ① 排序后 **列表重排但文本集合相同** → 判定"无变化" → 触发**合成 `.click()` 回退** → 一次点击被处理两次
+     (第一次 ASC、第二次立刻 DESC,看起来像"默认就是 DESC");
+  ② 多选后 **背景变了、文本没变** → 同样误判 → 回退点击**没有修饰键**,把多选重置成单选,
+     让我一度以为"修饰键没送到"(实测 `__lc` 日志证明 meta/shift 都到了,是我的工具在捣乱)。
+  修法:指纹纳入**可见文本散列 + 选中态**(`.sel/.on/[aria-selected]`)。
+  教训:自动化驱动里"如何判断界面变了"是个**一等公民**,判断错了会污染交互测试的结论。
+- 方法学补充:验证交互时先派一个**只记录不改状态**的监听(`__lc`)把"事件到底长什么样"打出来,
+  比自己猜"是不是修饰键没到"快得多。
