@@ -767,3 +767,28 @@
 未找到:`side-panel`/`Sidebar`/`Hide terminal side-panel`/`New Serial` 等具体形态文案 ⇒
 与 T2 菜单同理,**侧栏各面板的文案与布局取不到**,只能按已确认的三块内容(Snippets / Serial / Jump to)
 与"终端侧栏可开可关"这一结构事实来实现,视觉形态按自设计并明确标注。
+
+### F35 T4 终端侧栏(Show terminal side-panel)                  [2026-10-18 10:00]
+- 规格依据(F34 字符串证据):`Show terminal side-panel`(main-process 视图菜单,动作 `toggleSidepanel`)、
+  `Jump to`、`Snippets`、`Serial`。**具体文案与布局取不到** ⇒ 面板视觉为自设计(已在 PROTOCOL 标注)。
+- 实现:终端右上 ▤ 开关(持久化 `localStorage.sshkit.sidePanel`);面板含两块:
+  - **Jump to**:列出主机(名称 + user@host),点击把**当前 tab 的会话切到该主机**(终端复用,不新开 tab);
+    没有会话 tab 时按新会话打开。
+  - **Snippets**:片段存储在主进程(`snippets.json`,按本项目规矩**原子写 + 失败不报静默**);
+    列表点击即把命令发到当前终端(末尾补回车,等价按回车),行内 ✕ 删除;下方可新建(名称 + 命令)。
+  - **Serial**:记为**不可复刻的硬桩** —— 需要串口原生依赖(如 node-serialport)与真实串口设备;
+    本项目不引入该原生依赖,也不假装实现。
+- 复验:
+  ① 打开侧栏 → `body[data-panel=1]`、面板 flex、`Jump to` 列出 4 台主机、Snippets 空态、
+     **stage 宽度 1040 → 790**(正好让出 250px)✓;
+  ② 新建片段(`touch /tmp/snippet-ok`)→ 列表出现、输入框清空 ✓;
+  ③ **点片段 → 当前终端真的执行了**(`/tmp/snippet-ok` 生成;主进程日志 `write → 1 "touch /tmp/snippet-ok\r"`)✓
+     —— 这是本项目第一次"从 UI 触发命令并验证副作用"的闭环;
+  ④ Jump to `fake-ssh` → tab 标签变 fake-ssh、termId 变为新的 ssh 会话、**tab 数仍为 1**(切换而非新开)✓;
+  ⑤ Jump to **真实主机 node-1** → 连上(状态点 on)、标题 `node-1`、termId 1000002 ✓;
+  ⑥ 刷新页面 → 侧栏保持打开 ✓。
+- **顺带修掉一个 bug**:Jump to 成功后标题停在 `fake-ssh (connecting…)` —— 漏了成功路径的 `setTitle`;
+  已补(与 `openSession` 成功路径一致),失败路径也补 `(failed)`。
+- 对照台的已知瑕疵(非产品问题):`drive.mjs` 的点击在"未观察到变化"时会补一次合成 `.click()`,
+  所以日志里出现**两次** `write`(片段被执行两遍)。无害,但对**破坏性动作**要留意;
+  后续若做删除类复验,需先确认单击只触发一次。
