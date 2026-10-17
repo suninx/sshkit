@@ -42,6 +42,11 @@ export function createKnownHostsView(): KhView {
     </div>
     <div class="kh-body"></div>`;
   const body = root.querySelector(".kh-body")! as HTMLElement;
+  /* T6:多选。原版字符串里有 `Select All`、`Clear selection`、`Multi-Select Context Menu`,
+     说明 Known Hosts 列表支持多选。交互沿用与 SFTP 一致的手感:普通点=单选、
+     Cmd/Ctrl+点=切换、Shift+点=从锚点范围选择,Esc=清除。 */
+  const sel = new Set<string>();
+  let anchor: string | null = null;
   /* 原版 Known Hosts 页工具栏有 `Import`(F18 实测)。导入另一个 known_hosts 文件:
      只并进"本文件没有的条目",不动已有条目,并回报新增/跳过数量。 */
   (root.querySelector(".kh-import")! as HTMLButtonElement).addEventListener("click", async () => {
@@ -68,15 +73,43 @@ export function createKnownHostsView(): KhView {
     }
     const list = document.createElement("div");
     list.className = "kh-list";
-    for (const r of rows) {
-      list.append(row(r));
+    for (const r of rows) list.append(row(r));
+    const bar = document.createElement("div");
+    bar.className = "kh-selbar";
+    if (sel.size) {
+      bar.innerHTML = `<span class="kh-selcount"></span><span style="flex:1"></span>
+        <button class="btn kh-sel-all">Select All</button>
+        <button class="btn danger kh-sel-del">Delete</button>
+        <button class="btn kh-sel-clear">Clear selection</button>`;
+      (bar.querySelector(".kh-selcount")! as HTMLElement).textContent =
+        `${sel.size} selected`;
+      (bar.querySelector(".kh-sel-all")! as HTMLElement).addEventListener("click", () => {
+        for (const r of rows) if (!r.hashed) sel.add(r.host);
+        void refresh();
+      });
+      (bar.querySelector(".kh-sel-clear")! as HTMLElement).addEventListener("click", () => {
+        sel.clear(); anchor = null; void refresh();
+      });
+      (bar.querySelector(".kh-sel-del")! as HTMLElement).addEventListener("click", () => { void removeSelected(); });
     }
-    body.replaceChildren(list);
+    body.replaceChildren(bar, list);
+  }
+
+  /** 删除全部选中项(哈希化条目跳过) */
+  async function removeSelected(): Promise<void> {
+    const targets = [...sel];
+    let done = 0;
+    for (const host of targets) {
+      try { await bridge.knownhost.remove(host); done++; } catch { /* 单个失败不打断 */ }
+    }
+    sel.clear(); anchor = null;
+    toast(`Removed ${done}/${targets.length}`);
+    await refresh();
   }
 
   function row(r: KnownHostRow): HTMLElement {
     const el = document.createElement("div");
-    el.className = "kh-row";
+    el.className = `kh-row${sel.has(r.host) ? " sel" : ""}`;
     el.innerHTML = `
       <span class="kh-ico">🔑</span>
       <span class="kh-main"><span class="kh-host"></span><span class="kh-fp"></span></span>
@@ -88,13 +121,35 @@ export function createKnownHostsView(): KhView {
     const del = el.querySelector(".kh-del")! as HTMLButtonElement;
     del.disabled = r.hashed;
     if (r.hashed) del.title = "哈希化条目无法按主机名删除";
-    del.addEventListener("click", async () => {
+    del.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
       await bridge.knownhost.remove(r.host);
+      sel.delete(r.host);
       await refresh();
+    });
+    el.addEventListener("click", (ev) => {
+      if (r.hashed) return;                       // 哈希化条目无法按主机名定位,不参与多选
+      if (ev.shiftKey && anchor) {
+        const names = [...document.querySelectorAll(".kh-row .kh-host")].map((n) => n.textContent!);
+        const i = names.indexOf(anchor), j = names.indexOf(r.host);
+        if (i >= 0 && j >= 0) {
+          sel.clear();
+          for (const n of names.slice(Math.min(i, j), Math.max(i, j) + 1)) sel.add(n);
+        }
+      } else if (ev.metaKey || ev.ctrlKey) {
+        if (sel.has(r.host)) sel.delete(r.host); else sel.add(r.host);
+        anchor = r.host;
+      } else {
+        sel.clear(); sel.add(r.host); anchor = r.host;
+      }
+      void refresh();
     });
     return el;
   }
 
+  root.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && sel.size) { sel.clear(); anchor = null; void refresh(); }
+  });
   return { el: root, onShow: () => void refresh() };
 }
 

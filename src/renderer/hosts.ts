@@ -255,7 +255,19 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
       for (const tag of host.tags) {
         const c = document.createElement("span");
         c.className = "tag-chip";
-        c.textContent = tag;
+        const label = document.createElement("span");
+        label.textContent = tag;
+        /* T7:行内 `Remove tag`(原版字符串)。点✕只去掉这一个标签,不触发整行的连接动作。 */
+        const rm = document.createElement("button");
+        rm.className = "tag-x";
+        rm.textContent = "✕";
+        rm.title = "Remove tag";
+        rm.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const left = (host.tags ?? []).filter((x) => x !== tag);
+          void bridge.hosts.update(host.id, { ...host, tags: left.length ? left : undefined }).then(() => refresh());
+        });
+        c.append(label, rm);
         chips.append(c);
       }
       el.append(chips);
