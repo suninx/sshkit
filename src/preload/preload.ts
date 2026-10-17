@@ -39,6 +39,27 @@ const api = {
   ssh: {
     connect: (hostId: string, opts: { cols: number; rows: number }) => ipcRenderer.invoke("ssh:connect", hostId, opts),
   },
+
+  sftp: {
+    list: (sid: number, dir: string) => ipcRenderer.invoke("sftp:list", sid, dir),
+    mkdir: (sid: number, dir: string) => ipcRenderer.invoke("sftp:mkdir", sid, dir),
+    remove: (sid: number, target: string) => ipcRenderer.invoke("sftp:remove", sid, target),
+    rename: (sid: number, from: string, to: string) => ipcRenderer.invoke("sftp:rename", sid, from, to),
+    upload: (sid: number, localPath: string, remotePath: string) => ipcRenderer.invoke("sftp:upload", sid, localPath, remotePath),
+    download: (sid: number, remotePath: string, localPath: string) => ipcRenderer.invoke("sftp:download", sid, remotePath, localPath),
+    onProgress: (callback: (p: { sid: number; jobId: number; dir: string; file: string; bytes: number; total: number; state: string; error?: string }) => void) => {
+      const handler = (_e: unknown, p: unknown) => callback(p as never);
+      ipcRenderer.on("sftp:progress", handler);
+      return () => { ipcRenderer.off("sftp:progress", handler); };
+    },
+  },
+
+  local: {
+    list: (dir: string) => ipcRenderer.invoke("local:list", dir),
+    mkdir: (dir: string) => ipcRenderer.invoke("local:mkdir", dir),
+    remove: (target: string) => ipcRenderer.invoke("local:remove", target),
+    rename: (from: string, to: string) => ipcRenderer.invoke("local:rename", from, to),
+  },
 };
 
 contextBridge.exposeInMainWorld("sshkit", api);

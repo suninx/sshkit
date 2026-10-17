@@ -1,4 +1,5 @@
 import type { HostInput, HostRecord } from "../shared/host";
+import type { SftpEntry, TransferProgress } from "../shared/sftp";
 
 interface SshkitBridge {
   createLocal(opts: { cols: number; rows: number }): Promise<{ id: number }>;
@@ -18,6 +19,21 @@ interface SshkitBridge {
   };
   ssh: {
     connect(hostId: string, opts: { cols: number; rows: number }): Promise<{ id: number }>;
+  };
+  sftp: {
+    list(sid: number, dir: string): Promise<{ path: string; entries: SftpEntry[] }>;
+    mkdir(sid: number, dir: string): Promise<void>;
+    remove(sid: number, target: string): Promise<void>;
+    rename(sid: number, from: string, to: string): Promise<void>;
+    upload(sid: number, localPath: string, remotePath: string): Promise<number>;
+    download(sid: number, remotePath: string, localPath: string): Promise<number>;
+    onProgress(cb: (p: TransferProgress) => void): () => void;
+  };
+  local: {
+    list(dir: string): Promise<{ path: string; entries: SftpEntry[] }>;
+    mkdir(dir: string): Promise<void>;
+    remove(target: string): Promise<void>;
+    rename(from: string, to: string): Promise<void>;
   };
 }
 

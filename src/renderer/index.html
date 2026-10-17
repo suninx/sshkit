@@ -68,6 +68,40 @@
     #host-form .row > div { flex: 1; }
     #form-error { color: var(--danger); min-height: 18px; margin-top: 8px; font-size: 12px; }
     #form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+    /* SFTP modal */
+    #sftp-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none;
+      align-items: center; justify-content: center; z-index: 9; }
+    #sftp-backdrop.visible { display: flex; }
+    #sftp-modal { width: min(880px, 94vw); height: min(580px, 92vh); background: var(--bg2);
+      border: 1px solid var(--wire); border-radius: 10px; display: flex; flex-direction: column;
+      padding: 12px; gap: 8px; }
+    .sftp-head { display: flex; align-items: center; }
+    .sftp-head span { flex: 1; font-weight: 600; }
+    .panes { flex: 1; display: flex; gap: 10px; min-height: 0; }
+    .pane { flex: 1; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--wire);
+      border-radius: 8px; overflow: hidden; }
+    .pane-head { display: flex; gap: 6px; padding: 6px; background: var(--bg3); }
+    .pane-head input { flex: 1; min-width: 0; background: var(--bg); color: var(--fg);
+      border: 1px solid var(--wire); border-radius: 5px; padding: 4px 8px; font-size: 12px; }
+    .pane-list { flex: 1; overflow-y: auto; }
+    .fe { display: flex; gap: 8px; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+    .fe:nth-child(odd) { background: rgba(255,255,255,0.02); }
+    .fe:hover { background: var(--bg3); }
+    .fe.sel { background: #2e4350; }
+    .fe .fn { flex: 0 0 58%; overflow: hidden; text-overflow: ellipsis; }
+    .fe .fs { color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+    .pane-tools { display: flex; gap: 6px; padding: 6px; background: var(--bg3); }
+    .xfer { display: flex; gap: 10px; justify-content: center; }
+    #sftp-queue { max-height: 110px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .job { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .job .jname { flex: 0 0 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .job .jbar { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+    .job .jfill { height: 100%; background: var(--accent); width: 0%; }
+    .job.done .jfill { background: #a3be8c; width: 100%; }
+    .job.err .jfill { background: var(--danger); }
+    .job .jstat { width: 88px; text-align: right; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+    .job.err .jstat { color: var(--danger); }
   </style>
 </head>
 <body>
@@ -85,13 +119,14 @@
       <div id="term-head">
         <span id="status-dot"></span>
         <span id="term-title">no session</span>
+        <span style="flex:1"></span>
+        <button id="btn-sftp" class="btn" disabled title="SFTP browser (ssh session required)">⇄ SFTP</button>
       </div>
       <div id="term-wrap"><div id="term"></div></div>
     </section>
   </div>
   <div id="form-backdrop">
-    <form id="host-form" autocomplete="off">
-      <h2 id="form-heading">New host</h2>
+    <form id="host-form" autocomplete="off">      <h2 id="form-heading">New host</h2>
       <div class="row">
         <div><label>Name</label><input id="f-name" placeholder="prod-1"></div>
         <div><label>Group</label><input id="f-group" placeholder="work"></div>
@@ -119,6 +154,45 @@
         <button type="submit" id="btn-save" class="btn primary">Save</button>
       </div>
     </form>
+  </div>
+  <div id="sftp-backdrop">
+    <div id="sftp-modal">
+      <div class="sftp-head">
+        <span id="sftp-title">SFTP</span>
+        <button id="btn-sftp-close" class="btn">✕</button>
+      </div>
+      <div class="panes">
+        <div class="pane">
+          <div class="pane-head">
+            <input id="p-local-path" placeholder="~">
+            <button id="go-local" class="btn">go</button>
+          </div>
+          <div class="pane-list" id="list-local"></div>
+          <div class="pane-tools">
+            <button id="l-mkdir" class="btn">＋dir</button>
+            <button id="l-rename" class="btn">rename</button>
+            <button id="l-del" class="btn danger">del</button>
+          </div>
+        </div>
+        <div class="pane">
+          <div class="pane-head">
+            <input id="p-remote-path" placeholder=".">
+            <button id="go-remote" class="btn">go</button>
+          </div>
+          <div class="pane-list" id="list-remote"></div>
+          <div class="pane-tools">
+            <button id="r-mkdir" class="btn">＋dir</button>
+            <button id="r-rename" class="btn">rename</button>
+            <button id="r-del" class="btn danger">del</button>
+          </div>
+        </div>
+      </div>
+      <div class="xfer">
+        <button id="btn-upload" class="btn primary">⬆ Upload →</button>
+        <button id="btn-download" class="btn primary">⬇ ← Download</button>
+      </div>
+      <div id="sftp-queue"></div>
+    </div>
   </div>
   <script src="./app.js"></script>
 </body>

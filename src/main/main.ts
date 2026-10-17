@@ -3,6 +3,7 @@ import path from "node:path";
 import { PtyService, type TerminalCreateOptions } from "./pty";
 import { HostStore } from "./store";
 import { SshService } from "./ssh";
+import { SftpController } from "./sftp";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
 import type { HostInput } from "../shared/host";
 
@@ -80,6 +81,27 @@ ipcMain.handle("ssh:connect", async (event, hostId: string, opts: { cols: number
 ipcMain.handle("app:info", () => ({
   versions: { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node },
 }));
+
+/* ---------- SFTP (remote side rides the active ssh session) + local fs ---------- */
+
+const sftpController = new SftpController(
+  (sid) => sshService.clientOf(sid),
+  (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("sftp:progress", progress);
+  },
+);
+
+ipcMain.handle("sftp:list", (_e, sid: number, dir: string) => sftpController.listRemote(sid, dir));
+ipcMain.handle("sftp:mkdir", (_e, sid: number, dir: string) => sftpController.mkdirRemote(sid, dir));
+ipcMain.handle("sftp:remove", (_e, sid: number, target: string) => sftpController.removeRemote(sid, target));
+ipcMain.handle("sftp:rename", (_e, sid: number, from: string, to: string) => sftpController.renameRemote(sid, from, to));
+ipcMain.handle("sftp:upload", (_e, sid: number, localPath: string, remotePath: string) => sftpController.upload(sid, localPath, remotePath));
+ipcMain.handle("sftp:download", (_e, sid: number, remotePath: string, localPath: string) => sftpController.download(sid, remotePath, localPath));
+
+ipcMain.handle("local:list", (_e, dir: string) => sftpController.listLocal(dir));
+ipcMain.handle("local:mkdir", (_e, dir: string) => sftpController.mkdirLocal(dir));
+ipcMain.handle("local:remove", (_e, target: string) => sftpController.removeLocal(target));
+ipcMain.handle("local:rename", (_e, from: string, to: string) => sftpController.renameLocal(from, to));
 
 app.whenReady().then(() => {
   createWindow();

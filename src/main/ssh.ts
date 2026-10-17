@@ -3,6 +3,7 @@ import { StringDecoder } from "node:string_decoder";
 import { Client, type ClientChannel, type ConnectConfig } from "ssh2";
 import type { WebContents } from "electron";
 import { expandHome } from "./store";
+import { verifyAndLearn } from "./knownhosts";
 import type { HostRecord } from "../shared/host";
 import type { HostSecrets } from "./keystore";
 
@@ -31,7 +32,26 @@ export class SshService {
       if (!sender.isDestroyed()) sender.send(channel, ...payload);
     };
 
+    /* ---- known_hosts pinning: verify on first key, refuse on change ---- */
+    let hostKeyAccepted = false;
+    client.once("handshake", (negotiated) => {
+      // @types/ssh2 misses info.key on NegotiatedAlgorithms (present at runtime)
+      const key = (negotiated as unknown as { key?: { data?: Buffer | Uint8Array; type?: string } }).key;
+      if (!key?.data) return;
+      const verdict = verifyAndLearn(host.host, key.type ?? "ssh", Buffer.from(key.data));
+      if (verdict.status === "mismatch") {
+        safeSend("terminal:exit", id, { exitCode: -1, error: verdict.message });
+        client.end();
+        return;
+      }
+      hostKeyAccepted = true;
+      if (verdict.status === "learned") {
+        safeSend("terminal:data", id, `\x1b[90m[${verdict.message}]\x1b[0m\r\n`);
+      }
+    });
+
     client.on("ready", () => {
+      if (!hostKeyAccepted) { client.end(); return; }
       client.shell(
         { term: "xterm-256color", cols: opts.cols, rows: opts.rows },
         (err, stream) => {
@@ -90,6 +110,10 @@ export class SshService {
         break;
     }
     return cfg;
+  }
+
+  clientOf(sessionId: number): Client | undefined {
+    return this.sessions.get(sessionId)?.client;
   }
 
   write(id: number, data: string): void {

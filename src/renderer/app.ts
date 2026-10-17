@@ -1,6 +1,7 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
+import { initSftpPane, type CurrentSession } from "./sftp";
 import type { HostRecord } from "../shared/host";
 
 const termWrap = document.getElementById("term")!;
@@ -11,7 +12,17 @@ const dot = document.getElementById("status-dot")!;
 let term: Terminal | null = null;
 let termId: number | null = null;
 let currentFit: FitAddon | null = null;
+let sftpSession: CurrentSession | null = null;
 let disposers: Array<() => void> = [];
+
+const btnSftp = document.getElementById("btn-sftp")! as HTMLButtonElement;
+const sftpBackdrop = document.getElementById("sftp-backdrop")!;
+
+function setSftpSession(s: CurrentSession | null): void {
+  sftpSession = s;
+  btnSftp.disabled = !s;
+  if (!s && sftpBackdrop.classList.contains("visible")) sftpBackdrop.classList.remove("visible");
+}
 
 function setStatus(state: "idle" | "on" | "off"): void {
   dot.className = state === "off" ? "off" : state === "on" ? "on" : "";
@@ -72,6 +83,7 @@ async function startSession(kind: "local" | "ssh", host?: HostRecord): Promise<v
     disposers.push(bridge.onExit(id, (info) => {
       if (termId !== id) return; // stale exit from a previous session
       termId = null;
+      setSftpSession(null);
       setStatus("off");
       if (info.error) showBanner(info.error);
       t.write(`\r\n\x1b[90m[session closed — ${info.error ?? `exit code ${info.exitCode}`}]\x1b[0m\r\n`);
@@ -79,6 +91,8 @@ async function startSession(kind: "local" | "ssh", host?: HostRecord): Promise<v
 
     setStatus("on");
     setTitle(label);
+    if (kind === "ssh") setSftpSession({ sid: id, label: `${host!.name} (${host!.host})` });
+    else setSftpSession(null);
     t.focus();
   } catch (err) {
     setStatus("off");
@@ -92,5 +106,6 @@ new ResizeObserver(() => { try { currentFit?.fit(); } catch { /* transient */ } 
 
 void (async () => {
   initHostPanel((host) => void startSession(host ? "ssh" : "local", host ?? undefined));
+  initSftpPane(() => sftpSession);
   await startSession("local");
 })();
