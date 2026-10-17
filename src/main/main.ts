@@ -12,6 +12,19 @@ const ptyService = new PtyService();
 const sshService = new SshService();
 let mainWindow: BrowserWindow | null = null;
 
+/* ---------- 对照台窗口定位(bench/up.sh 用;不设此环境变量则完全无副作用) ---------- */
+
+function benchBounds(): { x?: number; y?: number; width?: number; height?: number } {
+  const raw = process.env.SSHKIT_BENCH_BOUNDS;
+  if (!raw) return {};
+  const p = raw.split(",").map((s) => Number(s.trim()));
+  if (p.length !== 4 || p.some((n) => !Number.isFinite(n))) {
+    console.warn(`[bench] SSHKIT_BENCH_BOUNDS 无效:"${raw}"(需要 x,y,w,h)`);
+    return {};
+  }
+  return { x: p[0], y: p[1], width: p[2], height: p[3] };
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1080,
@@ -20,6 +33,7 @@ function createWindow(): void {
     minHeight: 460,
     backgroundColor: "#101418",
     title: "sshkit",
+    ...benchBounds(),
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
