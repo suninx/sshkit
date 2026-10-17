@@ -32,59 +32,65 @@ export class SshService {
       if (!sender.isDestroyed()) sender.send(channel, ...payload);
     };
 
-    /* ---- known_hosts pinning: verify on first key, refuse on change ---- */
-    let hostKeyAccepted = false;
-    client.once("handshake", (negotiated) => {
-      // @types/ssh2 misses info.key on NegotiatedAlgorithms (present at runtime)
-      const key = (negotiated as unknown as { key?: { data?: Buffer | Uint8Array; type?: string } }).key;
-      if (!key?.data) return;
-      const verdict = verifyAndLearn(host.host, key.type ?? "ssh", Buffer.from(key.data));
+    /* ---- known_hosts pinning via hostVerifier (see ssh2 docs: this is the
+            only hook carrying the raw host-key blob) ---- */
+    let sawBadKey = false;
+    const cfg = this.buildConfig(host, secrets);
+    cfg.hostVerifier = (key: unknown, verify: (valid: boolean) => void) => {
+      const blob = Buffer.from(key as Uint8Array);
+      const verdict = verifyAndLearn(host.host, blob);
+      console.log("[ssh]", host.host, verdict.status);
       if (verdict.status === "mismatch") {
+        sawBadKey = true;
         safeSend("terminal:exit", id, { exitCode: -1, error: verdict.message });
-        client.end();
+        verify(false); // abort handshake → 'error' event on this client
         return;
       }
-      hostKeyAccepted = true;
       if (verdict.status === "learned") {
         safeSend("terminal:data", id, `\x1b[90m[${verdict.message}]\x1b[0m\r\n`);
       }
-    });
+      verify(true);
+    };
 
-    client.on("ready", () => {
-      if (!hostKeyAccepted) { client.end(); return; }
-      client.shell(
-        { term: "xterm-256color", cols: opts.cols, rows: opts.rows },
-        (err, stream) => {
-          if (err) {
-            this.sessions.delete(id);
-            safeSend("terminal:exit", id, { exitCode: -1, error: `shell: ${err.message}` });
-            client.end();
-            return;
-          }
-          const decoder = new StringDecoder("utf8");
-          this.sessions.get(id)!.stream = stream;
-          this.sessions.get(id)!.decoder = decoder;
-          stream.on("data", (d: Buffer) => safeSend("terminal:data", id, decoder.write(d)));
-          stream.stderr?.on("data", (d: Buffer) => safeSend("terminal:data", id, decoder.write(d)));
-          stream.on("close", () => {
-            this.sessions.delete(id);
-            safeSend("terminal:exit", id, { exitCode: 0 });
-          });
-        },
-      );
-    });
+      client.on("error", (err) => {
+        this.sessions.delete(id);
+        if (sawBadKey) {
+          // error already delivered precisely; avoid double banner noise
+          safeSend("terminal:exit", id, { exitCode: -1 });
+        } else {
+          safeSend("terminal:exit", id, { exitCode: -1, error: err.message });
+        }
+      });
+      client.on("close", () => {
+        this.sessions.delete(id);
+        safeSend("terminal:exit", id, { exitCode: 0 });
+      });
 
-    client.on("error", (err) => {
-      this.sessions.delete(id);
-      safeSend("terminal:exit", id, { exitCode: -1, error: err.message });
-    });
-    client.on("close", () => {
-      this.sessions.delete(id);
-      safeSend("terminal:exit", id, { exitCode: 0 });
-    });
+      client.on("ready", () => {
+        client.shell(
+          { term: "xterm-256color", cols: opts.cols, rows: opts.rows },
+          (err, stream) => {
+            if (err) {
+              this.sessions.delete(id);
+              safeSend("terminal:exit", id, { exitCode: -1, error: `shell: ${err.message}` });
+              client.end();
+              return;
+            }
+            const decoder = new StringDecoder("utf8");
+            this.sessions.get(id)!.stream = stream;
+            this.sessions.get(id)!.decoder = decoder;
+            stream.on("data", (d: Buffer) => safeSend("terminal:data", id, decoder.write(d)));
+            stream.stderr?.on("data", (d: Buffer) => safeSend("terminal:data", id, decoder.write(d)));
+            stream.on("close", () => {
+              this.sessions.delete(id);
+              safeSend("terminal:exit", id, { exitCode: 0 });
+            });
+          },
+        );
+      });
 
-    client.connect(this.buildConfig(host, secrets));
-    return id;
+      client.connect(cfg);
+      return id;
   }
 
   private buildConfig(host: HostRecord, secrets: HostSecrets): ConnectConfig {

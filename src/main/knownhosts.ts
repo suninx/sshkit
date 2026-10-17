@@ -56,7 +56,23 @@ function fingerprint(keyData: Buffer): string {
   return `SHA256:${createHash("sha256").update(keyData).digest("base64").replace(/=+$/, "")}`;
 }
 
-export function verifyAndLearn(host: string, keyType: string, keyData: Buffer, file = KNOWN_HOSTS): HostKeyVerdict {
+/**
+ * Parse the algorithm name from an OpenSSH wire-format public key blob:
+ * bytes [0..3] = string length, following bytes = algorithm name.
+ */
+export function keyTypeFromBlob(blob: Buffer): string {
+  if (blob.length > 8) {
+    const len = blob.readUint32BE(0);
+    if (len > 0 && len < 128) {
+      const name = blob.toString("utf8", 4, 4 + len);
+      if (/^[a-z0-9-]+$/i.test(name)) return name;
+    }
+  }
+  return "ssh";
+}
+
+export function verifyAndLearn(host: string, keyData: Buffer, file = KNOWN_HOSTS): HostKeyVerdict {
+  const keyType = keyTypeFromBlob(keyData);
   const matching = loadEntries(file).filter((e) => hostMatches(e, host));
   if (matching.length > 0) {
     if (matching.some((e) => e.keyType === keyType && e.keyBytes.equals(keyData))) return { status: "ok" };
