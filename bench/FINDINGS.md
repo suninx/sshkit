@@ -342,3 +342,36 @@
   `0.0.0.0127.0.0.1`,引擎如实报 ENOTFOUND)—— 给驱动加 `--clear`,且 **CDP 按键不会自动执行编辑命令**,
   必须显式 `commands:["selectAll"]`;② 原版向导"点了 Continue 不动"不是 bug,是必填校验;
   ③ 导航类快捷键必须不被聚焦的输入框吞掉(F16 的 APP_LEVEL 由此扩充)。
+
+### F18 T6 已知主机:规格来源、询问式改造与隔离复验            [2026-10-17 17:20]
+- **规格来源(权威)**:原版 `ui-process/assets/ui-process-db39bd97.js` 里组件自身的可见文案
+  (即产品实际渲染的字面量,比截图辨认更可靠):
+  - **首连询问**:标题 `Are you sure you want to connect?`;正文
+    `The authenticity of <host> can not be established.` + `<keyType> fingerprint is SHA256:<fp>` +
+    `Do you want to add it to the list of known hosts?`;按钮 `Close` / `Continue` / `Add and continue`
+    (窄屏时按钮文案变 `Add & continue`)。
+  - **指纹变更**:标题(错误色)`The fingerprint for <host> has changed`;正文
+    `Termius notices a potential security breach.` + `New <keyType> fingerprint is SHA256:<fp>`;
+    按钮 `Replace` / `Add as new` / `Cancel`;回车默认走 `Replace ?? Add`。
+  - **列表空态**:`Known hosts will appear here` + `Known hosts are trusted server identities saved for
+    secure future connections.`;工具栏有 `Import Known Hosts From Toolbar`。
+- **改造**:原来我方是**静默 TOFU**(首次即写盘、只在终端里打一行灰字),与原版"先问用户"不一致。
+  现拆成 `checkHostKey`(只判断)/`addHostKey`(用户同意才落盘),`hostVerifier` 里发 `knownhost:ask`
+  并**等待**渲染层答复(ssh2 允许异步回调);120s 无人应答按**拒绝**处理(安全默认)。
+  按钮语义:Continue=仅本次接受不写盘,Add and continue=接受并写盘,Replace=覆盖旧条目。
+- **复验(隔离环境,不碰用户 ssh 配置)**:真实 LAN 主机的密钥都已在用户 `known_hosts` 中,无法触发"未知主机";
+  为了**不去改用户的 ssh 信任文件**,写了 `bench/fake-ssh.mjs`(ssh2 `Server` + 临时的自签主机密钥,监听
+  127.0.0.1:2222),指一台测试主机连过去:
+  - 对话框按预期弹出,标题/正文/按钮与上面逐字一致 ✓
+  - 点 `Add and continue` → 对话框关闭,且 `~/.ssh/known_hosts` 里**确实新增** `[127.0.0.1]:2222 ssh-rsa AAAA…` ✓
+  - 假服务侧日志走完 `有客户端连入 → auth: none test → ready,开一个 shell` ✓(密钥接受后握手继续)
+  - Known Hosts 视图列出真实 18 条(主机/类型/指纹),空态文案备用 ✓
+  - 清理:测试条目与测试主机已删除(残留 0 行),假服务已停。
+- **顺带修掉的真 bug**:非 22 端口时,known_hosts 的字段必须是 OpenSSH 约定的 `[host]:port`,我方原先写裸
+  `host` —— 这会让"22 端口以外的主机"与系统 ssh 的信任**对不上**(我模块注释里写着要与 OpenSSH 共用,
+  所以这是实打实的不一致)。现按约定写入,并让对话框显示同一字段。
+- 方法学(重要):**测量别人的线上应用时不要制造状态**。本轮我为了看到向导下一步,在原版 Termius 的
+  Local port 填了 18080,结果被存成一条动态转发规则(且我把 bind 写坏成 `127.0.1127.0.1`),
+  之后连确认框都删不掉(走完 `Remove` 确认仍在列表里)。教训:① 需要"填必填项才能继续"的测量,
+  应优先找**离线/隔离的替代物**(如 T6 的假 ssh 服务);② 必须在真实应用里制造状态时,先想好怎么撤销并**验证撤销**;
+  ③ 拿不准就记为缺口,而不是动手。该规则已如实告知用户,由其自行删除。
