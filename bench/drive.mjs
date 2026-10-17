@@ -36,6 +36,7 @@ const waitMs = Number(opt("--wait", "700"));
 const dry = args.includes("--dry");
 const probeFile = opt("--probe-file", null); // 点击后立刻在同一次会话里求值(弹层类 UI 必须如此:
                                              // 中间任何停顿/失焦都会让弹层关闭,分两步探测只能拿到空结果)
+const clearFirst = args.includes("--clear"); // 写入前先全选:insertText 是插入,带默认值的输入框会变追加
 const keyCombo = opt("--key", null);         // 例:"cmd+w" / "cmd+shift+]" —— 发组合键(测快捷键用)
 const outDir = opt("--out-dir", `bench/sessions/${new Date().toLocaleString("sv-SE").replace(/[: ]/g, "_")}-${tag}`);
 
@@ -201,6 +202,14 @@ if (typeStr) {
   await sleep(250);
   const focused = await ev(`document.activeElement ? document.activeElement.className : null`);
   console.log(`activeElement: ${focused}`);
+  if (clearFirst) {
+    // 先全选:Input.insertText 是"插入",带默认值的输入框会变成追加(实测把 0.0.0.0 写成了 0.0.0.0127.0.0.1)
+    // 注意:CDP 的按键事件不会自动执行编辑命令,必须显式给 commands(否则"全选"不发生,写入变追加 —— 踩过)
+    const metaA = { key: "a", code: "KeyA", windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65, modifiers: 4 };
+    await send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...metaA, commands: ["selectAll"] });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", ...metaA });
+    await sleep(80);
+  }
   if (useInsert) {
     // 整串插入:不经键位映射,故反斜杠等字符不会被吞(逐键模式实测会丢 '\')
     await send("Input.insertText", { text: typeStr });

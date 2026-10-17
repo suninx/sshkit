@@ -304,3 +304,41 @@
   Open Snippets、Open Port Forwarding(属 T3)、Jump to。
 - 方法学:① 在输入框里按 `Cmd+P` 不触发是**正确**行为(焦点在文本框时应让位),别急着当 bug —— 我第一次
   就误判了;② 快捷键类规格优先从应用自身的配置里取(这里 `shortcut_schemes` 一条不差),比逐个试按可靠得多。
+
+### F17 T3 端口转发:规格、实现与真机复验                      [2026-10-17 16:05]
+- **原版规格(实测)**:
+  - 入口:左栏一级导航 `Port Forwarding`(快捷键 `Cmd+P`,见 F16 表);工具栏 `＋ New forwarding`(带下拉箭头)
+    + 右侧 搜索/视图/面板 三个图标按钮。
+  - 空态:图标 + **"Set up port forwarding"** + **"Save port forwarding to access databases, web apps, and other services."**
+  - 向导(标题 `New Port Forwarding` + `Personal`),四步:
+    1) `Select the port forwarding type:` —— Local / Remote / Dynamic,三类**说明逐字**:
+       - Local:`Local forwarding lets you access a remote server's listening port as though it were local.`
+       - Remote:`Remote forwarding opens a port on the remote machine and forwards connections to the local (current) host.`
+       - Dynamic:`Dynamic port forwarding turns Termius into a SOCKS proxy server. SOCKS proxy server is a protocol to request any connection via a remote host.`
+    2) `Local Port Forwarding` —— `Set the local port and binding address: This port will be open on the local
+       (current) machine to forward traffic to the remote host.` 字段:`Local port number *`、`Bind address`(占位符 `0.0.0.0`)
+    3) `Intermediate host` —— `This device is used as an intermediate host to access the remote host.` + `Select a host`
+       (选择器列出 `Personal vault` / `192.0.2.10  ssh, root`)
+    4) `Destination host` —— `IP address/hostname and the port number of the remote host where the intermediate host
+       will direct the traffic.` 字段:`Destination address *`、`Destination port number *`
+    按钮:`Back` / `Continue` / `Skip wizard`;**必填项为空时 Continue 不前进**(实测:Local port number 空着点 Continue 无反应)。
+- **实现**:`src/main/forward.ts` 新增 `ForwardService` ——
+  local 起本机监听并把每条连接交给 `ssh.forwardOut`;remote 用 `forwardIn` + `tcp connection` 回连本机;
+  dynamic 是内建的**最小 SOCKS5(CONNECT,无认证)**服务端,按目标动态建通道。
+  规则按主机持久化到 `forwards.json`;`SshService` 增加 `clientOfHost` 以"按主机找可用通道";
+  IPC `fwd:rules/statuses/save/delete/start/stop` + 状态推送;UI 为 `renderer/fwd.ts`(面板 + 四步向导),
+  侧栏新增一级导航;`Cmd+P` 由"未实现"转为**已实现**。
+- **复验(真机,不只是看 UI)**:
+  - 向导四步的标签与说明逐字一致 ✓
+  - 建规则 `0.0.0.0:18080 → 127.0.0.1:22 via node-1` → Start → UI `running · 0 conn` ✓
+  - `lsof -iTCP:18080 -sTCP:LISTEN` 显示 Electron 在 `*:18080` 监听 ✓
+  - **经隧道取回远端 banner `SSH-2.0-OpenSSH_9.9`** ✓ —— 这是端到端证据:流量确实穿过 ssh 通道到了 node-1
+  - Dynamic:SOCKS5 握手 `5,0` → CONNECT 应答 `5,0` → 同样取回 `SSH-2.0-OpenSSH_9.9` ✓
+  - 错误路径:bind 填成非法地址时,UI 显示 `error: getaddrinfo ENOTFOUND …`(失败可见,不是静默)✓
+- 偏离与缺口:① 我方把端口转发放在**一个 tab** 里(原版是在 Vaults tab 内替换主区域)—— 与 SFTP 同样的取舍;
+  ② Dynamic 说明里的产品名按本产品替换为 sshkit,其余文案原样;③ **Remote(-R)那条路径实现了但尚未端到端复验**
+  (本轮验的是 -L 与 -D),记为待验;④ Remote 型第二步的字段标签未实测(我用了 `Remote port number`)。
+- 方法学:① `Input.insertText` 是**插入**不是替换,带默认值的输入框会被写坏(我把 `0.0.0.0` 写成了
+  `0.0.0.0127.0.0.1`,引擎如实报 ENOTFOUND)—— 给驱动加 `--clear`,且 **CDP 按键不会自动执行编辑命令**,
+  必须显式 `commands:["selectAll"]`;② 原版向导"点了 Continue 不动"不是 bug,是必填校验;
+  ③ 导航类快捷键必须不被聚焦的输入框吞掉(F16 的 APP_LEVEL 由此扩充)。
