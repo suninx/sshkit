@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain } from "electron";
 import path from "node:path";
 import { PtyService, type TerminalCreateOptions } from "./pty";
 import { HostStore } from "./store";
@@ -91,6 +91,11 @@ ipcMain.handle("ssh:connect", async (event, hostId: string, opts: { cols: number
   const id = await sshService.connect(event.sender, host, secrets, opts);
   return { id };
 });
+
+/* ---------- clipboard(T4:复制/粘贴终端选区走主进程,沙箱下最可靠) ---------- */
+
+ipcMain.handle("clipboard:read", () => clipboard.readText());
+ipcMain.handle("clipboard:write", (_e, text: string) => { clipboard.writeText(text ?? ""); });
 
 ipcMain.handle("app:info", () => ({
   versions: { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node },

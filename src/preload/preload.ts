@@ -8,6 +8,10 @@ const api = {
   resize: (id: number, cols: number, rows: number) => ipcRenderer.send("terminal:resize", id, cols, rows),
   dispose: (id: number) => ipcRenderer.send("terminal:dispose", id),
   info: () => ipcRenderer.invoke("app:info"),
+  clipboard: {
+    read: (): Promise<string> => ipcRenderer.invoke("clipboard:read"),
+    write: (text: string): Promise<void> => ipcRenderer.invoke("clipboard:write", text),
+  },
 
   onData: (id: number, callback: (data: string) => void) => {
     const handler = (_e: unknown, terminalId: number, data: string) => { if (terminalId === id) callback(data); };

@@ -1,8 +1,10 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
+import { SearchAddon } from "@xterm/addon-search";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
+import { installShortcuts, MAC_SHORTCUTS, type ShortcutDef } from "./keys";
 import type { HostRecord } from "../shared/host";
 
 const stage = document.getElementById("stage")!;
@@ -33,6 +35,8 @@ type Tab = {
   disposers: Array<() => void>;
   sftp: CurrentSession | null;
   view?: SftpView; // sftp tab 用
+  search?: SearchAddon;   // T4:终端内搜索(Cmd+F)
+  searchBar?: HTMLElement;
 };
 
 let tabs: Tab[] = [];
@@ -260,6 +264,36 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
   tab.term = t;
   tab.fit = fit;
 
+  /* T4:终端搜索。原版实测:Cmd+F 在终端区右上出现搜索栏,占位符 "Search terminal - ⌘ + F",
+     右侧有上/下箭头。插件是 xterm 官方 addon(与 canvas 插件同理,peer 声明较旧,故容错)。 */
+  try {
+    const search = new SearchAddon();
+    t.loadAddon(search);
+    tab.search = search;
+  } catch (e) {
+    console.warn("[term] 搜索插件不可用:", e);
+  }
+  const bar = document.createElement("div");
+  bar.className = "term-search";
+  bar.hidden = true;
+  bar.innerHTML = `
+    <span class="ts-ico">🔍</span>
+    <input placeholder="Search terminal - ⌘ + F" spellcheck="false" autocomplete="off">
+    <button class="ts-btn" data-nav="prev" title="Previous match">⌃</button>
+    <button class="ts-btn" data-nav="next" title="Next match">⌄</button>
+    <button class="ts-btn" data-nav="close" title="Close">✕</button>`;
+  hostWrap.append(bar);
+  tab.searchBar = bar;
+  const sInput = bar.querySelector("input")! as HTMLInputElement;
+  sInput.addEventListener("input", () => tab.search?.findNext(sInput.value, { incremental: true }));
+  sInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.shiftKey ? tab.search?.findPrevious(sInput.value) : tab.search?.findNext(sInput.value); }
+    if (ev.key === "Escape") toggleSearch(tab);
+  });
+  bar.querySelector('[data-nav="prev"]')!.addEventListener("click", () => tab.search?.findPrevious(sInput.value));
+  bar.querySelector('[data-nav="next"]')!.addEventListener("click", () => tab.search?.findNext(sInput.value));
+  bar.querySelector('[data-nav="close"]')!.addEventListener("click", () => toggleSearch(tab));
+
   activateTab(tab.id);
   try { fit.fit(); } catch { /* transient */ }
 
@@ -308,15 +342,100 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
   }
 }
 
-/* ---------- 快捷键:取自原版自身的 shortcut_schemes(Mac 方案) ---------- */
-window.addEventListener("keydown", (e) => {
-  if (!e.metaKey || e.ctrlKey || e.altKey) return;
-  const k = e.key.toLowerCase();
-  if (k === "t" && !e.shiftKey) { e.preventDefault(); newTabPage(); return; }
-  if (k === "w" && !e.shiftKey) { e.preventDefault(); if (active) closeTab(active); return; }
-  if (e.shiftKey && (e.key === "]" || e.key === "}")) { e.preventDefault(); cycleTab(1); return; }
-  if (e.shiftKey && (e.key === "[" || e.key === "{")) { e.preventDefault(); cycleTab(-1); }
-});
+/* ---------- T4:快捷键 ---------- */
+
+function toggleSearch(tab: Tab): void {
+  const bar = tab.searchBar;
+  if (!bar) return;
+  bar.hidden = !bar.hidden;
+  const input = bar.querySelector("input")! as HTMLInputElement;
+  if (bar.hidden) { input.value = ""; tab.search?.clearDecorations(); tab.term?.focus(); }
+  else { input.focus(); input.select(); }
+}
+
+function toast(message: string): void {
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = message;
+  document.body.append(el);
+  setTimeout(() => el.classList.add("out"), 2600);
+  setTimeout(() => el.remove(), 3200);
+}
+
+/** Cmd+K 命令面板(原版:Cmd+K 开命令面板;其新 tab 落地页也提示 "start connecting with CMD+K") */
+function openPalette(): void {
+  if (document.querySelector(".palette-backdrop")) return;
+  const show = (): void => {
+    const el = document.createElement("div");
+    el.className = "palette-backdrop";
+    el.innerHTML = `<div class="palette">
+        <input placeholder="Search hosts or tabs" spellcheck="false" autocomplete="off">
+        <div class="pal-list"></div></div>`;
+    document.body.append(el);
+    const input = el.querySelector("input")! as HTMLInputElement;
+    const list = el.querySelector(".pal-list")! as HTMLElement;
+
+    type Item = { label: string; hint?: string; run: () => void };
+    const items: Item[] = [
+      ...tabs.map((t) => ({ label: t.label, hint: t.kind === "session" ? "tab" : t.kind, run: () => activateTab(t.id) })),
+      ...MAC_SHORTCUTS.map((d) => ({
+        label: d.name,
+        hint: shortcuts[d.id] ? (d.accel ?? "") : "未实现",
+        run: () => (shortcuts[d.id] ? shortcuts[d.id]() : toast(`「${d.name}」尚未实现`)),
+      })),
+    ];
+    const render = (q: string): void => {
+      const ql = q.trim().toLowerCase();
+      const shown = items.filter((it) => !ql || it.label.toLowerCase().includes(ql)).slice(0, 12);
+      list.replaceChildren(...shown.map((it) => {
+        const row = document.createElement("div");
+        row.className = "pal-row";
+        row.innerHTML = `<span class="pal-label"></span><span class="pal-hint"></span>`;
+        (row.querySelector(".pal-label")! as HTMLElement).textContent = it.label;
+        (row.querySelector(".pal-hint")! as HTMLElement).textContent = it.hint ?? "";
+        row.addEventListener("click", () => { close(); it.run(); });
+        return row;
+      }));
+    };
+    const close = (): void => { el.remove(); };
+    render("");
+    input.addEventListener("input", () => render(input.value));
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") close();
+      if (ev.key === "Enter") {
+        const first = list.querySelector(".pal-row") as HTMLElement | null;
+        first?.click();
+      }
+    });
+    el.addEventListener("click", (ev) => { if (ev.target === el) close(); });
+    input.focus();
+  };
+  show();
+}
+
+let shortcuts: Record<string, () => void> = {};
+
+function installAllShortcuts(): void {
+  shortcuts = {
+    copyFromTerminal: () => {
+      const sel = activeTab()?.term?.getSelection();
+      if (sel) void bridge.clipboard.write(sel);
+    },
+    pasteToTerminal: () => { void bridge.clipboard.read().then((txt) => activeTab()?.term?.paste(txt)); },
+    selectAllInTerminal: () => activeTab()?.term?.selectAll(),
+    clearTerminalBuffer: () => activeTab()?.term?.clear(),
+    openTerminalSearch: () => { const t = activeTab(); if (t?.kind === "session") toggleSearch(t); },
+    newTab: () => newTabPage(),
+    close: () => { if (active) closeTab(active); },
+    bottom: () => cycleTab(1),
+    top: () => cycleTab(-1),
+    localTerminal: () => void openSession("local"),
+    commandPalette: () => openPalette(),
+  };
+  installShortcuts(shortcuts, (def: ShortcutDef) => {
+    toast(`「${def.name}」尚未实现${def.accel ? `(${def.accel})` : "(原版亦未设默认键)"}`);
+  });
+}
 
 btnNewTab.addEventListener("click", () => newTabPage());
 btnSftp.addEventListener("click", () => openSftpTab());
@@ -328,5 +447,6 @@ new ResizeObserver(() => {
 
 void (async () => {
   initHostPanel((host) => void openSession(host ? "ssh" : "local", host ?? undefined));
+  installAllShortcuts();
   newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
 })();

@@ -8,6 +8,10 @@ interface SshkitBridge {
   dispose(id: number): void;
   onData(id: number, callback: (data: string) => void): () => void;
   onExit(id: number, callback: (info: { exitCode: number; error?: string }) => void): () => void;
+  clipboard: {
+    read(): Promise<string>;
+    write(text: string): Promise<void>;
+  };
   hosts: {
     list(): Promise<HostRecord[]>;
     create(input: HostInput): Promise<HostRecord>;

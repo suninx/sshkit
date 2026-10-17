@@ -92,7 +92,38 @@
     /* 注意:类名必须与 SFTP 弹层的 .pane/.panes 区分开(否则 position:absolute 会把 SFTP 布局弄坏) */
     .tab-pane { position: absolute; inset: 0; display: none; }
     .tab-pane.active { display: block; }
-    .tab-pane .term-host { width: 100%; height: 100%; padding: 6px; box-sizing: border-box; }
+    .tab-pane .term-host { position: relative; width: 100%; height: 100%; padding: 6px; box-sizing: border-box; }
+
+    /* T4 复刻 —— 终端内搜索栏。原版实测:Cmd+F 在终端区右上出现,输入框占位符
+       "Search terminal - ⌘ + F",右侧有上/下箭头按钮。 */
+    .term-search { position: absolute; right: 10px; top: 8px; z-index: 5; display: flex; align-items: center;
+      gap: 2px; background: var(--bg2); border: 1px solid var(--wire); border-radius: 10px; padding: 3px 4px 3px 10px; }
+    .term-search[hidden] { display: none; }
+    .term-search .ts-ico { font-size: 12px; opacity: .75; }
+    .term-search input { width: 220px; background: transparent; border: 0; outline: none; color: var(--fg);
+      font-size: 13px; padding: 4px 2px; }
+    .ts-btn { border: 0; background: transparent; color: var(--fg-dim); cursor: pointer; border-radius: 6px;
+      width: 22px; height: 22px; font-size: 12px; }
+    .ts-btn:hover { background: rgba(255,255,255,.09); color: var(--fg); }
+
+    /* T4 —— 未实现的快捷键显式告知(不静默吞键) */
+    .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 26px; z-index: 60;
+      background: rgba(20,23,41,.97); border: 1px solid var(--wire); color: var(--fg);
+      padding: 9px 14px; border-radius: 9px; font-size: 13px; transition: opacity .5s; }
+    .toast.out { opacity: 0; }
+
+    /* T4 —— Cmd+K 命令面板 */
+    .palette-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex;
+      align-items: flex-start; justify-content: center; padding-top: 90px; z-index: 55; }
+    .palette { width: min(560px, 88vw); background: var(--bg2); border: 1px solid var(--wire);
+      border-radius: 12px; overflow: hidden; }
+    .palette input { width: 100%; box-sizing: border-box; background: transparent; border: 0;
+      border-bottom: 1px solid var(--wire); outline: none; color: var(--fg); font-size: 14px; padding: 13px 15px; }
+    .pal-list { max-height: 320px; overflow-y: auto; padding: 5px; }
+    .pal-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+    .pal-row:hover { background: rgba(255,255,255,.08); }
+    .pal-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pal-hint { color: var(--fg-dim); font-size: 12px; }
 
     /* 新 tab 落地页。原版实测:居中搜索框(约占宽 667、高 36、圆角 10)、右侧 ⌘+K 提示、
        下方图标 + "Recent sessions" 标题(18px/500)+ 两行提示语。 */
