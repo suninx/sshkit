@@ -929,3 +929,30 @@ Start multiplayer / Close(另有标识符 HorizontalSplit、Sync、LiveTerminal�
 ## 一个 TS 小坑
 bridge 接口里写 `window: { new(): Promise<boolean> }` 会报 Property 'new' does not exist ——
 对象类型里的 new() 是**构造签名**,不是方法名。改名为 create() 即可。
+
+### F42 T4 收尾:一个把「应用级快捷键」全吞掉的守卫 bug + 5 条快捷键接线   [2026-10-18 18:00]
+## 真 bug:终端有焦点时,未列入 APP_LEVEL 的应用级快捷键**全部失效**
+`keys.ts` 的派发器里有一句:
+```ts
+if (isTextField(document.activeElement) && !APP_LEVEL.has(def.id)) return;
+```
+xterm 靠一个**隐藏 textarea**(`.xterm-helper-textarea`)收键盘 —— 它也算 TEXTAREA,于是
+**"终端有焦点"这个最常见的情况下,除 APP_LEVEL 之外的快捷键一律被吞**。实测后果:
+- `Cmd+.` / `Cmd+Shift+M` / `Cmd+J` / `Cmd+Shift+S` / `Cmd+B` 按了毫无反应(本轮新接的五条全部如此);
+- 更严重的存量问题:**`Cmd+C` 复制终端内容、`Cmd+A` 全选终端从来没生效过** ——
+  我们的终端是 canvas 渲染,系统级复制从画布上取不到文本,只能靠渲染层处理,而渲染层这条路径被自己的守卫挡住了。
+  (F30 里我怀疑过"Cmd+C 可能复制不到",当时证据链失效没定论;现在定论了,并且已修。)
+**修法**:新增 `inFormField()`,把 `.xterm` 内的元素排除在"表单控件"之外 ——
+即"搜索框/表单里不抢键,终端里照常生效"。
+**复验**:焦点在终端时 `Cmd+A` + `Cmd+C` → 剪贴板拿到 **48 字符**终端文本(此前为空)✓;
+`Cmd+.` → 侧栏开/关 ✓;`Cmd+Shift+M` → 横排/工作区切换 ✓;`Cmd+B` → 提示"先 Split horizontally 再开广播" ✓;
+`Cmd+J` → 侧栏定位到 `Jump to` ✓;`Cmd+Shift+S` → 定位到 `Snippets` ✓。
+## 我自己的一个时序 bug(顺手修)
+`showPanelSection` 最初写成"打开面板 → 立刻 focusPanelSection",而面板内容是**异步渲染**的,
+于是找不到分区、表现为"按了没反应"。改为 `renderSidePanel().then(() => focusPanelSection(...))`。
+测量方法上的教训:高亮只有 900ms,而我每次 `grab.mjs` 要 0.3–0.5s —— **用轮询找短命状态会假阴性**;
+改成"同一次 eval 内派发按键并立即读取"后结论才可靠。
+## 剩余两条未接线(已定性)
+- `serialConnection`(Cmd+Alt+S):**硬桩**,按下给出说清原因的提示(需串口原生依赖与真实设备);
+- `saveWorkspaceTemplate`(Cmd+S):只实现"保存"没有意义(原版配套的"打开模板"入口未测),
+  记为**有原因不做**,而不是继续挂在待办上。
