@@ -20,12 +20,22 @@ export interface SftpView {
   onShow: () => void;
 }
 
+type SortKey = "name" | "date" | "size" | "kind";
+
 interface PaneState {
   which: "local" | "remote";
   dir: string;
   entries: SftpEntry[];
   sel: SftpEntry | null;
   filter: string;
+  /* T5:排序。原版默认 sortBy=null(即不排序,用目录原顺序)、sortDirection=ASC,且**每栏各自独立**
+     (其 store 里 left/right 各有 sorting;动作名 SET_SFTP_SORTING)。列头指示器:ASC 上三角、DESC 下三角,
+     只在当前排序列显示。 */
+  sortBy: SortKey | null;
+  sortDir: "ASC" | "DESC";
+  /* T5:多选。sel 仍是"主选中项"(现有下载/删除等按它工作),selSet 是集合。 */
+  selSet: Set<string>;
+  anchor: string | null;
   /** 原版默认不显示隐藏文件(其本地栏以 ".." 开头,随后直接是 Applications/Desktop…),故默认关闭 */
   showHidden: boolean;
   rowsEl: HTMLElement;
@@ -108,12 +118,15 @@ export function createSftpView(
       <div class="sp-filter" hidden><input placeholder="Filter by name" spellcheck="false"></div>
       <div class="sp-crumbs"></div>
       <div class="sp-cols">
-        <span class="sp-cname">Name</span><span class="sp-cdate">Date Modified</span>
-        <span class="sp-csize">Size</span><span class="sp-ckind">Kind</span>
+        <button class="sp-col sp-cname" data-sort="name">Name</button>
+        <button class="sp-col sp-cdate" data-sort="date">Date Modified</button>
+        <button class="sp-col sp-csize" data-sort="size">Size</button>
+        <button class="sp-col sp-ckind" data-sort="kind">Kind</button>
       </div>
       <div class="sp-body"><div class="sp-rows"></div></div>`;
     const st: PaneState = {
       which, dir: which === "local" ? "~" : ".", entries: [], sel: null, filter: "", showHidden: false,
+      sortBy: null, sortDir: "ASC", selSet: new Set<string>(), anchor: null,
       rowsEl: host.querySelector(".sp-rows")! as HTMLElement,
       crumbsEl: host.querySelector(".sp-crumbs")! as HTMLElement,
       titleEl: host.querySelector(".sp-title")! as HTMLElement,
@@ -125,6 +138,26 @@ export function createSftpView(
       filterBox.hidden = !filterBox.hidden;
       if (!filterBox.hidden) filterInput.focus();
       else { filterInput.value = ""; st.filter = ""; render(st); }
+    });
+    host.querySelectorAll<HTMLButtonElement>(".sp-col").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.sort as SortKey;
+        if (st.sortBy === key) st.sortDir = st.sortDir === "ASC" ? "DESC" : "ASC";
+        else { st.sortBy = key; st.sortDir = "ASC"; }
+        render(st);
+      });
+    });
+    // "Select All" / "Clear selection"(文案取自原版字符串;焦点在该栏内时生效)
+    host.addEventListener("keydown", (ev) => {
+      if (!(ev.metaKey || ev.ctrlKey) || ev.key.toLowerCase() !== "a") return;
+      ev.preventDefault();
+      const shown = visibleEntries(st);
+      st.selSet = new Set(shown.map((e) => e.name));
+      render(st);
+    });
+    host.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      st.selSet.clear(); st.sel = null; render(st);
     });
     host.querySelector('[data-act="actions"]')!.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -201,14 +234,36 @@ export function createSftpView(
     }
   }
 
-  function render(st: PaneState): void {
-    renderCrumbs(st);
-    st.rowsEl.textContent = "";
-    const list = st.entries
-      .slice()
-      .sort(byDirsThenName)
+  /** 过滤 + 排序后的可见条目(sortBy=null 时用"目录优先 + 名称"的自然顺序,与原版默认一致) */
+  function visibleEntries(st: PaneState): SftpEntry[] {
+    const arr = st.entries
       .filter((e) => (st.showHidden || !e.name.startsWith(".")))
       .filter((e) => !st.filter || e.name.toLowerCase().includes(st.filter));
+    const base = (a: SftpEntry, b: SftpEntry): number => (a.isDir === b.isDir ? 0 : a.isDir ? -1 : 1);
+    if (!st.sortBy) return arr.sort((a, b) => base(a, b) || a.name.localeCompare(b.name));
+    const key = st.sortBy;
+    const cmp = (a: SftpEntry, b: SftpEntry): number => {
+      let r = 0;
+      if (key === "name") r = a.name.localeCompare(b.name);
+      else if (key === "date") r = (a.mtime ?? 0) - (b.mtime ?? 0);
+      else if (key === "size") r = (a.isDir ? -1 : a.size) - (b.isDir ? -1 : b.size);
+      else r = (a.isDir === b.isDir ? 0 : a.isDir ? -1 : 1) || a.name.localeCompare(b.name);
+      if (key !== "kind") r = r || a.name.localeCompare(b.name); // 同键值再按名称稳定排序
+      return st.sortDir === "ASC" ? r : -r;
+    };
+    return arr.sort((a, b) => base(a, b) || cmp(a, b));
+  }
+
+  function render(st: PaneState): void {
+    renderCrumbs(st);
+    // 列头指示器:仅在当前排序列显示(ASC ▲ / DESC ▼)
+    st.rowsEl.parentElement?.parentElement?.querySelectorAll<HTMLButtonElement>(".sp-col").forEach((b) => {
+      const on = st.sortBy === b.dataset.sort;
+      b.classList.toggle("on", on);
+      b.dataset.dir = on ? st.sortDir : "";
+    });
+    st.rowsEl.textContent = "";
+    const list = visibleEntries(st);
 
     // 原版每栏首行是 ".."(点击即回上级)
     if (!st.filter && st.dir !== "/" && !(st.which === "local" && st.dir === "~")) {
@@ -224,7 +279,7 @@ export function createSftpView(
 
     for (const e of list) {
       const row = document.createElement("div");
-      row.className = "sp-row";
+      row.className = `sp-row${st.selSet.has(e.name) ? " sel" : ""}`;
       const nm = document.createElement("span");
       nm.className = "sp-name";
       nm.innerHTML = `<span class="sp-ico ${e.isDir ? "dir" : "file"}"></span>
@@ -238,10 +293,24 @@ export function createSftpView(
       const kd = document.createElement("span");
       kd.className = "sp-kind"; kd.textContent = e.isDir ? "folder" : "file";
       row.append(nm, dt, sz, kd);
-      row.addEventListener("click", () => {
+      row.addEventListener("click", (ev) => {
+        const multi = ev.metaKey || ev.ctrlKey;
+        const range = ev.shiftKey;
         st.sel = e;
-        st.rowsEl.querySelectorAll(".sp-row").forEach((n) => n.classList.remove("sel"));
-        row.classList.add("sel");
+        if (range && st.anchor) {
+          const names = list.map((x) => x.name);
+          const i = names.indexOf(st.anchor), j = names.indexOf(e.name);
+          if (i >= 0 && j >= 0) {
+            st.selSet = new Set(names.slice(Math.min(i, j), Math.max(i, j) + 1));
+          }
+        } else if (multi) {
+          if (st.selSet.has(e.name)) st.selSet.delete(e.name); else st.selSet.add(e.name);
+          st.anchor = e.name;
+        } else {
+          st.selSet = new Set([e.name]);
+          st.anchor = e.name;
+        }
+        render(st);
       });
       row.addEventListener("dblclick", () => {
         if (!e.isDir) return;
@@ -278,16 +347,53 @@ export function createSftpView(
   }
 
   function openActions(st: PaneState, anchor: HTMLElement): void {
+    const n = st.selSet.size;
     const items: Array<[string, () => void]> = [
       ["Go up", () => { st.dir = parentOf(st.dir); void refresh(st); }],
       ["New folder", () => void op(st, "mkdir")],
-      ["Rename", () => void op(st, "rename")],
-      ["Delete", () => void op(st, "remove")],
-      [st.showHidden ? "Hide hidden files" : "Show hidden files", () => { st.showHidden = !st.showHidden; render(st); }],
     ];
-    if (st.which === "local") items.push(["Upload →", () => void transfer("up")]);
+    if (n > 1) {
+      // 多选态:动作作用于全部选中项
+      items.push([`Delete ${n} items`, () => void opMany(st, "remove")]);
+      items.push(["Clear selection", () => { st.selSet.clear(); st.sel = null; render(st); }]);
+    } else {
+      items.push(["Rename", () => void op(st, "rename")]);
+      items.push(["Delete", () => void op(st, "remove")]);
+    }
+    items.push([st.showHidden ? "Hide hidden files" : "Show hidden files", () => { st.showHidden = !st.showHidden; render(st); }]);
+    if (n > 1) items.push([st.which === "local" ? `Upload ${n} items →` : `← Download ${n} items`, () => void transferMany(st)]);
+    else if (st.which === "local") items.push(["Upload →", () => void transfer("up")]);
     else items.push(["← Download", () => void transfer("down")]);
     menuAt(anchor, items);
+  }
+
+  /** 批量删除:复用单条逻辑,逐个执行 */
+  async function opMany(st: PaneState, kind: "remove"): Promise<void> {
+    const s = session();
+    if (st.which === "remote" && !s) { banner("远端未绑定会话"); return; }
+    const targets = st.entries.filter((e) => st.selSet.has(e.name));
+    if (!targets.length) return;
+    let done = 0;
+    for (const t of targets) {
+      st.sel = t;
+      try {
+        if (st.which === "local") await bridge.local.remove(joinPath(st.dir, t.name));
+        else await bridge.sftp.remove(s!.sid, joinPath(st.dir, t.name));
+        done++;
+      } catch { /* 单个失败不打断其余 */ }
+    }
+    st.selSet.clear(); st.sel = null;
+    banner(`已删除 ${done}/${targets.length} 项`);
+    await refresh(st);
+  }
+
+  /** 批量传输:逐个走原有的单文件传输 */
+  async function transferMany(st: PaneState): Promise<void> {
+    const targets = st.entries.filter((e) => st.selSet.has(e.name));
+    for (const t of targets) {
+      st.sel = t;
+      await transfer(st.which === "local" ? "up" : "down");
+    }
   }
 
   async function op(st: PaneState, kind: "mkdir" | "rename" | "remove"): Promise<void> {
