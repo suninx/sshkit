@@ -79,6 +79,12 @@ ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/smoke-ssh.js [ip]
   - 过程纪律层(真病根):tsc `does not exist` 报错**先取证据再 cast**;失败路径必须响(本次静默 `client.end()` 雪上加霜)。
 - M0 CSP 教训:安全收紧以**组件运行机制**为准(xterm=inline style 染色),写凶≠安全;探针实测再定案(本仓库调试风格保留:console 转发+小探针)。
 
+## 6.5 双工作区约定(后续会话照此)
+
+- **新会话从 `~/workspace/sshkit` 目录打开**(主战场 95% 的写入在这);`termius-rea` 只作阅读牵引用绝对路径/相对上一级读取(`../termius-rea/docs/blueprints/…`)。
+- 两仓保持**独立 repo、不合并**:git 历史、远端策略分家——`sshkit` 将来可整仓公开;`termius-rea` 含研究对象参照与恢复快照,**永久只留本地**。
+- 跨仓写入(给研究仓补笔)可做但要显式 workdir + 单独 commit(本仓文档补充即此惯例)。
+
 ## 7. 蓝图对照(重建路线的“需求文档”)
 
 `termius-rea/docs/blueprints/`:`01-terminal.md`(终端/远端会话)·`06-ui.md`(主题/按键/UI 骨架)为当前常用;其余见目录。**端口转发、快捷键、多 Tab** 的对照细节均在那里,做前先读对应篇,并用原版(payload/Termius.app 可运行)行为印证。
