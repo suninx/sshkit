@@ -792,3 +792,13 @@
 - 对照台的已知瑕疵(非产品问题):`drive.mjs` 的点击在"未观察到变化"时会补一次合成 `.click()`,
   所以日志里出现**两次** `write`(片段被执行两遍)。无害,但对**破坏性动作**要留意;
   后续若做删除类复验,需先确认单击只触发一次。
+
+### F36 T8 重连日志(Attempting reconnection to server with ID …)   [2026-10-18 10:30]
+- 规格依据:原版断线字符串组里的 `Attempting reconnection to server with ID …`(F19 已验证)。
+- 实现:每次自动重连尝试前记一条 `Attempting reconnection to server with ID <hostId> (n/3)`,
+  在断线覆盖层下方以等宽小字逐条列出(保留最近 20 条、展示最近 6 条);连接成功后清空。
+- 复验:杀掉假服务 → 覆盖层依次出现 (1/3)(2/3)(3/3) 三条(带真实 host id)✓;
+  三次耗尽后文案转为 `No connection available to reconnect` 且日志保留 ✓;
+  恢复服务并手动 `Try again` → 连接成功、覆盖层消失(日志已清)✓。
+- 说明:这样 T8 的三块可观测行为(自动重连/`Disable reconnecting`/重连日志)都齐了;
+  原版是否还有独立的面板/持久日志**未取到**,不假装实现。
