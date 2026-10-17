@@ -406,3 +406,23 @@
 - **残留(未复验,下轮清干净再测)**:我连续多轮 kill/重启假服务 + 反复重连之后,测试台自身状态变乱
   (残留 tab、覆盖层、重试循环),最后一次连接**没有弹出首连对话框**就失败了。倾向于是测试台状态问题
   (密钥 pin 与对话框时序),但**没有证据就不算通过** —— 下轮重启干净环境重跑一遍 T8 全流程再定论。
+
+### F20 T7 主机簿分组/排序/搜索:规格、实现与复验                [2026-10-17 19:30]
+- **原版规格(实测,只读操作)**:
+  - 搜索框占位符 **`Find a host or ssh user@hostname...`**(注意:它明说了可按"主机名 / ssh 用户名"搜)。
+  - 工具栏按钮(aria-label):`Change layout`、`Filter by tags`、`Sort options`。
+  - `Sort options` 菜单**四项,文案逐字**:`A-z`、`Z-a`、`Newest to oldest`、`Oldest to newest`。
+- **实现**:侧栏加搜索框(按 名称/主机名/用户名 过滤,不区分大小写)+ 排序按钮(四项菜单,选择存 localStorage);
+  分组头保持按组名字典序,组**内**按所选方式排序;搜索无结果给空态提示。
+- **复验(造 3 台测试主机:fake-ssh/bench、node-1/hosts、alpha-web+zeta-db/prod)**:
+  - `A-z`:… PROD → `alpha-web, zeta-db` ✓;`Z-a`:PROD → `zeta-db, alpha-web` ✓
+    (组头 BENCH/HOSTS/PROD 始终字典序,只有组内顺序变化 —— 与原版一致)
+  - `Newest to oldest`:PROD → `zeta-db` 在前(它是后建的)✓
+  - 搜索 `fake` → 只剩 fake-ssh;搜索 `deploy`(用户名)→ 只剩 alpha-web ✓
+  - 排序菜单四项文案与原版一致 ✓
+- **缺口(明确记为未复刻)**:
+  - **`Filter by tags`**:我方 HostRecord 没有 tags 字段,未实现(要做需先加数据模型)。
+  - **`Change layout`**:原版可切换列表/网格等布局;我方侧栏固定为列表。
+- 清理:顺手把原版里我早前遗留的 `Do you want to discard changes?` 提示关掉了(点 `Discard changes`)。
+- 方法学:`--insert ""` 在驱动里是**空串 → falsy → 整个打字分支被跳过**,所以"清空输入框"不能用它;
+  正确姿势是写一个字符再按 Backspace(或给驱动加真正的 clear 语义)。本轮因此误判过一次"排序没生效"。
