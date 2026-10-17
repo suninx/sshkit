@@ -135,7 +135,8 @@ export function removeKnownHost(host: string, file = KNOWN_HOSTS): number {
     /* 关键:重写后**必须保留结尾换行**。否则紧接着的 appendFileSync 会把新条目拼到上一行末尾,
        造成"看起来写进去了、其实和别的行粘在一起"的静默损坏 —— 而且会连累同文件里其它主机
        (实测踩到:192.0.2.32 那行被拼成了 9 字段)。 */
-    try { writeFileSync(file, keep.length ? keep.join("\n") + "\n" : ""); } catch { /* ignore */ }
+    try { writeFileSync(file, keep.length ? keep.join("\n") + "\n" : ""); }
+    catch (e) { console.error("[knownhosts] 重写 known_hosts 失败:", e); }
   }
   return removed;
 }

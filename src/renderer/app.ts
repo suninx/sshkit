@@ -44,6 +44,8 @@ type Tab = {
   host?: HostRecord;
   /** T8:该 tab 当前的断开状态(用于全局断开条) */
   disconnected?: { reason: string };
+  /** T8:用户点了 `Disable reconnecting` —— 自动重连停止,只留手动 `Try again` */
+  autoRetryOff?: boolean;
   /** T2:右键重命名后的显示名(原版动作名 SINGLE_TERMINAL_TAB_RENAMED) */
   customLabel?: string;
   retries?: number;
@@ -554,14 +556,25 @@ function showDisconnected(tab: Tab, t: Terminal, reason: string, retrying = fals
       <div class="disc-reason"></div>
       <div class="disc-actions">
         <button class="btn primary disc-retry">Try again</button>
+        <button class="btn disc-stop">Disable reconnecting</button>
         <button class="btn danger disc-close">Close</button>
       </div>
     </div>`;
   (el.querySelector(".disc-reason")! as HTMLElement).textContent = retrying ? "Initiating reconnection..." : reason;
   const retry = el.querySelector(".disc-retry")! as HTMLButtonElement;
+  const stop = el.querySelector(".disc-stop")! as HTMLButtonElement;
   const close = el.querySelector(".disc-close")! as HTMLButtonElement;
   retry.disabled = retrying;
-  retry.addEventListener("click", () => { void autoReconnect(tab, t, true); });
+  /* 原版文案 `Disable reconnecting`:只在"正在自动重连"时有意义(否则没什么可关的) */
+  stop.hidden = !retrying;
+  stop.addEventListener("click", () => {
+    tab.autoRetryOff = true;         // 循环下一轮会看到并停下
+    showDisconnected(tab, t, "Reconnecting disabled", false);
+  });
+  retry.addEventListener("click", () => {
+    tab.autoRetryOff = false;        // 手动重试 = 重新允许尝试
+    void autoReconnect(tab, t, true);
+  });
   close.addEventListener("click", () => closeTab(tab.id));
   wrap.append(el);
 }
@@ -581,6 +594,12 @@ async function autoReconnect(tab: Tab, t: Terminal, manual = false): Promise<voi
     showDisconnected(tab, t, "", true);
     await new Promise((r) => setTimeout(r, 1000 * 2 ** i));
     if (!tabs.includes(tab)) { tab.retrying = false; return; } // tab 已被关掉
+    if (tab.autoRetryOff) {                                    // 用户点了 Disable reconnecting
+      tab.retrying = false;
+      tab.retries = max;
+      showDisconnected(tab, t, "Reconnecting disabled", false);
+      return;
+    }
     try {
       const { id } = await bridge.ssh.connect(tab.host.id, { cols: t.cols, rows: t.rows });
       clearDisconnected(tab);

@@ -25,7 +25,10 @@ export async function getCreds(hostId: string): Promise<HostSecrets> {
   try {
     const parsed = JSON.parse(raw) as HostSecrets;
     return { password: parsed.password, passphrase: parsed.passphrase };
-  } catch {
+  } catch (e) {
+    // 钥匙串里存着东西但解析不了 —— 静默返回 {} 会让"连接时提示没有保存的密码",
+    // 排查看起来像"用户没存过密码",实际是数据坏了。所以要说出来。
+    console.error(`[keystore] host:${hostId} 的凭据无法解析:`, e);
     return {};
   }
 }

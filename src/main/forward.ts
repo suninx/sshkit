@@ -74,8 +74,16 @@ export class ForwardService {
   }
 
   private writeRules(rules: ForwardRule[]): void {
-    try { fs.writeFileSync(this.file, JSON.stringify(rules, null, 2), "utf8"); }
-    catch (e) { console.warn("[fwd] 规则写入失败:", e); }
+    /* 原子写:先写临时文件再 rename。直接 writeFileSync 覆盖,一旦崩在写入中途,
+       用户的转发规则就被截断成半个 JSON(下次启动全丢)。这是上轮 known_hosts 那类
+       "静默损坏用户数据"问题的同类隐患,一并堵掉。 */
+    const tmp = `${this.file}.tmp`;
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(rules, null, 2), "utf8");
+      fs.renameSync(tmp, this.file);
+    } catch (e) {
+      console.error("[fwd] 规则写入失败:", e); // 不静默:规则没存下必须看得见
+    }
   }
 
   saveRule(rule: ForwardRule): ForwardRule {
