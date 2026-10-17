@@ -950,8 +950,13 @@ xterm 靠一个**隐藏 textarea**(`.xterm-helper-textarea`)收键盘 —— 它
 ## 我自己的一个时序 bug(顺手修)
 `showPanelSection` 最初写成"打开面板 → 立刻 focusPanelSection",而面板内容是**异步渲染**的,
 于是找不到分区、表现为"按了没反应"。改为 `renderSidePanel().then(() => focusPanelSection(...))`。
-测量方法上的教训:高亮只有 900ms,而我每次 `grab.mjs` 要 0.3–0.5s —— **用轮询找短命状态会假阴性**;
-改成"同一次 eval 内派发按键并立即读取"后结论才可靠。
+测量方法上的教训(两次都栽在同一处):
+1. 高亮只有 900ms,而我每次 `grab.mjs` 启动要 0.3–0.5s ⇒ **用慢轮询找短命状态会假阴性**;
+2. 改用"同一次 eval 内派发按键并**同步**读取"也不行 —— 定位发生在 `renderSidePanel()` resolve **之后**,
+   同步读必然为空,而我那次读到 `Jump to` 其实是**上一次调用残留的高亮类**,属于假阳性(更危险)。
+   正确写法:**派发 → await 150ms → 读取**,并在两次测量之间等过高亮窗口。
+   最终结果:`Cmd+J` → `Jump to`、`Cmd+Shift+S` → `Snippets` ✓。
+   一般化的教训:**异步副作用的状态,既不能同步读,也不能用比它寿命更长的轮询去猜**。
 ## 剩余两条未接线(已定性)
 - `serialConnection`(Cmd+Alt+S):**硬桩**,按下给出说清原因的提示(需串口原生依赖与真实设备);
 - `saveWorkspaceTemplate`(Cmd+S):只实现"保存"没有意义(原版配套的"打开模板"入口未测),
