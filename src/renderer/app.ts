@@ -55,6 +55,8 @@ type Tab = {
     broadcast: boolean;
     disposers: Array<() => void>;
   };
+  /** T8:重连日志。原版有 `Attempting reconnection to server with ID …` 这类提示,这里逐条记录并展示 */
+  recLog?: string[];
   /** T8:用户点了 `Disable reconnecting` —— 自动重连停止,只留手动 `Try again` */
   autoRetryOff?: boolean;
   /** T2:右键重命名后的显示名(原版动作名 SINGLE_TERMINAL_TAB_RENAMED) */
@@ -895,6 +897,7 @@ function showDisconnected(tab: Tab, t: Terminal, reason: string, retrying = fals
     <div class="disc-card">
       <div class="disc-title">Session is disconnected</div>
       <div class="disc-reason"></div>
+      <div class="disc-log"></div>
       <div class="disc-actions">
         <button class="btn primary disc-retry">Try again</button>
         <button class="btn disc-stop">Disable reconnecting</button>
@@ -902,6 +905,15 @@ function showDisconnected(tab: Tab, t: Terminal, reason: string, retrying = fals
       </div>
     </div>`;
   (el.querySelector(".disc-reason")! as HTMLElement).textContent = retrying ? "Initiating reconnection..." : reason;
+  const logBox = el.querySelector(".disc-log")! as HTMLElement;
+  if (tab.recLog?.length) {
+    for (const line of tab.recLog.slice(-6)) {
+      const row = document.createElement("div");
+      row.className = "disc-log-line";
+      row.textContent = line;
+      logBox.append(row);
+    }
+  }
   const retry = el.querySelector(".disc-retry")! as HTMLButtonElement;
   const stop = el.querySelector(".disc-stop")! as HTMLButtonElement;
   const close = el.querySelector(".disc-close")! as HTMLButtonElement;
@@ -932,6 +944,8 @@ async function autoReconnect(tab: Tab, t: Terminal, manual = false): Promise<voi
   if (manual) tab.retries = 0;
   for (let i = tab.retries ?? 0; i < max; i++) {
     tab.retries = i + 1;
+    /* 原版文案形如 `Attempting reconnection to server with ID <id>`(F19 已验证字符串) */
+    tab.recLog = [...(tab.recLog ?? []), `Attempting reconnection to server with ID ${tab.host?.id ?? "?"} (${tab.retries}/${max})`].slice(-20);
     showDisconnected(tab, t, "", true);
     await new Promise((r) => setTimeout(r, 1000 * 2 ** i));
     if (!tabs.includes(tab)) { tab.retrying = false; return; } // tab 已被关掉
@@ -944,6 +958,7 @@ async function autoReconnect(tab: Tab, t: Terminal, manual = false): Promise<voi
     try {
       const { id } = await bridge.ssh.connect(tab.host.id, { cols: t.cols, rows: t.rows });
       clearDisconnected(tab);
+      tab.recLog = [];   // 连上了就清掉旧的尝试记录
       tab.retries = 0;
       tab.disconnected = undefined;
       tab.state = "on";
