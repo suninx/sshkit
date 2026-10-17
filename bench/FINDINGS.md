@@ -738,3 +738,19 @@
   验证后已把 `db` 加回(状态复原)。
 - 备注:一个值得记住的交互细节 —— 行内小控件必须 `stopPropagation`,否则会连带触发所在行的点击动作
   (T2 的重命名输入框踩过同一个坑,这里一次做对)。
+
+### F33 T2 工作区视图(竖排 tab 栏)                              [2026-10-18 09:00]
+- 规格依据(既有 attestation,F24):原版 tabVariant 有 `workspaceVerticalTab` 与 `horizontalTab` 两态,
+  并有 `active-workspace-tab`、`over-workspace-tab`、`over-workspace-tabs-area`、`toggleWorkspaceViewMode`,
+  以及 `terminalTabPlace: "workspace"` ⇒ 原版存在"tab 竖排在终端左侧"的工作区视图,可与横排切换。
+  **诚实标注**:竖栏的**精确视觉形态没有在运行中的原版里实测**(为避免动到用户的实时状态),
+  我方按上述结构证据实现为"左侧 190px 竖栏 + 图标 + 名称 + 关闭";行高/配色/图标样式属自设计。
+- 实现:工具栏 ▥ 按钮切换(原版对应 `toggleWorkspaceViewMode`);选择持久化到 `localStorage.sshkit.tabView`;
+  切换后对活动终端重新 fit(否则 pty 的 cols 还是旧宽度)。
+- 复验:① 切换 → `tabstrip` 隐藏、竖栏显示、3 行、active 行 = 当前 tab、**stage 宽度 1040 → 850**(190px 竖栏)✓;
+  ② 点竖栏第 1 行 → active 行 2 → 0,tab 切换生效 ✓;③ 切回 → 横排恢复、宽度回 1040 ✓;
+  ④ 切到工作区后刷新页面 → 仍是 workspace ✓(持久化)。
+- **踩坑(值得记)**:第一次复验"点了没反应",原因是我把监听器绑定的字符串替换**没匹配上**,
+  按钮压根没绑事件 —— 而 `renderWsRail` 正常渲染(能看到 3 行),所以现象**看起来像"点了不生效"**。
+  教训:**改动后先确认"这一段代码真的进文件了"**(grep 编译产物/源码),再去做行为复验;
+  否则会去排查一个根本不存在的逻辑 bug。
