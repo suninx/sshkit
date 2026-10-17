@@ -554,3 +554,24 @@
   定位手法:在页面里**直接派发带正确 `code` 的真实 KeyboardEvent**,一次就证明产品逻辑是好的
   (14→15→14),问题在工具。随后给驱动补齐了约 18 个符号/具名键(`equal`/`plus`/`minus`/`comma`/`bracketleft`…)。
   教训:**键盘测试失败时,先证明"到达页面的那个事件长什么样",再怀疑产品。**
+
+### F26 T7 补完:标签过滤 + 布局切换                            [2026-10-18 01:30]
+- **规格来源(原版字符串)**:
+  - 标签:`Tags`(在 `HostsScreenSidebar-*.js`)、`Filter by tags`、`Remove tag`。
+  - 布局:`Change layout` → **`List` / `Grid`**(两个选项名都在包里)——
+    这顺带回答了 F20 里"`Change layout` 到底切什么"的悬案。
+- **实现**:
+  - `HostRecord.tags?: string[]`;新建/编辑表单加 `Tags` 输入(逗号分隔,存盘前去重/去空白/限 32 个)。
+  - 行内显示标签芯片;工具栏 `🏷`(aria-label `Filter by tags`)菜单列出全部标签 + 复选框,可多选过滤,
+    选中时按钮高亮;含 `Clear filters`。
+  - 工具栏 `▤`(aria-label `Change layout`)在 **List / Grid** 间切换(存 localStorage),Grid 为两列卡片。
+- **复验**:标签写后读回 `node-1:["prod","db"]`、`alpha-web:["prod","web"]` ✓;行内芯片正确 ✓;
+  菜单列出 `bench/db/prod/web` ✓;勾 `prod` → 只剩 `node-1`、`alpha-web`(+ 恒显的 Local shell),按钮高亮 ✓;
+  `Clear filters` 复原全部 ✓;布局切换后 `#host-list` 带 `grid` 且 `gridTemplateColumns: 110.5px 110.5px`,
+  localStorage 记 `grid` ✓。
+- **查出并修掉的真 bug(值得记住)**:`tags` 第一次写进去**读回是 null** —— 主进程的主机存储是
+  **白名单式字段归一化**(`src/main/store.ts` 里逐个字段 `String(...).trim()`),我只在共享类型、表单、
+  渲染层加了 tags,忘了加进归一化,于是被静默丢掉。
+  教训:**在这种"显式挑字段"的存储层加字段,共享类型/UI 都改了也不算完,必须同时改归一化**;
+  而且"写完立刻读回"这个检查正是把它抓出来的手段(否则界面看着有输入框、其实永远存不下)。
+- **未做**:从行内菜单 `Remove tag`(原版有该字符串,推测是行右键移除标签);标签的颜色/自动补全未做。
