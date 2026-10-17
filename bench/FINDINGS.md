@@ -274,3 +274,33 @@
   (其 `sftp` 恒为 null)→ 远端栏错误地显示空态。改为"记住最近活动的会话 + 显式绑定"。
   教训:凡是"当前 X"这类取值,在多 tab 模型里都要问一句**"X 属于哪个 tab"**。
 - 未做/待补:列头点击排序(原版列头可点,未验证行为);行的图标是近似(圆角色块);浅色主题配色未还原。
+
+### F16 T4 快捷键:权威表、实现与复验                          [2026-10-17 15:25]
+- **规格来源(权威)**:原版 `localStorage.shortcut_schemes`,每套 **20 条**。Mac 方案全文(顺序照抄):
+  `Cmd+C` Copy from Terminal / `Cmd+V` Paste to Terminal / `Cmd+A` Select All in Terminal /
+  `Cmd+.` Show Terminal Side-panel / `Cmd+S` Save Workspace Template / `Cmd+L` Open Local Terminal /
+  `Cmd+B` Switch the Broadcast Mode / `Cmd+Shift+M` Toggle Workspace View Mode /
+  `Cmd+Alt+S` Open Serial Connection / **(无默认键)** Clear Terminal Buffer / `Cmd+F` Open Terminal Search /
+  **(无默认键)** Open Hosts Page / `Cmd+W` Close Tab / `Cmd+Shift+S` Open Snippets /
+  `Cmd+P` Open Port Forwarding / `Cmd+K` Open Command Palette / `Cmd+J` Jump to / `Cmd+T` New tab /
+  `Cmd+Shift+]` Next Tab / `Cmd+Shift+[` Previous Tab。
+  PC 方案同构(`Ctrl+Shift+C/V/A`、`Ctrl+Shift+W`、`Ctrl+T`、`Alt+←/→` …),两套都有 2 条原版**未设默认键**。
+- **终端搜索 UI(实测)**:`Cmd+F` 在**终端区右上**出现搜索栏,输入框占位符 **"Search terminal - ⌘ + F"**
+  (占位符自己写明快捷键),右侧有上/下箭头两个按钮。
+- **实现**:
+  - `src/renderer/keys.ts`:把上表**逐条照抄**(id/name/键位),加速键解析后按 `event.code` + 修饰键精确匹配;
+    捕获阶段监听(xterm 会吞键,必须先于它);焦点在输入框时让位给文本编辑,只放行应用级那几条。
+  - `src/renderer/app.ts`:11 条已接实体行为 —— 复制/粘贴/全选/清屏/搜索/新建/关闭/前后切换/本地终端/命令面板。
+  - 剪贴板走**主进程 `clipboard`**(新增 `clipboard:read/write` IPC):沙箱渲染层用 `navigator.clipboard` 不可靠。
+  - 搜索用 xterm 官方 `@xterm/addon-search`(与 canvas 插件同样 peer 声明较旧,故 try/catch 容错)。
+  - `Cmd+K` 做了命令面板(标签页 + 全部快捷键条目,未实现的标注"未实现")。
+- **复验(CDP 驱动自家实例)**:`Cmd+F` 出搜索栏且占位符与实测一致 ✓;`Cmd+K` 出面板(12 行)✓;
+  `Cmd+P` 作为**未实现项**弹出明确提示"「Open Port Forwarding」尚未实现(Cmd+P)" ✓;
+  `Cmd+A`+`Cmd+C` 后剪贴板确有终端缓冲内容(107 字符,内容正确)✓;`Cmd+L` 新开 Local shell tab ✓;
+  `Cmd+T`/`Cmd+W` 在**新派发器下仍工作**(2→3→2)✓;`Cmd+Shift+]` 切 tab ✓。
+- **有意设计**:未实现的 9 条不是静默吞键,而是弹提示说明"原版叫什么、键位是什么"。这样缺口可见,
+  也不会让人误以为按键坏了。未实现清单(9):Show Terminal Side-panel、Save Workspace Template、
+  Switch the Broadcast Mode、Toggle Workspace View Mode、Open Serial Connection、Open Hosts Page、
+  Open Snippets、Open Port Forwarding(属 T3)、Jump to。
+- 方法学:① 在输入框里按 `Cmd+P` 不触发是**正确**行为(焦点在文本框时应让位),别急着当 bug —— 我第一次
+  就误判了;② 快捷键类规格优先从应用自身的配置里取(这里 `shortcut_schemes` 一条不差),比逐个试按可靠得多。
