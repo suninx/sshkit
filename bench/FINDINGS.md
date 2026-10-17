@@ -125,18 +125,30 @@
   | 默认前景(`\033[0m`/`\033[39m` 后) | **#42b16e** | **#d8dee9** |
   | 会话中普通输出(远端留着 SGR 32) | ANSI 绿 **#258265** | ANSI 绿 **#589623** |
 
-  16 色调色板(实测,暗/亮):
+  16 色调色板 —— **权威值**(取自原版 ui-process 源码 `colorSchemesArray` 的 "Termius Dark" 条目,见 F13;
 
-  | | 原版 暗 → 亮 | sshkit 暗 → 亮 |
+  ⚠️ 本节早先那张"像素逐格反推"的表已作废:单字符笔画细、抗锯齿占比大,"最饱和四分位"取法对灰阶
+  尤其失真 —— 它把 ANSI 白记成了 `#6b6d7a`,真值是 `#e2e3e8`。教训:量调色板要用**实心色块**
+  (`printf '\033[41m      \033[0m'`,背景铺色无抗锯齿),不要用单字符):
+
+  | | 暗(40-47) | 亮(100-107) |
   |---|---|---|
-  | 红 | `#e8594f` → `#f87b75` | `#c62700` → `#e83f29` |
-  | 绿 | `#248164` → `#57d2be` | `#589623` → `#95dc4a` |
-  | 黄 | `#e7a85a` → `#f8c380` | `#c3a023` → `#fce75e` |
-  | 蓝 | `#13629a` → `#6e9ec0` | `#3565a0` → `#739cca` |
-  | 品红 | `#bb4180` → `#f685c1` | `#72537a` → `#a880a5` |
-  | 青 | `#2993f3` → `#4aa6fa` | `#2b969a` → `#53dee1` |
-  | 白 | `#6b6d7a` → `#686a76` | `#d0d3cc` → `#5c5f61` |
-  | 黑 | `#343950` → `#787e90` | `#2e3335` → `#555753` |
+  | 黑 | `#343851` | `#8d91a5` |
+  | 红 | `#f24e50` | `#ff7375` |
+  | 绿 | `#008463` | `#3ed7be` |
+  | 黄 | `#eca855` | `#fdc47d` |
+  | 蓝 | `#08639f` | `#6ba0c3` |
+  | 品红 | `#c13282` | `#ff7dc5` |
+  | 青 | `#2091f6` | `#44a7ff` |
+  | 白 | `#e2e3e8` | `#ffffff` |
+
+  以及 `backgroundColor:"#141729"`、`foregroundColor:"#21b568"`、`cursorColor:"#21b568"`、
+  `selectionColor:"#21b56880"`、`defaultFontSize:14`、`defaultFontFamily:"Source Code Pro"`
+  (实机测得终端字体是 **Meslo**,与常量不同 —— 见 F13 的待确认项)。
+
+  色彩空间提醒:同一真彩色**在两侧成像一致但都不等于配置值**(如配置 `#e8594f` 双方都成像 `#e26250`,
+  `#0080ff` → `#0383fb`;灰阶无偏差)。这是 macOS/Electron 的色彩空间转换,不是应用差异 ——
+  故"截图取色"只能用于**双方对比**,不能直接当作配置值。
 
   **主题目录(原版内置,≥20 套)**:Termius Dark / Termius Light / Flexoki Dark·Light /
   Kanagawa Wave·Dragon·Lotus / Hacker Blue·Green·Red / Everforest Dark·Light / Night Owl / Light Owl /
@@ -155,4 +167,40 @@
   5. 我方用 DOM 渲染器、原版用 canvas:若将来大量滚动/大回看,这是性能与实现路线差异(T8 相关)。
 - 方法学备注(下次少踩):① 16 色测试串里 8 暗与 8 亮之间**有一个空格**,漏算会让亮色整排错位一格;
   ② 量"默认前景"必须行首显式复位,否则量到的是 ANSI 绿;③ `drive.mjs` 逐键打字会把 `\` 吞掉、
-  且字母键码须用大写码(`p/r/t`=112/114/116 落在 VK_F1..F12 区间会被当功能键),故一律走 `--insert-file`。
+  且字母键码须用大写码(`p/r/t`=112/114/116 落在 VK_F1..F12 区间会被当功能键),故一律走 `--insert-file`;
+  ④ 调色板要用实心色块量,别用单字符(见上);⑤ 取样脚本别用固定 glob,换 tag 后会读到**旧截图**
+  (我就这么被骗过一次,差点得出"改了没生效"的错误结论)。
+
+### F13 T1 复刻实现与复验:16/16 色 Δ=0                        [2026-10-17 13:55]
+- 目标从"对照"转为"复刻"(用户明确):不再只记录差异,而是把值改成与原版一致并**重新测量复验**。
+- 权威真值来源:原版自身 `ui-process` 源码里的 `colorSchemesArray`(比像素反推可靠):
+  `"Termius Dark"` 的 16 色 `colorPaletteOverrides` + `backgroundColor/cursorColor/foregroundColor/
+  selectionColor`;同处还有 `defaultFontSize=14`、`defaultColorScheme="termius dark"`、
+  `defaultFontFamily="Source Code Pro"`、`minFontSize=4/maxFontSize=40`。
+  (同文件还坐着 **Termius Light / Flexoki Dark·Light / …** 全套主题,是 T1 主题体系的数据源。)
+- 字体:原版 `assets/MesloLGSNerdFontMono-{Regular,Bold}.ttf` = **Nerd Fonts 3.2.1**(name 表实测:
+  `Version 1.210;Nerd Fonts 3.2.1`,族名 `MesloLGS Nerd Font Mono`)。已从**上游 release** 取同版本,
+  与包内文件**逐字节一致**(sha256 相同),Apache-2.0,随附 `src/renderer/fonts/LICENSE.txt`。
+- 改动:`src/renderer/fonts/*`(字体)+ `index.html`(@font-face + CSP `font-src 'self'`)+
+  `app.ts`(字体/字号/行高/主题)+ `esbuild.mjs`(拷贝字体)+ 新增依赖 `@xterm/addon-canvas`。
+- 复验(两侧同一把尺子,`bench/probes/` 与实心色块法):
+
+  | 维度 | 原版 | 复刻后 | 结果 |
+  |---|---|---|---|
+  | 终端字体 | MesloLGS NF Mono 14px | 同一文件、14px | ✅ |
+  | 字符格 | 8×18 px(光标墨迹盒) | 8×18 px | ✅ |
+  | 底色(成像) | `#141728` | `#141728` | ✅ |
+  | 默认前景(成像) | `#42b16e` | `#42b16e` | ✅ |
+  | 16 色调色板(实心色块) | — | — | ✅ **16/16 Δ=0** |
+  | 渲染器 | canvas 四层 text/selection/link/cursor | 同签名 | ✅ |
+
+- 过程中的两个判断(留档):
+  1. `@xterm/addon-canvas@0.7.0` 声明的 peer 是 `xterm ^5`,而项目用 `xterm 6.0.0`;所有版本(含 beta)
+     都只声明 ^5。**没有据此放弃,而是实测**:插件在 6.0.0 上工作正常(四层 canvas 出现、
+     格宽由小数 8.429 量化为整数 8,与原版一致),故保留,并加了 try/catch 容错(失败退回 DOM 渲染)。
+  2. `lineHeight` 不是猜的:字体自然盒高 18px、`1.1→19`、`1.05→18`,按实测收敛。
+- 待确认项:`defaultFontFamily` 常量是 `"Source Code Pro"`,但实机终端是 **Meslo**(字号 14 与常量一致)。
+  由于字体设置不在 localStorage(在加密库内),此处按**实机观测**取 Meslo。若要以"出厂默认"为准,
+  应改回 Source Code Pro —— 需用户裁定。附带情报:原版打包 12 个 Nerd Font 等宽族
+  (Meslo/JetBrains Mono/Fira Code·Mono/SauceCodePro/Ubuntu Mono/Inconsolata/Anonymice Pro/
+  Caskaydia Cove/DejaVu Sans M/Droid Sans M),外加 UI 商业字体 **CircularXX**(**不可搬用**,我方 UI 用系统字体栈)。

@@ -69,7 +69,7 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 
 | # | 特性 | 观察点 | 我方实现 | 蓝图状态 |
 |---|---|---|---|---|
-| T1 | 终端渲染/主题/字体 | 默认配色、光标、字号、滚动回看 | `renderer/app.ts` + xterm 主题 | 06 部分覆盖;**F12 已实测**:字体 `Meslo 14px` vs 我方 `Menlo 13px`;行距 18 vs 15;背景 `#141728` vs `#101418`;**原版 20+ 套内置主题**、canvas 渲染 vs 我方 DOM 渲染 |
+| T1 | 终端渲染/主题/字体 | 默认配色、光标、字号、滚动回看 | `renderer/app.ts` + xterm 主题 | **渲染已复刻(F13)**:字体同文件/14px、格 8×18、底色与默认前景、16 色 `Δ=0`、canvas 四层渲染器 —— 全部与原版一致。**未做**:主题切换 UI(原版 20+ 套,数据源已定位在 `colorSchemesArray`)、字体选择器(原版打包 12 个等宽族)、字号设置(4–40) |
 | T2 | **多 Tab / 分屏** | Tab 标题规则、新建/关闭、分屏入口、拖拽排序 | 无(单终端) | ❌ **缺**;**F11 实测落点**:原版顶部 tab 条 `Vaults\|SFTP\|+`(`data-testid=horizontal-tabs`/`new-tab-button`),且 **SFTP 是 tab**;原料 `ui-root/INDEX.md:226,240,263`(`workspaceTab*`、split terminal 文案) |
 | T3 | **端口转发** | 本地/远程/动态转发 UI、规则按主机持久化、连接后状态 | 无 | ❌ **缺**;**F11 实测落点**:原版左栏一级导航项 `Port Forwarding`;原料 `analysis/native-inventory.md:89`(`SshDynamicPortForwarding` 19 符号)、`INDEX.md:128,285`(`dynamic-port-forwarding`、`"Set up port forwarding"`) |
 | T4 | **快捷键** | 新建/关闭 Tab、复制粘贴、清屏、搜索 | 无自定义 | ❌ **缺**(0 命中) |
