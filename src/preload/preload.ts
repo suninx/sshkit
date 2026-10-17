@@ -44,6 +44,20 @@ const api = {
     connect: (hostId: string, opts: { cols: number; rows: number }) => ipcRenderer.invoke("ssh:connect", hostId, opts),
   },
 
+  fwd: {
+    rules: () => ipcRenderer.invoke("fwd:rules"),
+    statuses: () => ipcRenderer.invoke("fwd:statuses"),
+    save: (rule: unknown) => ipcRenderer.invoke("fwd:save", rule),
+    remove: (id: string) => ipcRenderer.invoke("fwd:delete", id),
+    start: (rule: unknown) => ipcRenderer.invoke("fwd:start", rule),
+    stop: (id: string) => ipcRenderer.invoke("fwd:stop", id),
+    onStatus: (callback: (s: unknown) => void) => {
+      const handler = (_e: unknown, s: unknown) => callback(s);
+      ipcRenderer.on("fwd:status", handler);
+      return () => { ipcRenderer.off("fwd:status", handler); };
+    },
+  },
+
   sftp: {
     list: (sid: number, dir: string) => ipcRenderer.invoke("sftp:list", sid, dir),
     mkdir: (sid: number, dir: string) => ipcRenderer.invoke("sftp:mkdir", sid, dir),

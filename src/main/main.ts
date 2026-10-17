@@ -4,6 +4,7 @@ import { PtyService, type TerminalCreateOptions } from "./pty";
 import { HostStore } from "./store";
 import { SshService } from "./ssh";
 import { SftpController } from "./sftp";
+import { ForwardService, type ForwardRule } from "./forward";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
 import type { HostInput } from "../shared/host";
 
@@ -97,6 +98,21 @@ ipcMain.handle("ssh:connect", async (event, hostId: string, opts: { cols: number
 ipcMain.handle("clipboard:read", () => clipboard.readText());
 ipcMain.handle("clipboard:write", (_e, text: string) => { clipboard.writeText(text ?? ""); });
 
+/* ---------- T3 端口转发 ---------- */
+
+const forwardService = new ForwardService(
+  app.getPath("userData"),
+  (hostId) => sshService.clientOfHost(hostId),
+  (status) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("fwd:status", status); },
+);
+
+ipcMain.handle("fwd:rules", () => forwardService.listRules());
+ipcMain.handle("fwd:statuses", () => forwardService.listStatuses());
+ipcMain.handle("fwd:save", (_e, rule: ForwardRule) => forwardService.saveRule(rule));
+ipcMain.handle("fwd:delete", (_e, id: string) => { forwardService.deleteRule(id); return forwardService.listRules(); });
+ipcMain.handle("fwd:start", (_e, rule: ForwardRule) => forwardService.start(rule));
+ipcMain.handle("fwd:stop", (_e, id: string) => { forwardService.stop(id); return forwardService.statusOf(id); });
+
 ipcMain.handle("app:info", () => ({
   versions: { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node },
 }));
@@ -131,6 +147,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", () => {
+  forwardService.stopAll();
   ptyService.disposeAll();
   sshService.disposeAll();
 });

@@ -1,4 +1,5 @@
 import type { HostInput, HostRecord } from "../shared/host";
+import type { ForwardRule, ForwardStatus } from "../shared/forward";
 import type { SftpEntry, TransferProgress } from "../shared/sftp";
 
 interface SshkitBridge {
@@ -23,6 +24,15 @@ interface SshkitBridge {
   };
   ssh: {
     connect(hostId: string, opts: { cols: number; rows: number }): Promise<{ id: number }>;
+  };
+  fwd: {
+    rules(): Promise<ForwardRule[]>;
+    statuses(): Promise<ForwardStatus[]>;
+    save(rule: ForwardRule): Promise<ForwardRule>;
+    remove(id: string): Promise<ForwardRule[]>;
+    start(rule: ForwardRule): Promise<ForwardStatus>;
+    stop(id: string): Promise<ForwardStatus>;
+    onStatus(callback: (s: ForwardStatus) => void): () => void;
   };
   sftp: {
     list(sid: number, dir: string): Promise<{ path: string; entries: SftpEntry[] }>;

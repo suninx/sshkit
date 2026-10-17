@@ -11,6 +11,8 @@ interface SshSession {
   client: Client;
   stream: ClientChannel | null;
   decoder: StringDecoder | null;
+  /** T3:端口转发需要"按主机找到可用 ssh 通道" */
+  hostId?: string;
 }
 
 export class SshService {
@@ -26,7 +28,7 @@ export class SshService {
   ): Promise<number> {
     const id = this.nextId++;
     const client = new Client();
-    this.sessions.set(id, { client, stream: null, decoder: null });
+    this.sessions.set(id, { client, stream: null, decoder: null, hostId: host.id });
 
     const safeSend = (channel: string, ...payload: unknown[]) => {
       if (!sender.isDestroyed()) sender.send(channel, ...payload);
@@ -120,6 +122,13 @@ export class SshService {
 
   clientOf(sessionId: number): Client | undefined {
     return this.sessions.get(sessionId)?.client;
+  }
+
+  /** T3:该主机当前可用的 ssh 通道(取最新一个) */
+  clientOfHost(hostId: string): Client | undefined {
+    let found: Client | undefined;
+    for (const [, s] of this.sessions) if (s.hostId === hostId) found = s.client;
+    return found;
   }
 
   write(id: number, data: string): void {

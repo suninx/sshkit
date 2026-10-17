@@ -4,6 +4,7 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import { SearchAddon } from "@xterm/addon-search";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
+import { createFwdView } from "./fwd";
 import { installShortcuts, MAC_SHORTCUTS, type ShortcutDef } from "./keys";
 import type { HostRecord } from "../shared/host";
 
@@ -25,7 +26,7 @@ const btnSftp = document.getElementById("btn-sftp")! as HTMLButtonElement;
 type TabState = "idle" | "on" | "off";
 type Tab = {
   id: string;
-  kind: "session" | "newtab" | "sftp";
+  kind: "session" | "newtab" | "sftp" | "fwd";
   label: string;
   state: TabState;
   pane: HTMLDivElement;
@@ -114,7 +115,7 @@ function activateTab(id: string): void {
   setSftpSession(t.sftp);
   if (t.kind === "session" && t.sftp) lastSession = t.sftp;
   if (t.fit) { try { t.fit.fit(); } catch { /* transient */ } }
-  if (t.kind === "sftp") t.view?.onShow();
+  if (t.kind === "sftp" || t.kind === "fwd") t.view?.onShow();
   else if (t.kind === "newtab") t.pane.querySelector("input")?.focus();
   else t.term?.focus();
 }
@@ -221,6 +222,19 @@ function openSftpTab(): void {
   pane.append(view.el);
   const t: Tab = { id: `t${++seq}`, kind: "sftp", label: "SFTP", state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null, view };
+  tabs.push(t);
+  activateTab(t.id);
+}
+
+/** T3:端口转发面板(原版是左栏一级导航的目的地;我方以 tab 承载,与 SFTP 同理)。 */
+function openFwdTab(): void {
+  const existing = tabs.find((t) => t.kind === "fwd");
+  if (existing) { activateTab(existing.id); return; }
+  const pane = makePane();
+  const view = createFwdView();
+  pane.append(view.el);
+  const t: Tab = { id: `t${++seq}`, kind: "fwd", label: "Port Forwarding", state: "idle", pane,
+    term: null, fit: null, termId: null, disposers: [], sftp: null, view: view as unknown as SftpView };
   tabs.push(t);
   activateTab(t.id);
 }
@@ -431,6 +445,7 @@ function installAllShortcuts(): void {
     top: () => cycleTab(-1),
     localTerminal: () => void openSession("local"),
     commandPalette: () => openPalette(),
+    forwarding: () => openFwdTab(),
   };
   installShortcuts(shortcuts, (def: ShortcutDef) => {
     toast(`「${def.name}」尚未实现${def.accel ? `(${def.accel})` : "(原版亦未设默认键)"}`);
@@ -447,6 +462,14 @@ new ResizeObserver(() => {
 
 void (async () => {
   initHostPanel((host) => void openSession(host ? "ssh" : "local", host ?? undefined));
+  document.querySelectorAll<HTMLButtonElement>("#nav .nav-item").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#nav .nav-item").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      if (b.dataset.nav === "forwarding") openFwdTab();
+      else if (active && tabs.find((t) => t.id === active)?.kind === "fwd") newTabPage();
+    });
+  });
   installAllShortcuts();
   newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
 })();

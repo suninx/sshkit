@@ -81,8 +81,13 @@ function matches(e: KeyboardEvent, p: Parsed): boolean {
 const isTextField = (el: Element | null): boolean =>
   !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as HTMLElement).isContentEditable);
 
-/** 在输入框里也应当生效的应用级快捷键(其余在输入框内让位给文本编辑) */
-const APP_LEVEL = new Set(["openTerminalSearch", "commandPalette", "close", "newTab", "bottom", "top"]);
+/** 在输入框里也应当生效的应用级快捷键。
+    判据:该组合在文本编辑里**没有**既有语义(Cmd+P/Cmd+L/Cmd+K 都不是输入框的标准编辑键),
+    故放行;而 Cmd+A/C/V/C 在输入框里有标准语义,必须让位,否则会破坏正常输入。 */
+const APP_LEVEL = new Set([
+  "openTerminalSearch", "commandPalette", "close", "newTab", "bottom", "top",
+  "forwarding", "localTerminal", "terminals",
+]);
 
 /**
  * 安装全局快捷键。
