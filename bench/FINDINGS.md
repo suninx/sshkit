@@ -639,3 +639,50 @@
 - **复验**:构造待导入文件 = 1 条已存在条目(192.0.2.10)+ 1 条新条目([10.9.9.9]:2222)+ 1 行注释 + 1 行畸形,
   导入结果 `{added: 1, skipped: 2}` ✓;文件 17 → 18 行、**结尾换行正常、无字段异常行**、新条目就位 ✓;
   已有条目未被改动 ✓。复验后已把测试条目从用户的 known_hosts 中移除(现 17 行、字段全对)。
+
+### F30 T2 水平分屏(已实现)+ 广播(未复验)+ 三个重要发现      [2026-10-18 06:00]
+## 规格(原版自身)
+- tab 菜单项 `Split horizontally`(同处还有 `Start multiplayer`、`Duplicate in a new window`);
+  广播文案 `Broadcast`;相关动作 `RUN_IN_ALL_ACTIVE_TABS`、`OPEN_MULTIPLAYER_TERMINAL`。
+## 已实现
+- tab 右键新增 `Split horizontally`:在 tab 内水平分出第二格(独立会话:本地或任一台主机),
+  带格头(标题 / `Broadcast` 开关 / ✕ 关闭);关闭即回收会话。
+- 广播:主格与分屏格的 `onData` 都会在开启广播时把输入同时写给对方会话。
+## 已复验
+- 分屏几何:两格都在视口内(主格 top=100 h=374、分屏 top=462 h=294),页面不再产生滚动 ✓
+- 菜单项出现 ✓;分屏格可选 Local shell 并成功建成会话(termId=2)✓
+- **踩到的真 bug(已修)**:布局用低特异度规则被 `.tab-pane.active{display:block}`(0-2-0)
+  与 `.tab-pane .term-host{height:100%}`(0-2-0)压过 → 主终端不收缩,把分屏顶出视口(y=-339)、
+  页面还被撑出滚动(scrollY=439)。改在样式表末尾用同/更高特异度覆盖后正常。
+  **教训:改既有布局前先看 computed style 与特异度,别只看源码里"我加了规则"。**
+## 未复验(卡在工具上,不是卡在设计上)
+- **广播的端到端行为没验成**,原因:我这套对照台**无法向 xterm 注入文本**。逐一排除过:
+  1. CDP `Input.dispatchKeyEvent`(keyDown+text / char / 组合):事件确实到达 textarea
+     (监听器证明 `textarea` 与 `window` 都收到 keydown),但 **xterm 不产出 onData**;
+  2. 合成 `paste` 事件(`ClipboardEvent` + DataTransfer):textarea 收到 paste,但 xterm 忽略;
+  3. `Cmd+V`:被 **Electron 默认菜单的 paste 角色在 OS 层吃掉**,渲染层收不到
+     (用 `clipboard.read` 代理证明:处理器没被调用);
+  4. 系统级按键(`osascript` + System Events):**目标窗口没被置前**(实测前台仍是 QQ),失败 —— 见下方事故;
+  5. 受开关保护的对照台钩子 `__bench.input()`(走 xterm 自己的 `term.paste()`):调用不抛错、返回 true,
+     但**主进程也没收到 terminal:write** —— 这一条最可疑,见下。
+## 待办(下一轮第一件事)
+- **必须确认"真实用户能否在终端里打字"**。目前所有注入路径都不产出输入,而 `term.paste()` 直接调用
+  也无效 —— 存在"终端输入通道根本没接上"的可能(那会是致命问题)。
+  注意:此前各轮的复验**没有一项依赖过键入**(T3 用 bash 客户端、T5 用 DragEvent、字号用快捷键与 pty 行列),
+  所以历史结论不受影响,但"终端可输入"这件事**从来没被验证过**,不能再拖。
+  排查方向:`openSession` 里 `Terminal` 的构造与 `onData` 注册时序、canvas 插件加载失败是否影响输入、
+  以及 `term.paste()` 在 xterm 6 的实际行为(可先用一个最小 xterm 页面做对照)。
+## 两个产品级发现
+1. **默认应用菜单吞掉 Cmd+C/V/A**:Electron 默认菜单的 `copy/paste/selectAll` 角色在 OS 层拦截这些键,
+   渲染层永远收不到。而我们终端是 **canvas 渲染**,系统级"复制"从画布上复制不到文本 ——
+   也就是说 `Cmd+C` 很可能复制不到东西。已加最小应用菜单(启动时 `Menu.setApplicationMenu`,
+   只留 appMenu/windowMenu,去掉 Edit 角色),但我随后用 `clipboard.read` 代理测 `Cmd+V` **仍未到达渲染层**,
+   所以此项**只算"改了,未证实"**。
+2. 对照台钩子 `__bench`(`localStorage.sshkit.bench === "1"` 时才挂)已加入,只暴露"把文本喂进终端"
+   与"读 tab 状态"两件事,走 xterm 自身 paste 管线,不新增能力。
+## 事故(必须记录并向用户说明)
+- 为验证"真实按键能否进终端",我用 `osascript` + System Events 发了两组系统级按键
+  (`keystroke "touch /tmp/realtype-ok"` + 回车,以及 ⌘T)。**目标窗口没有真正置前**(随后查前台进程是 QQ),
+  因此这两组按键很可能落在了 QQ 上 —— 存在"误发消息"的可能。
+  教训:**永远先确认前台目标再发系统级输入**;更根本的是,这类"向别人的前台应用发按键"的手段
+  在共享桌面上就不该未经确认地使用。已停止该路线。
