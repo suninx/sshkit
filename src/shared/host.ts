@@ -6,6 +6,8 @@ export interface HostRecord {
   id: string;
   name: string;
   group?: string;
+  /** T7:标签。原版侧栏工具栏有 `Filter by tags`,可对主机打标签并按标签过滤(见 F26)。 */
+  tags?: string[];
   host: string;
   port: number;
   username: string;

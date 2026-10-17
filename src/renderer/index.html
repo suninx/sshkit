@@ -176,6 +176,20 @@
     .prefs select { flex: 1; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
       border-radius: 7px; padding: 6px; font-size: 13px; }
 
+    /* T7 复刻 —— 按标签过滤 + 布局切换(原版 Change layout 提供 List / Grid 两种,文案取自原版) */
+    #host-tags, #host-layout { border: 1px solid var(--wire); background: var(--bg); color: var(--fg-dim);
+      border-radius: 8px; width: 30px; cursor: pointer; font-size: 12px; }
+    #host-tags:hover, #host-layout:hover { color: var(--fg); }
+    #host-tags.on { color: var(--accent); border-color: var(--accent); }
+    .tag-chips { display: flex; flex-wrap: wrap; gap: 3px; padding: 3px 8px 5px 26px; }
+    .tag-chip { font-size: 10px; color: var(--fg-dim); background: rgba(255,255,255,.06);
+      border-radius: 4px; padding: 1px 5px; }
+    .tag-menu-item { display: flex; align-items: center; gap: 7px; }
+    .tag-menu-item input { margin: 0; }
+    #host-list.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-content: start; }
+    #host-list.grid .group-label { grid-column: 1 / -1; }
+    #host-list.grid .host-item { flex-direction: column; align-items: flex-start; gap: 2px; }
+
     /* T7 复刻 —— 主机簿搜索与排序(占位符与排序项取自原版实测,见 F20) */
     #host-tools { display: flex; gap: 6px; padding: 0 10px 8px; }
     #host-search { flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
@@ -400,6 +414,8 @@
       </div>
       <div id="host-tools">
         <input id="host-search" type="text" placeholder="Find a host or ssh user@hostname..." spellcheck="false" autocomplete="off">
+        <button id="host-tags" title="Filter by tags" aria-label="Filter by tags">🏷</button>
+        <button id="host-layout" title="Change layout" aria-label="Change layout">▤</button>
         <button id="host-sort" title="Sort options" aria-label="Sort options">⇅</button>
       </div>
       <div id="host-list"></div>
@@ -425,6 +441,9 @@
       <div class="row">
         <div><label>Name</label><input id="f-name" placeholder="prod-1"></div>
         <div><label>Group</label><input id="f-group" placeholder="work"></div>
+      </div>
+      <div class="row">
+        <div style="flex:1"><label>Tags</label><input id="f-tags" placeholder="prod, db (逗号分隔)"></div>
       </div>
       <div class="row">
         <div><label>Host</label><input id="f-host" placeholder="10.0.0.5" required></div>

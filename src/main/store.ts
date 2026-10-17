@@ -65,6 +65,11 @@ export class HostStore {
     return {
       name: String(input.name ?? "").trim() || host,
       group: input.group ? String(input.group).trim() : undefined,
+      // T7:标签。注意这里是**显式挑字段**的白名单式归一化 —— 漏一个字段,渲染层就永远读不到它
+      // (我第一版就漏了 tags,写进去读回是 null,排查了一轮)
+      tags: Array.isArray(input.tags)
+        ? [...new Set(input.tags.map((t) => String(t).trim()).filter(Boolean))].slice(0, 32)
+        : undefined,
       keyPath: input.keyPath ? String(input.keyPath).trim() : undefined,
       host, port, username, authType,
     };

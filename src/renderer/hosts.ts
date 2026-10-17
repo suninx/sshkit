@@ -87,6 +87,9 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
   };
   let sortMode: SortMode = (localStorage.getItem("sshkit.hostSort") as SortMode) || "az";
   let query = "";
+  /* T7:按标签过滤(原版工具栏 `Filter by tags`)+ 布局切换(原版 `Change layout` → List / Grid) */
+  let tagFilter = new Set<string>();
+  let layout: "list" | "grid" = (localStorage.getItem("sshkit.hostLayout") as "list" | "grid") || "list";
   const searchEl = document.getElementById("host-search")! as HTMLInputElement;
   const sortBtn = document.getElementById("host-sort")! as HTMLButtonElement;
 
@@ -124,6 +127,69 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
     }), 0);
   }
 
+  const tagsBtn = document.getElementById("host-tags")! as HTMLButtonElement;
+  const layoutBtn = document.getElementById("host-layout")! as HTMLButtonElement;
+
+  async function openTagMenu(): Promise<void> {
+    document.querySelectorAll(".sort-menu").forEach((e) => e.remove());
+    const all = new Set<string>();
+    for (const h of await bridge.hosts.list()) for (const tg of h.tags ?? []) all.add(tg);
+    const r = tagsBtn.getBoundingClientRect();
+    const menu = document.createElement("div");
+    menu.className = "sort-menu";
+    menu.style.left = `${Math.round(r.left - 130)}px`;
+    menu.style.top = `${Math.round(r.bottom + 4)}px`;
+    if (!all.size) {
+      const empty = document.createElement("div");
+      empty.className = "sort-item";
+      empty.textContent = "No tags yet";
+      menu.append(empty);
+    }
+    for (const tag of [...all].sort()) {
+      const label = document.createElement("label");
+      label.className = "sort-item tag-menu-item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = tagFilter.has(tag);
+      cb.addEventListener("change", () => {
+        if (cb.checked) tagFilter.add(tag); else tagFilter.delete(tag);
+        tagsBtn.classList.toggle("on", tagFilter.size > 0);
+        void refresh();
+      });
+      const sp = document.createElement("span");
+      sp.textContent = tag;
+      label.append(cb, sp);
+      menu.append(label);
+    }
+    if (tagFilter.size) {
+      const clear = document.createElement("button");
+      clear.className = "sort-item";
+      clear.textContent = "Clear filters";
+      clear.addEventListener("click", () => {
+        tagFilter.clear();
+        tagsBtn.classList.remove("on");
+        menu.remove();
+        void refresh();
+      });
+      menu.append(clear);
+    }
+    document.body.append(menu);
+    setTimeout(() => document.addEventListener("click", function once(ev) {
+      if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener("click", once); }
+    }), 0);
+  }
+  tagsBtn.addEventListener("click", (ev) => { ev.stopPropagation(); void openTagMenu(); });
+  layoutBtn.addEventListener("click", () => {
+    layout = layout === "list" ? "grid" : "list";
+    localStorage.setItem("sshkit.hostLayout", layout);
+    applyLayout();
+  });
+  function applyLayout(): void {
+    listEl.classList.toggle("grid", layout === "grid");
+    layoutBtn.textContent = layout === "grid" ? "▦" : "▤";
+  }
+  applyLayout();
+
   searchEl.addEventListener("input", () => { query = searchEl.value.trim().toLowerCase(); void refresh(); });
   sortBtn.addEventListener("click", (ev) => { ev.stopPropagation(); openSortMenu(); });
 
@@ -143,12 +209,13 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
       return;
     }
     // T7:先按搜索词过滤(名称 / 主机名 / 用户名),再按所选方式排序
-    const shown = query
+    const shown0 = query
       ? hosts.filter((h) =>
           h.name.toLowerCase().includes(query) ||
           h.host.toLowerCase().includes(query) ||
           h.username.toLowerCase().includes(query))
       : hosts;
+    const shown = tagFilter.size ? shown0.filter((h) => (h.tags ?? []).some((x) => tagFilter.has(x))) : shown0;
     if (!shown.length) {
       const hint = document.createElement("div");
       hint.className = "empty-hint";
@@ -181,6 +248,17 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
       <span class="name">${escapeHtml(name)}</span>
       <span class="small">${escapeHtml(small)}</span>
       ${host ? `<button class="btn" data-act="edit" title="edit">✎</button><button class="btn danger" data-act="del" title="delete">✕</button>` : ""}`;
+    if (host?.tags?.length) {
+      const chips = document.createElement("div");
+      chips.className = "tag-chips";
+      for (const tag of host.tags) {
+        const c = document.createElement("span");
+        c.className = "tag-chip";
+        c.textContent = tag;
+        chips.append(c);
+      }
+      el.append(chips);
+    }
     el.addEventListener("click", (e) => {
       const target = e.target as HTMLElement;
       const act = target.dataset?.act;
@@ -202,6 +280,7 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
     (document.getElementById("form-heading")! as HTMLElement).textContent = host ? `Edit ${host.name}` : "New host";
     setVal("f-name", host?.name ?? "");
     setVal("f-group", host?.group ?? "");
+    setVal("f-tags", (host?.tags ?? []).join(", "));
     setVal("f-host", host?.host ?? "");
     setVal("f-port", String(host?.port ?? 22));
     setVal("f-username", host?.username ?? "");
@@ -229,6 +308,7 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
       const input: HostInput = {
         name: getVal("f-name"),
         group: getVal("f-group") || undefined,
+        tags: getVal("f-tags") ? getVal("f-tags").split(",").map((x) => x.trim()).filter(Boolean) : undefined,
         host: getVal("f-host"),
         port: Number(getVal("f-port") || 22),
         username: getVal("f-username"),
