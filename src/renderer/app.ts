@@ -94,7 +94,60 @@ function setSftpSession(s: CurrentSession | null): void {
   btnSftp.disabled = !s;
 }
 
+/* T2:工作区视图模式。原版有 tabVariant `workspaceVerticalTab`(竖排)与 `horizontalTab`(横排),
+   以及动作 `toggleWorkspaceViewMode`;这里按此实现两种视图并持久化选择。 */
+let TABVIEW: "horizontal" | "workspace" = localStorage.getItem("sshkit.tabView") === "workspace" ? "workspace" : "horizontal";
+
+function applyTabView(): void {
+  document.body.dataset.tabview = TABVIEW;
+  const btn = document.getElementById("btn-tabview");
+  if (btn) {
+    btn.classList.toggle("on", TABVIEW === "workspace");
+    btn.title = TABVIEW === "workspace" ? "Horizontal tabs" : "Workspace view";
+  }
+  // 布局变了,终端要重新 fit(否则 pty 的 cols 还是旧宽度)
+  const t = activeTab();
+  if (t?.fit) { try { t.fit.fit(); } catch { /* 布局未稳 */ } }
+  if (t?.split?.fit) { try { t.split.fit.fit(); } catch { /* ignore */ } }
+}
+
+function toggleTabView(): void {
+  TABVIEW = TABVIEW === "workspace" ? "horizontal" : "workspace";
+  localStorage.setItem("sshkit.tabView", TABVIEW);
+  applyTabView();
+  renderTabs();
+}
+
+/** 工作区视图下的左侧竖排 tab 栏(active 态对应原版 `active-workspace-tab`) */
+function renderWsRail(): void {
+  const rail = document.getElementById("ws-rail");
+  if (!rail) return;
+  if (!tabs.length) {
+    rail.innerHTML = `<div class="ws-empty">No open tabs</div>`;
+    return;
+  }
+  rail.replaceChildren(
+    ...tabs.map((t) => {
+      const row = document.createElement("div");
+      row.className = `ws-row${t.id === active ? " active" : ""}`;
+      row.dataset.tabId = t.id;
+      row.dataset.kind = t.kind;
+      row.innerHTML = `<span class="ws-ico"></span><span class="ws-lbl"></span><button class="ws-x" title="Close">✕</button>`;
+      (row.querySelector(".ws-ico")! as HTMLElement).textContent =
+        t.kind === "session" ? (t.disconnected ? "⚠" : "›_") : t.kind === "sftp" ? "⇄" : "＋";
+      (row.querySelector(".ws-lbl")! as HTMLElement).textContent = t.customLabel ?? t.label;
+      row.addEventListener("click", () => activateTab(t.id));
+      (row.querySelector(".ws-x")! as HTMLElement).addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        closeTab(t.id);
+      });
+      return row;
+    }),
+  );
+}
+
 function renderTabs(): void {
+  renderWsRail();
   tabsEl.replaceChildren(
     ...tabs.map((t) => {
       const el = document.createElement("div");
@@ -653,6 +706,9 @@ function openPrefs(): void {
   host.append(el);
 }
 
+/* T2:工作区视图开关(原版动作 toggleWorkspaceViewMode) */
+document.getElementById("btn-tabview")!.addEventListener("click", () => toggleTabView());
+
 document.getElementById("btn-prefs")!.addEventListener("click", (ev) => {
   ev.stopPropagation();
   openPrefs();
@@ -1032,6 +1088,7 @@ void (async () => {
   // T8:reload/关窗时收掉本次界面开的会话(否则主进程留孤儿)
   window.addEventListener("beforeunload", () => { try { bridge.disposeAllSessions(); } catch { /* ignore */ } });
   applyAppearance();
+  applyTabView();   // T2:恢复上次的 tab 视图模式(横排 / 工作区竖排)
   installHostKeyDialog();
   installAllShortcuts();
   newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell

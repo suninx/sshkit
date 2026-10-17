@@ -433,6 +433,23 @@
     .tab-pane.active { display: flex; flex-direction: column; }
     .tab-pane.active .term-host { flex: 1 1 50%; min-height: 0; height: auto; overflow: hidden; }
     .tab-pane.active .split-pane { flex: 1 1 50%; min-height: 0; }
+
+    /* T2 复刻 —— 工作区视图(原版 tabVariant: workspaceVerticalTab / active-workspace-tab /
+       toggleWorkspaceViewMode):tab 不再横向排在上方,而是竖排在终端左侧。 */
+    #main-body { flex: 1 1 auto; min-height: 0; display: flex; }
+    #main-body > #stage { flex: 1 1 auto; min-width: 0; min-height: 0; }
+    #ws-rail { display: none; }
+    body[data-tabview="workspace"] #tabstrip { display: none; }
+    body[data-tabview="workspace"] #ws-rail { display: flex; flex-direction: column; width: 190px;
+      flex: 0 0 190px; overflow-y: auto; border-right: 1px solid var(--wire); background: var(--bg2); }
+    .ws-row { display: flex; align-items: center; gap: 7px; padding: 7px 9px; cursor: pointer;
+      font-size: 12px; color: var(--fg-dim); border-bottom: 1px solid var(--wire); }
+    .ws-row:hover { background: rgba(255,255,255,.04); }
+    .ws-row.active { background: rgba(32,145,246,.16); color: var(--fg); }
+    .ws-row .ws-lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ws-row .ws-x { border: 0; background: transparent; color: var(--fg-dim); cursor: pointer; }
+    .ws-row .ws-x:hover { color: var(--danger); }
+    .ws-empty { padding: 10px; font-size: 12px; color: var(--fg-dim); }
 </style>
 </head>
 <body>
@@ -466,10 +483,14 @@
         <span id="status-dot"></span>
         <span id="term-title">no session</span>
         <span style="flex:1"></span>
+        <button id="btn-tabview" class="btn" title="Workspace view">▥</button>
         <button id="btn-prefs" class="btn" title="Appearance — theme / font">🎨</button>
         <button id="btn-sftp" class="btn" disabled title="SFTP browser (ssh session required)">⇄ SFTP</button>
       </div>
-      <div id="stage"></div>
+      <div id="main-body">
+        <div id="ws-rail"></div>
+        <div id="stage"></div>
+      </div>
     </section>
   </div>
   <div id="form-backdrop">
