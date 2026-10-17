@@ -1,5 +1,6 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { CanvasAddon } from "@xterm/addon-canvas";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { initSftpPane, type CurrentSession } from "./sftp";
 import type { HostRecord } from "../shared/host";
@@ -50,17 +51,58 @@ async function disposeCurrent(): Promise<void> {
   if (term) { try { term.dispose(); } catch { /* already gone */ } term = null; }
 }
 
+/* T1 复刻 —— 取值来源:原版自身 ui-process 里的 colorSchemesArray 中 "Termius Dark" 条目
+   (defaultFontSize=14、backgroundColor #141729、foreground/cursor #21b568、
+    selectionColor #21b56880、以及 16 色 colorPaletteOverrides)。这是权威值;
+   早先我用像素反推的表有几处偏差(如 white 误记 #6b6d7a),已作废。
+   另:像素对照证明两侧渲染管线等价 —— 同一真彩色在双方成像一致(见 bench/FINDINGS.md F12)。 */
+const TERM_FONT = '"MesloLGS NF", Menlo, "DejaVu Sans Mono", monospace';
+const TERM_FONT_SIZE = 14; // 原版 defaultFontSize=14,实机同
+const TERM_LINE_HEIGHT = 1.05; // 目标格高 18px(原版光标墨迹盒实测 8×18;1.1→19、1.05→18)
+const TERM_THEME = {
+  background: "#141729",
+  foreground: "#21b568",
+  cursor: "#21b568",
+  selectionBackground: "#21b56880",
+  black: "#343851",
+  red: "#f24e50",
+  green: "#008463",
+  yellow: "#eca855",
+  blue: "#08639f",
+  magenta: "#c13282",
+  cyan: "#2091f6",
+  white: "#e2e3e8",
+  brightBlack: "#8d91a5",
+  brightRed: "#ff7375",
+  brightGreen: "#3ed7be",
+  brightYellow: "#fdc47d",
+  brightBlue: "#6ba0c3",
+  brightMagenta: "#ff7dc5",
+  brightCyan: "#44a7ff",
+  brightWhite: "#ffffff",
+};
+
 async function startSession(kind: "local" | "ssh", host?: HostRecord): Promise<void> {
   hideBanner();
   await disposeCurrent();
 
   const fit = new FitAddon();
   const t = new Terminal({
-    fontFamily: "Menlo, DejaVu Sans Mono, monospace",
-    fontSize: 13,
-    theme: { background: "#101418", foreground: "#d8dee9", cursor: "#88c0d0" },
+    fontFamily: TERM_FONT,
+    fontSize: TERM_FONT_SIZE,
+    lineHeight: TERM_LINE_HEIGHT,
+    theme: TERM_THEME,
   });
   t.loadAddon(fit);
+  /* 原版终端用 canvas 渲染(四层 text/selection/link/cursor,格宽量化为整数 8px);
+     我方默认 DOM 渲染保留小数格宽(8.429)。这里尝试同款 canvas 插件 ——
+     但 @xterm/addon-canvas 0.7.0 的 peer 是 xterm ^5(我们是 6.0.0),故必须容错:
+     失败就退回 DOM 渲染,不能让终端起不来。 */
+  try {
+    t.loadAddon(new CanvasAddon());
+  } catch (e) {
+    console.warn("[term] canvas 插件不可用,退回 DOM 渲染:", e);
+  }
   t.open(termWrap);
   fit.fit();
   term = t;

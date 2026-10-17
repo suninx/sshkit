@@ -27,4 +27,5 @@ await esbuild.build({
 
 cpSync("src/renderer/index.html", "dist/renderer/index.html");
 cpSync("node_modules/@xterm/xterm/css/xterm.css", "dist/renderer/xterm.css");
+cpSync("src/renderer/fonts", "dist/renderer/fonts", { recursive: true });
 console.log("build ok → dist/");

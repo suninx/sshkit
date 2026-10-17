@@ -2,9 +2,21 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'">
   <link rel="stylesheet" href="./xterm.css">
   <style>
+    /* T1 复刻:原版终端字体 = MesloLGS Nerd Font Mono(Nerd Fonts 3.2.1,Apache-2.0)。
+       字体取自上游官方 release,与原版包内文件逐字节一致;见 src/renderer/fonts/LICENSE.txt。 */
+    @font-face {
+      font-family: "MesloLGS NF";
+      src: url("./fonts/MesloLGSNerdFontMono-Regular.ttf") format("truetype");
+      font-weight: 400; font-style: normal; font-display: block;
+    }
+    @font-face {
+      font-family: "MesloLGS NF";
+      src: url("./fonts/MesloLGSNerdFontMono-Bold.ttf") format("truetype");
+      font-weight: 700; font-style: normal; font-display: block;
+    }
     :root {
       --bg: #101418; --bg2: #161b22; --bg3: #1e252e;
       --fg: #d8dee9; --fg-dim: #6b7a8c; --accent: #88c0d0; --danger: #bf616a;
