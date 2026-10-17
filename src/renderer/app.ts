@@ -180,14 +180,21 @@ async function sendSnippet(command: string): Promise<void> {
 async function jumpTo(host: HostRecord): Promise<void> {
   const tab = activeTab();
   if (!tab || tab.kind !== "session" || !tab.term) { await openSession("ssh", host); return; }
+  tab.host = host;
+  tab.label = host.name;
+  tab.customLabel = undefined;
+  await reconnectTab(tab);
+}
+
+/** 用同一个终端重新握手(原版 tab 菜单第一项就是 `Reconnect`)。 */
+async function reconnectTab(tab: Tab): Promise<void> {
+  if (!tab.term || !tab.host) return;
+  const host = tab.host;
   const t = tab.term;
   if (tab.termId !== null) { try { bridge.dispose(tab.termId); } catch { /* 已断开 */ } }
   for (const d of tab.disposers) { try { d(); } catch { /* ignore */ } }
   tab.disposers = [];
   tab.termId = null;
-  tab.host = host;
-  tab.label = host.name;
-  tab.customLabel = undefined;
   tab.retries = 0;
   tab.autoRetryOff = false;
   tab.disconnected = undefined;
@@ -474,9 +481,12 @@ function openTabMenu(t: Tab, x: number, y: number): void {
     b.addEventListener("click", () => { menu.remove(); fn(); });
     menu.append(b);
   };
+  /* 菜单项与顺序取自原版自身字面量(F41 实测整段挖出):
+     Reconnect / Rename / Duplicate / Duplicate in a new window / Split horizontally / Start multiplayer / Close */
+  item("Reconnect", () => { void reconnectTab(t); });
   item("Rename", () => startRenameTab(t));
   item("Duplicate", () => duplicateTab(t));
-  // 原版文案(与 Start multiplayer / Duplicate in a new window 同处一个菜单)
+  item("Duplicate in a new window", () => { void bridge.window.create(); });
   if (t.kind === "session" && !t.split) item("Split horizontally", () => splitTab(t));
   item("Close", () => closeTab(t.id));
   document.body.append(menu);

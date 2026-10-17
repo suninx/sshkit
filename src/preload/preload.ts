@@ -45,6 +45,9 @@ const api = {
     connect: (hostId: string, opts: { cols: number; rows: number }) => ipcRenderer.invoke("ssh:connect", hostId, opts),
   },
 
+  window: {
+    create: () => ipcRenderer.invoke("window:new") as Promise<boolean>,
+  },
   snippets: {
     list: () => ipcRenderer.invoke("snippets:list") as Promise<Array<{ id: string; name: string; command: string }>>,
     save: (input: { id?: string; name: string; command: string }) => ipcRenderer.invoke("snippets:save", input),

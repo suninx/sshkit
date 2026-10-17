@@ -144,6 +144,8 @@ ipcMain.on("knownhost:answer", (_e, reqId: string, action: "continue" | "add" | 
 });
 ipcMain.handle("knownhost:list", () => listKnownHosts());
 const snippetStore = new SnippetStore();
+ipcMain.handle("window:new", () => { createWindow(); return true; });
+
 ipcMain.handle("snippets:list", () => snippetStore.list());
 ipcMain.handle("snippets:save", (_e, input: { id?: string; name: string; command: string }) => snippetStore.saveSnippet(input));
 ipcMain.handle("snippets:remove", (_e, id: string) => snippetStore.remove(id));

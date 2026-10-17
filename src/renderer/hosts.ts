@@ -28,6 +28,10 @@ interface SshkitBridge {
   ssh: {
     connect(hostId: string, opts: { cols: number; rows: number }): Promise<{ id: number }>;
   };
+  window: {
+    /** 注意:这里不能叫 new() —— 对象类型里的 new() 是构造签名,会被 TS 当成构造函数。 */
+    create(): Promise<boolean>;
+  };
   snippets: {
     list(): Promise<Array<{ id: string; name: string; command: string }>>;
     save(input: { id?: string; name: string; command: string }): Promise<{ id: string; name: string; command: string }>;
