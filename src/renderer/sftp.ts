@@ -22,6 +22,10 @@ export interface SftpView {
 
 type SortKey = "name" | "date" | "size" | "kind";
 
+/* T5:栏间拖拽传输。原版 SFTP 是双栏,拖到对面栏即传输(左→右=上传、右→左=下载)。
+   拖拽源放在模块级:HTML5 的 dragstart/drop 分属两个元素,靠它传递"谁被拖了"。 */
+let dragSrc: { which: "local" | "remote"; entry: SftpEntry } | null = null;
+
 interface PaneState {
   which: "local" | "remote";
   dir: string;
@@ -131,6 +135,21 @@ export function createSftpView(
       crumbsEl: host.querySelector(".sp-crumbs")! as HTMLElement,
       titleEl: host.querySelector(".sp-title")! as HTMLElement,
     };
+    // T5:把"对面栏"当放置目标(同栏内拖动不触发传输)
+    const bodyEl = host.querySelector(".sp-body")! as HTMLElement;
+    bodyEl.addEventListener("dragover", (ev) => {
+      if (!dragSrc || dragSrc.which === st.which) return;
+      ev.preventDefault();
+      bodyEl.classList.add("drop-hot");
+    });
+    bodyEl.addEventListener("dragleave", () => bodyEl.classList.remove("drop-hot"));
+    bodyEl.addEventListener("drop", (ev) => {
+      ev.preventDefault();
+      bodyEl.classList.remove("drop-hot");
+      if (!dragSrc || dragSrc.which === st.which) return;
+      void dropTransfer(st, dragSrc);
+    });
+
     const filterBox = host.querySelector(".sp-filter")! as HTMLElement;
     const filterInput = filterBox.querySelector("input")! as HTMLInputElement;
     filterInput.addEventListener("input", () => { st.filter = filterInput.value.trim().toLowerCase(); render(st); });
@@ -293,6 +312,18 @@ export function createSftpView(
       const kd = document.createElement("span");
       kd.className = "sp-kind"; kd.textContent = e.isDir ? "folder" : "file";
       row.append(nm, dt, sz, kd);
+      // T5:行可拖到对面栏
+      row.draggable = true;
+      row.addEventListener("dragstart", (ev) => {
+        dragSrc = { which: st.which, entry: e };
+        ev.dataTransfer?.setData("text/plain", e.name);
+        row.classList.add("dragging");
+      });
+      row.addEventListener("dragend", () => {
+        dragSrc = null;
+        document.querySelectorAll(".sp-row.dragging").forEach((n) => n.classList.remove("dragging"));
+        document.querySelectorAll(".sp-body.drop-hot").forEach((n) => n.classList.remove("drop-hot"));
+      });
       row.addEventListener("click", (ev) => {
         const multi = ev.metaKey || ev.ctrlKey;
         const range = ev.shiftKey;
@@ -385,6 +416,16 @@ export function createSftpView(
     st.selSet.clear(); st.sel = null;
     banner(`已删除 ${done}/${targets.length} 项`);
     await refresh(st);
+  }
+
+  /** T5:把被拖条目放到本栏 —— 等价于"选中它再点传输",方向按拖拽源决定 */
+  async function dropTransfer(target: PaneState, src: { which: "local" | "remote"; entry: SftpEntry }): Promise<void> {
+    const from = src.which === "local" ? local : remote;
+    from.sel = src.entry;
+    from.selSet = new Set([src.entry.name]);
+    await transfer(src.which === "local" ? "up" : "down");
+    await refresh(target);
+    await refresh(from);
   }
 
   /** 批量传输:逐个走原有的单文件传输 */

@@ -92,8 +92,15 @@ export function addHostKey(host: string, keyData: Buffer, file = KNOWN_HOSTS, re
   try {
     mkdirSync(path.dirname(file), { recursive: true });
     if (replace) removeKnownHost(host, file);
+    if (process.env.SSHKIT_BENCH) console.log("[bench] addHostKey →", file, "replace=", replace, "host=", host, "blob=", keyData?.length);
     appendFileSync(file, `${host} ${keyType} ${keyData.toString("base64")}\n`);
-  } catch { /* 只读家目录等:连接照常,只是没写盘 */ }
+    if (process.env.SSHKIT_BENCH) console.log("[bench] addHostKey 写后行数:", readFileSync(file, "utf8").split("\n").filter((l) => l.includes(host)).length);
+  } catch (err) {
+    /* 只读家目录等:连接照常,只是没写盘。
+       但**必须留下痕迹** —— 这里静默吞掉过一次真 bug(replace 分支删了旧条目却没写新条目),
+       排查时只能靠猜。bench 模式下打印出来。 */
+    if (process.env.SSHKIT_BENCH) console.error("[knownhosts] addHostKey 失败:", err);
+  }
 }
 
 export function listKnownHosts(file = KNOWN_HOSTS): KnownHostRow[] {

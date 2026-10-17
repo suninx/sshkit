@@ -161,7 +161,10 @@ export class SshService {
       username: host.username,
       keepaliveInterval: 15000,
       keepaliveCountMax: 5,
-      readyTimeout: 15000,
+      /* 主机密钥询问要等用户作答(T6)。ssh2 默认 readyTimeout 会把"用户还没点"的连接自己掐断 ——
+         实测表现为:对话框弹出来后过十几秒**凭空消失**,连接变成 failed,用户以为是自己点错了。
+         这里给足作答时间,与标注的 120s 应答窗口一致。 */
+      readyTimeout: 120_000,
     };
     switch (host.authType) {
       case "password":
