@@ -411,6 +411,17 @@ function applyAppearance(): void {
   }
 }
 
+/** 统一入口:改字号 → 存盘 → 应用到所有终端 */
+function setFontSize(next: number): void {
+  fontSize = Math.min(40, Math.max(4, Math.round(next)));
+  localStorage.setItem("sshkit.fontSize", String(fontSize));
+  applyAppearance();
+  const i = document.querySelector(".ps-size") as HTMLInputElement | null;
+  if (i) i.value = String(fontSize);
+  const v = document.querySelector(".ps-val");
+  if (v) v.textContent = `${fontSize}px`;
+}
+
 function openPrefs(): void {
   const existing = document.querySelector(".prefs");
   if (existing) { existing.remove(); return; }
@@ -423,6 +434,7 @@ function openPrefs(): void {
       <button class="btn ps-down">A−</button>
       <input type="number" class="ps-size" min="4" max="40" step="1">
       <button class="btn ps-up">A+</button>
+      <button class="btn ps-reset" title="Reset terminal font size to default">Reset</button>
       <span style="flex:1"></span><span class="ps-val" style="font-size:12px;color:var(--fg-dim)"></span>
     </div></div>
     <div><h4>Font</h4><div class="prefs-row"><select class="ps-font"></select></div></div>`;
@@ -467,16 +479,9 @@ function openPrefs(): void {
     applyAppearance();
     syncSize();
   });
-  (el.querySelector(".ps-up")! as HTMLElement).addEventListener("click", () => {
-    fontSize = Math.min(40, fontSize + 1);
-    localStorage.setItem("sshkit.fontSize", String(fontSize));
-    applyAppearance(); syncSize();
-  });
-  (el.querySelector(".ps-down")! as HTMLElement).addEventListener("click", () => {
-    fontSize = Math.max(4, fontSize - 1);
-    localStorage.setItem("sshkit.fontSize", String(fontSize));
-    applyAppearance(); syncSize();
-  });
+  (el.querySelector(".ps-up")! as HTMLElement).addEventListener("click", () => { setFontSize(fontSize + 1); syncSize(); });
+  (el.querySelector(".ps-down")! as HTMLElement).addEventListener("click", () => { setFontSize(fontSize - 1); syncSize(); });
+  (el.querySelector(".ps-reset")! as HTMLElement).addEventListener("click", () => { setFontSize(14); syncSize(); });
   syncSize();
 
   const fontSel = el.querySelector(".ps-font")! as HTMLSelectElement;
@@ -815,6 +820,9 @@ function installAllShortcuts(): void {
     top: () => cycleTab(-1),
     localTerminal: () => void openSession("local"),
     commandPalette: () => openPalette(),
+    // 原版 View 菜单:字号增减/复原(CmdOrCtrl+Plus / CmdOrCtrl+-;复原无加速键)
+    increaseTerminalFontSize: () => setFontSize(fontSize + 1),
+    decreaseTerminalFontSize: () => setFontSize(fontSize - 1),
     forwarding: () => openFwdTab(),
   };
   installShortcuts(shortcuts, (def: ShortcutDef) => {

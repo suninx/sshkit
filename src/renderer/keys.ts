@@ -36,6 +36,17 @@ export const MAC_SHORTCUTS: ShortcutDef[] = [
   { id: "top", name: "Previous Tab", accel: "Cmd+Shift+[" },
 ];
 
+/** 终端级快捷键。**来源不同**于上面那 20 条(那是应用自身的 shortcut_schemes):
+    这些取自原版**主进程的 View 菜单加速键**(F25):
+      Increase terminal font size → CmdOrCtrl+Plus
+      Decrease terminal font size → CmdOrCtrl+-
+      Reset terminal font size to default → 无加速键(仅菜单项)
+    实现上 `Cmd+=` 也一并接受(US 布局上 + 需要 Shift,macOS 用户实际按的多是 Cmd+=)。 */
+export const TERMINAL_SHORTCUTS: ShortcutDef[] = [
+  { id: "increaseTerminalFontSize", name: "Increase terminal font size", accel: "Cmd+=" },
+  { id: "decreaseTerminalFontSize", name: "Decrease terminal font size", accel: "Cmd+-" },
+];
+
 interface Parsed {
   code: string;
   meta: boolean;
@@ -98,13 +109,23 @@ export function installShortcuts(
   handlers: Record<string, () => void>,
   onMissing: (def: ShortcutDef) => void,
 ): void {
-  const table = MAC_SHORTCUTS
+  const table = [...MAC_SHORTCUTS, ...TERMINAL_SHORTCUTS]
     .map((def) => ({ def, parsed: def.accel ? parseAccel(def.accel) : null }))
     .filter((x): x is { def: ShortcutDef; parsed: Parsed } => x.parsed !== null);
+
+  /** 字号键在 US 布局上 + 与 = 同键:两者都接受(原版是菜单加速键 Plus/Minus) */
+  const fontKey = (e: KeyboardEvent, dir: "up" | "down"): boolean => {
+    if (!e.metaKey && !e.ctrlKey) return false;
+    if (e.altKey) return false;
+    return dir === "up" ? (e.code === "Equal" || e.code === "NumpadAdd") : (e.code === "Minus" || e.code === "NumpadSubtract");
+  };
 
   window.addEventListener(
     "keydown",
     (e) => {
+      if (fontKey(e, "up") && handlers.increaseTerminalFontSize) { e.preventDefault(); handlers.increaseTerminalFontSize(); return; }
+      if (fontKey(e, "down") && handlers.decreaseTerminalFontSize) { e.preventDefault(); handlers.decreaseTerminalFontSize(); return; }
+
       for (const { def, parsed } of table) {
         if (!matches(e, parsed)) continue;
         if (isTextField(document.activeElement) && !APP_LEVEL.has(def.id)) return;
