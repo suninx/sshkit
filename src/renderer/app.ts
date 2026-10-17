@@ -44,6 +44,8 @@ type Tab = {
   host?: HostRecord;
   /** T8:该 tab 当前的断开状态(用于全局断开条) */
   disconnected?: { reason: string };
+  /** T2:右键重命名后的显示名(原版动作名 SINGLE_TERMINAL_TAB_RENAMED) */
+  customLabel?: string;
   retries?: number;
   /** T8:正在自动重连中,避免并发跑出第二个重试循环 */
   retrying?: boolean;
@@ -88,12 +90,49 @@ function renderTabs(): void {
       el.setAttribute("role", "tab");
       el.setAttribute("aria-selected", t.id === active ? "true" : "false");
       el.dataset.tabId = t.id;
+      el.dataset.kind = t.kind; // 便于对照台断言,也便于排查
+
+      /* T2:拖拽重排。原版有 over-horizontal-tab / over-horizontal-tabs-area / over-draft-horizontal-tab
+         三种拖放态,说明 tab 可拖到别的 tab 上(插入其位置)也可拖到条上(移到最后)。 */
+      el.draggable = true;
+      el.addEventListener("dragstart", (ev) => {
+        dragTabId = t.id;
+        ev.dataTransfer?.setData("text/plain", t.id);
+        el.classList.add("dragging");
+      });
+      el.addEventListener("dragend", () => {
+        dragTabId = null;
+        document.querySelectorAll(".tab-btn").forEach((n) => n.classList.remove("dragging", "drop-before", "drop-after"));
+      });
+      el.addEventListener("dragover", (ev) => {
+        if (!dragTabId || dragTabId === t.id) return;
+        ev.preventDefault();
+        const r = el.getBoundingClientRect();
+        const after = ev.clientX > r.left + r.width / 2;
+        el.classList.toggle("drop-after", after);
+        el.classList.toggle("drop-before", !after);
+      });
+      el.addEventListener("dragleave", () => el.classList.remove("drop-before", "drop-after"));
+      el.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        const from = dragTabId;
+        el.classList.remove("drop-before", "drop-after");
+        if (!from || from === t.id) return;
+        const r = el.getBoundingClientRect();
+        const after = ev.clientX > r.left + r.width / 2;
+        moveTab(from, t.id, after);
+      });
+      // 右键:原版有 TAB_CONTEXT_MENU_OPENED;菜单项取有据可查的 Rename / Duplicate / Close
+      el.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        openTabMenu(t, ev.clientX, ev.clientY);
+      });
 
       const dotEl = document.createElement("span");
       dotEl.className = `dot${t.state === "on" ? " on" : ""}`;
       const lbl = document.createElement("span");
       lbl.className = "lbl";
-      lbl.textContent = t.label;
+      lbl.textContent = t.customLabel ?? t.label;
 
       if (t.kind === "session") {
         // 原版实测:会话 tab 的关闭按钮在**左侧**(close-tab x=264,而该 tab 起于 259)
@@ -111,6 +150,79 @@ function renderTabs(): void {
       return el;
     }),
   );
+}
+
+let dragTabId: string | null = null;
+
+/** 把 from 移到 target 的前/后;拖到条空白处则移到最后 */
+function moveTab(from: string, target: string, after: boolean): void {
+  const i = tabs.findIndex((t) => t.id === from);
+  if (i < 0) return;
+  const [moved] = tabs.splice(i, 1);
+  let j = tabs.findIndex((t) => t.id === target);
+  if (j < 0) j = tabs.length - 1;
+  tabs.splice(after ? j + 1 : j, 0, moved);
+  renderTabs();
+}
+
+function openTabMenu(t: Tab, x: number, y: number): void {
+  document.querySelectorAll(".tab-menu").forEach((n) => n.remove());
+  const menu = document.createElement("div");
+  menu.className = "tab-menu";
+  menu.style.left = `${Math.round(x)}px`;
+  menu.style.top = `${Math.round(y)}px`;
+  const item = (label: string, fn: () => void): void => {
+    const b = document.createElement("button");
+    b.className = "tab-menu-item";
+    b.textContent = label;
+    b.addEventListener("click", () => { menu.remove(); fn(); });
+    menu.append(b);
+  };
+  item("Rename", () => startRenameTab(t));
+  item("Duplicate", () => duplicateTab(t));
+  item("Close", () => closeTab(t.id));
+  document.body.append(menu);
+  setTimeout(() => document.addEventListener("click", function once(ev) {
+    if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener("click", once); }
+  }), 0);
+}
+
+/** 原版动作名 SINGLE_TERMINAL_TAB_RENAMED:tab 可重命名 */
+function startRenameTab(t: Tab): void {
+  activateTab(t.id);
+  const el = document.querySelector(`.tab-btn[data-tab-id="${t.id}"]`);
+  const lbl = el?.querySelector(".lbl") as HTMLElement | null;
+  if (!lbl) return;
+  const input = document.createElement("input");
+  input.className = "tab-rename";
+  input.value = t.customLabel ?? t.label;
+  lbl.replaceChildren(input);
+  input.focus();
+  input.select();
+  const commit = (save: boolean): void => {
+    if (save && input.value.trim()) t.customLabel = input.value.trim();
+    renderTabs();
+  };
+  // 关键:输入框内的点击/按下不能冒泡到 tab,否则 activateTab→renderTabs 会把输入框重建掉(实测踩到)
+  for (const type of ["click", "mousedown", "mouseup", "dblclick"]) {
+    input.addEventListener(type, (ev) => ev.stopPropagation());
+  }
+  input.addEventListener("keydown", (ev) => {
+    ev.stopPropagation(); // 别让 Cmd+W 之类在输入框里误触发
+    if (ev.key === "Enter") commit(true);
+    if (ev.key === "Escape") commit(false);
+  });
+  input.addEventListener("blur", () => commit(true));
+}
+
+/** 复制一个 tab:同主机再连一个会话(session tab)或同类型视图 */
+function duplicateTab(t: Tab): void {
+  if (t.kind === "session" && t.host) { void openSession("ssh", t.host); return; }
+  if (t.kind === "session" && t.label === "Local shell") { void openSession("local"); return; }
+  if (t.kind === "sftp") { openSftpTab(); return; }
+  if (t.kind === "fwd") { openFwdTab(); return; }
+  if (t.kind === "kh") { openKnownHostsTab(); return; }
+  newTabPage();
 }
 
 function activateTab(id: string): void {
