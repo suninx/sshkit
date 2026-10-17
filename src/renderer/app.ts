@@ -39,6 +39,13 @@ type Tab = {
   view?: SftpView; // sftp tab 用
   search?: SearchAddon;   // T4:终端内搜索(Cmd+F)
   searchBar?: HTMLElement;
+  /** T8:断线重连要能重建同一台主机的会话 */
+  host?: HostRecord;
+  /** T8:该 tab 当前的断开状态(用于全局断开条) */
+  disconnected?: { reason: string };
+  retries?: number;
+  /** T8:正在自动重连中,避免并发跑出第二个重试循环 */
+  retrying?: boolean;
 };
 
 let tabs: Tab[] = [];
@@ -164,7 +171,9 @@ function closeTab(id: string): void {
   const i = tabs.findIndex((t) => t.id === id);
   if (i < 0) return;
   const [t] = tabs.splice(i, 1);
+  t.disconnected = undefined;
   disposeTab(t);
+  renderDiscBar();
   if (active === id) {
     const next = tabs[i] ?? tabs[i - 1] ?? null;
     if (next) activateTab(next.id);
@@ -254,6 +263,124 @@ function openKnownHostsTab(): void {
 }
 
 /** 在(当前空的新 tab 或新建的 tab)里开会话。原版行为:点主机即在 tab 内连接。 */
+/* ---------- T8:断线与重连 ---------- */
+
+interface ExitInfo { exitCode: number; error?: string; reason?: string }
+
+/** 会话与界面接线(首次连接与重连共用) */
+function wireSession(tab: Tab, t: Terminal, id: number, kind: "local" | "ssh", host?: HostRecord): void {
+  tab.termId = id;
+  tab.host = host ?? tab.host;
+  t.onData((d) => bridge.write(id, d));
+  t.onResize(({ cols, rows }) => bridge.resize(id, cols, rows));
+  tab.disposers.push(bridge.onData(id, (d) => t.write(d)));
+  tab.disposers.push(bridge.onExit(id, (info: ExitInfo) => {
+    if (tab.termId !== id) return; // 上一个会话的迟到事件
+    tab.termId = null;
+    tab.state = "off";
+    tab.sftp = null;
+    if (active === tab.id) { setSftpSession(null); setStatus("off"); }
+    renderTabs();
+    const detail = info.error ?? `exit code ${info.exitCode}`;
+    t.write(`\r\n\x1b[90m[session closed — ${detail}]\x1b[0m\r\n`);
+    // T8:由主进程给出的 reason 判定,不再靠退出码猜。
+    // "dropped"(连接断了)才给重连入口;auth 失败重试也没用,只报错。
+    const dropped = kind === "ssh" && (info.reason === "dropped" || info.reason === "error");
+    if (dropped) {
+      tab.disconnected = { reason: detail };
+      showDisconnected(tab, t, detail);
+      renderDiscBar();
+      void autoReconnect(tab, t);
+    }
+  }));
+}
+
+/** 断线覆盖层。文案取自原版自身(见 F19):Initiating reconnection... / No connection available to reconnect / Try again */
+function showDisconnected(tab: Tab, t: Terminal, reason: string, retrying = false): void {
+  clearDisconnected(tab);
+  const wrap = t.element?.parentElement ?? tab.pane;
+  const el = document.createElement("div");
+  el.className = "disc";
+  el.innerHTML = `
+    <div class="disc-card">
+      <div class="disc-title">Session is disconnected</div>
+      <div class="disc-reason"></div>
+      <div class="disc-actions">
+        <button class="btn primary disc-retry">Try again</button>
+        <button class="btn danger disc-close">Close</button>
+      </div>
+    </div>`;
+  (el.querySelector(".disc-reason")! as HTMLElement).textContent = retrying ? "Initiating reconnection..." : reason;
+  const retry = el.querySelector(".disc-retry")! as HTMLButtonElement;
+  const close = el.querySelector(".disc-close")! as HTMLButtonElement;
+  retry.disabled = retrying;
+  retry.addEventListener("click", () => { void autoReconnect(tab, t, true); });
+  close.addEventListener("click", () => closeTab(tab.id));
+  wrap.append(el);
+}
+
+function clearDisconnected(tab: Tab): void {
+  tab.pane.querySelectorAll(".disc").forEach((e) => e.remove());
+}
+
+/** 最多 3 次(1s/2s/4s)。原版亦为自动重连,并用 "Initiating reconnection..." 提示。 */
+async function autoReconnect(tab: Tab, t: Terminal, manual = false): Promise<void> {
+  if (!tab.host || tab.termId !== null || tab.retrying) return;
+  tab.retrying = true;
+  const max = 3;
+  if (manual) tab.retries = 0;
+  for (let i = tab.retries ?? 0; i < max; i++) {
+    tab.retries = i + 1;
+    showDisconnected(tab, t, "", true);
+    await new Promise((r) => setTimeout(r, 1000 * 2 ** i));
+    if (!tabs.includes(tab)) { tab.retrying = false; return; } // tab 已被关掉
+    try {
+      const { id } = await bridge.ssh.connect(tab.host.id, { cols: t.cols, rows: t.rows });
+      clearDisconnected(tab);
+      tab.retries = 0;
+      tab.disconnected = undefined;
+      tab.state = "on";
+      tab.sftp = { sid: id, label: `${tab.host.name} (${tab.host.host})` };
+      lastSession = tab.sftp;
+      wireSession(tab, t, id, "ssh", tab.host);
+      renderTabs();
+      renderDiscBar();
+      if (active === tab.id) { setStatus("on"); setSftpSession(tab.sftp); }
+      tab.retrying = false;
+      t.write("\x1b[90m[reconnected]\x1b[0m\r\n");
+      t.focus();
+      return;
+    } catch { /* 继续下一次 */ }
+  }
+  tab.retrying = false;
+  tab.disconnected = { reason: "No connection available to reconnect" };
+  showDisconnected(tab, t, "No connection available to reconnect");
+  renderDiscBar();
+}
+
+/** 全局断开条:原版有 "N session is disconnected" + Force reconnect / Close all disconnected terminals */
+function renderDiscBar(): void {
+  const n = tabs.filter((t) => t.disconnected).length;
+  let bar = document.getElementById("disc-bar");
+  if (!n) { bar?.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "disc-bar";
+    bar.innerHTML = `<span class="db-text"></span><span style="flex:1"></span>
+      <button class="btn db-force">Force reconnect terminals</button>
+      <button class="btn danger db-closeall">Close all disconnected terminals</button>`;
+    document.body.prepend(bar);
+    (bar.querySelector(".db-force")! as HTMLElement).addEventListener("click", () => {
+      for (const t of tabs) if (t.disconnected && t.term) { t.retries = 0; void autoReconnect(t, t.term, true); }
+    });
+    (bar.querySelector(".db-closeall")! as HTMLElement).addEventListener("click", () => {
+      for (const t of tabs.filter((x) => x.disconnected)) closeTab(t.id);
+    });
+  }
+  (bar.querySelector(".db-text")! as HTMLElement).textContent =
+    n === 1 ? "1 session is disconnected" : `${n} sessions are disconnected`;
+}
+
 async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<void> {
   hideBanner();
   const label = host ? host.name : "Local shell";
@@ -333,20 +460,7 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
       ? await bridge.createLocal({ cols: t.cols, rows: t.rows })
       : await bridge.ssh.connect(host!.id, { cols: t.cols, rows: t.rows });
 
-    tab.termId = id;
-    t.onData((d) => bridge.write(id, d));
-    t.onResize(({ cols, rows }) => bridge.resize(id, cols, rows));
-    tab.disposers.push(bridge.onData(id, (d) => t.write(d)));
-    tab.disposers.push(bridge.onExit(id, (info) => {
-      if (tab.termId !== id) return; // stale exit from a previous session
-      tab.termId = null;
-      tab.state = "off";
-      tab.sftp = null;
-      if (active === tab.id) { setSftpSession(null); setStatus("off"); }
-      renderTabs();
-      if (info.error) showBanner(info.error);
-      t.write(`\r\n\x1b[90m[session closed — ${info.error ?? `exit code ${info.exitCode}`}]\x1b[0m\r\n`);
-    }));
+    wireSession(tab, t, id, kind, host);
 
     tab.state = "on";
     tab.sftp = kind === "ssh" ? { sid: id, label: `${host!.name} (${host!.host})` } : null;
@@ -485,6 +599,8 @@ void (async () => {
       else if (active && ["fwd", "kh"].includes(tabs.find((t) => t.id === active)?.kind ?? "")) newTabPage();
     });
   });
+  // T8:reload/关窗时收掉本次界面开的会话(否则主进程留孤儿)
+  window.addEventListener("beforeunload", () => { try { bridge.disposeAllSessions(); } catch { /* ignore */ } });
   installHostKeyDialog();
   installAllShortcuts();
   newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell

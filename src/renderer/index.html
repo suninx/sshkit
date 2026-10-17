@@ -236,6 +236,18 @@
     .hk-fp { font-family: ui-monospace, Menlo, monospace; word-break: break-all; color: var(--fg); }
     .hk-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+    /* T8 复刻 —— 断线覆盖层与全局断开条(文案取自原版自身,见 F19) */
+    .disc { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(10,12,22,.72); z-index: 8; }
+    .disc-card { background: var(--bg2); border: 1px solid var(--wire); border-radius: 12px;
+      padding: 18px 20px; min-width: 320px; text-align: center; }
+    .disc-title { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+    .disc-reason { font-size: 13px; color: var(--fg-dim); margin-bottom: 16px; }
+    .disc-actions { display: flex; gap: 8px; justify-content: center; }
+    #disc-bar { position: fixed; top: 0; left: 0; right: 0; height: 34px; z-index: 40; display: flex;
+      align-items: center; gap: 10px; padding: 0 12px; background: #5a2b2b; color: var(--fg); font-size: 13px; }
+    #disc-bar .btn { padding: 3px 10px; font-size: 12px; }
+
     /* host form (modal-ish) */
     #form-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none;
       align-items: center; justify-content: center; z-index: 10; }

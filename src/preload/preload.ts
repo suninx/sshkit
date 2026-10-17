@@ -8,6 +8,7 @@ const api = {
   resize: (id: number, cols: number, rows: number) => ipcRenderer.send("terminal:resize", id, cols, rows),
   dispose: (id: number) => ipcRenderer.send("terminal:dispose", id),
   info: () => ipcRenderer.invoke("app:info"),
+  disposeAllSessions: (): void => ipcRenderer.send("sessions:disposeAll"),
   clipboard: {
     read: (): Promise<string> => ipcRenderer.invoke("clipboard:read"),
     write: (text: string): Promise<void> => ipcRenderer.invoke("clipboard:write", text),
@@ -48,6 +49,11 @@ const api = {
     list: () => ipcRenderer.invoke("knownhost:list"),
     remove: (host: string) => ipcRenderer.invoke("knownhost:remove", host),
     answer: (reqId: string, action: string) => ipcRenderer.send("knownhost:answer", reqId, action),
+    onAskCancel: (callback: (reqId: string) => void) => {
+      const handler = (_e: unknown, reqId: string) => callback(reqId);
+      ipcRenderer.on("knownhost:ask-cancel", handler);
+      return () => { ipcRenderer.off("knownhost:ask-cancel", handler); };
+    },
     onAsk: (callback: (req: unknown) => void) => {
       const handler = (_e: unknown, req: unknown) => callback(req);
       ipcRenderer.on("knownhost:ask", handler);

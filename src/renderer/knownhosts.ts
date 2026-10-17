@@ -81,14 +81,22 @@ export function createKnownHostsView(): KhView {
 
 export function installHostKeyDialog(): void {
   bridge.knownhost.onAsk((req: HostKeyAsk) => show(req));
+  // 会话已结束的询问要撤掉,别留个点不动的对话框
+  bridge.knownhost.onAskCancel((reqId: string) => {
+    const el = document.querySelector(`.hk-backdrop[data-req="${reqId}"]`);
+    el?.remove();
+  });
 }
 
 function show(req: HostKeyAsk): void {
-  if (document.querySelector(".hk-backdrop")) return; // 一次只问一个
+  // 一次只显示一个:新的询问要**替换**旧的。
+  // (原先直接 return 会把新询问丢掉,导致那次连接永远卡在握手 —— 实测踩到)
+  document.querySelectorAll(".hk-backdrop").forEach((e) => e.remove());
   const changed = req.status === "changed";
 
   const back = document.createElement("div");
   back.className = "hk-backdrop";
+  back.dataset.req = req.reqId;
   back.innerHTML = `
     <div class="hk-dialog">
       <h3 class="${changed ? "error" : "primary"}"></h3>

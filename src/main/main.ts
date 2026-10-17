@@ -122,6 +122,13 @@ ipcMain.on("knownhost:answer", (_e, reqId: string, action: "continue" | "add" | 
 ipcMain.handle("knownhost:list", () => listKnownHosts());
 ipcMain.handle("knownhost:remove", (_e, host: string) => { removeKnownHost(host); return listKnownHosts(); });
 
+/* T8:渲染层 reload/关闭时,把它开的会话一并收掉 —— 否则主进程会留下没有界面的孤儿会话 */
+ipcMain.on("sessions:disposeAll", () => {
+  forwardService.stopAll();
+  sshService.disposeAll();
+  ptyService.disposeAll();
+});
+
 ipcMain.handle("app:info", () => ({
   versions: { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node },
 }));

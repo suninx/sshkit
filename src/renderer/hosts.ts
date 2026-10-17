@@ -9,7 +9,9 @@ interface SshkitBridge {
   resize(id: number, cols: number, rows: number): void;
   dispose(id: number): void;
   onData(id: number, callback: (data: string) => void): () => void;
-  onExit(id: number, callback: (info: { exitCode: number; error?: string }) => void): () => void;
+  onExit(id: number, callback: (info: { exitCode: number; error?: string; reason?: string }) => void): () => void;
+  /** T8:收掉本次界面开的全部会话(reload/关窗时) */
+  disposeAllSessions(): void;
   clipboard: {
     read(): Promise<string>;
     write(text: string): Promise<void>;
@@ -31,6 +33,7 @@ interface SshkitBridge {
     remove(host: string): Promise<KnownHostRow[]>;
     answer(reqId: string, action: "continue" | "add" | "replace" | "cancel"): void;
     onAsk(callback: (req: HostKeyAsk) => void): () => void;
+    onAskCancel(callback: (reqId: string) => void): () => void;
   };
   fwd: {
     rules(): Promise<ForwardRule[]>;

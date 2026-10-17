@@ -13,6 +13,10 @@ interface SshSession {
   decoder: StringDecoder | null;
   /** T3:端口转发需要"按主机找到可用 ssh 通道" */
   hostId?: string;
+  /** T8:远端 shell 是否已正常结束(用于区分"正常退出"与"掉线") */
+  exited?: boolean;
+  /** T8:是不是我方主动收掉的会话(主动收掉不该报断线) */
+  intentional?: boolean;
 }
 
 interface PendingHostKey {
@@ -20,6 +24,7 @@ interface PendingHostKey {
   blob: Buffer;
   verify: (valid: boolean) => void;
   kind: "unknown" | "changed";
+  sessionId: number;
 }
 
 export class SshService {
@@ -41,6 +46,16 @@ export class SshService {
       if (!sender.isDestroyed()) sender.send(channel, ...payload);
     };
 
+    let settled = false;
+    let resolveReady: (id: number) => void = () => {};
+    let rejectReady: (err: Error) => void = () => {};
+    const ready = new Promise<number>((res, rej) => { resolveReady = res; rejectReady = rej; });
+    const settleOk = (): void => { if (!settled) { settled = true; resolveReady(id); } };
+    const settleErr = (msg: string): void => { if (!settled) { settled = true; rejectReady(new Error(msg)); } };
+    // 卡在握手上也要有个头(readyTimeout 之外再兜一层)
+    const readyTimer = setTimeout(() => settleErr("connect timed out"), 20_000);
+    ready.finally(() => clearTimeout(readyTimer)).catch(() => { /* 由调用方处理 */ });
+
     /* ---- T6:known_hosts 由"静默 TOFU"改为"询问式"。
             原版话术(取自其自身代码,见 F18):
               未知主机 → 标题 "Are you sure you want to connect?" + "The authenticity of <host> can not be established."
@@ -59,7 +74,7 @@ export class SshService {
       if (info.status === "ok") { verify(true); return; }
 
       const reqId = `hk_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-      this.pendingHostKey.set(reqId, { host: field, blob, verify, kind: info.status });
+      this.pendingHostKey.set(reqId, { host: field, blob, verify, kind: info.status, sessionId: id });
       safeSend("knownhost:ask", {
         reqId, host: field, status: info.status, keyType: info.keyType,
         // 原版文案自带 "SHA256:" 前缀,故这里去掉重复前缀,避免显示成 "SHA256: SHA256:…"
@@ -76,21 +91,36 @@ export class SshService {
       }, 120_000);
     };
 
+      /* T8:退出原因必须由主进程说清楚 —— 原先"掉线"也会上报 exitCode 0,
+         渲染层无法区分"远端 shell 正常退出"和"连接断了",于是断线不给重连入口。 */
+      const authFailed = (msg: string): boolean =>
+        /authentication|permission denied|all configured authentication methods failed|no saved password/i.test(msg);
+
       client.on("error", (err) => {
+        const s = this.sessions.get(id);
         this.sessions.delete(id);
+        this.cancelHostKeyAsks(id, sender);
+        settleErr(err.message);
+        if (s?.intentional) return;
         if (sawBadKey) {
-          // error already delivered precisely; avoid double banner noise
-          safeSend("terminal:exit", id, { exitCode: -1 });
+          safeSend("terminal:exit", id, { exitCode: -1, reason: "hostkey" });
         } else {
-          safeSend("terminal:exit", id, { exitCode: -1, error: err.message });
+          safeSend("terminal:exit", id, {
+            exitCode: -1, error: err.message, reason: authFailed(err.message) ? "auth" : "error",
+          });
         }
       });
       client.on("close", () => {
+        const s = this.sessions.get(id);
         this.sessions.delete(id);
-        safeSend("terminal:exit", id, { exitCode: 0 });
+        this.cancelHostKeyAsks(id, sender);
+        settleErr("connection closed before ready");
+        if (!s || s.intentional || s.exited) return;
+        safeSend("terminal:exit", id, { exitCode: -1, error: "connection lost", reason: "dropped" });
       });
 
       client.on("ready", () => {
+        settleOk();
         client.shell(
           { term: "xterm-256color", cols: opts.cols, rows: opts.rows },
           (err, stream) => {
@@ -103,6 +133,11 @@ export class SshService {
             const decoder = new StringDecoder("utf8");
             this.sessions.get(id)!.stream = stream;
             this.sessions.get(id)!.decoder = decoder;
+            stream.on("exit", (code: number | null) => {
+              const sess = this.sessions.get(id);
+              if (sess) sess.exited = true;
+              safeSend("terminal:exit", id, { exitCode: code ?? 0, reason: "closed" });
+            });
             stream.on("data", (d: Buffer) => safeSend("terminal:data", id, decoder.write(d)));
             stream.stderr?.on("data", (d: Buffer) => safeSend("terminal:data", id, decoder.write(d)));
             stream.on("close", () => {
@@ -113,8 +148,10 @@ export class SshService {
         );
       });
 
+      /* T8 修正:原先这里 `client.connect(cfg); return id;` —— 握手还没开始就告诉渲染层"连上了",
+         于是 TCP 都连不上也显示已连接,重连循环也误判成功。现改为等 ready 才算成功。 */
       client.connect(cfg);
-      return id;
+      return await ready;
   }
 
   private buildConfig(host: HostRecord, secrets: HostSecrets): ConnectConfig {
@@ -149,6 +186,16 @@ export class SshService {
   /** T6:等待用户对主机密钥答复的请求 */
   private readonly pendingHostKey = new Map<string, PendingHostKey>();
 
+  /** 会话结束时,把它挂起的密钥询问一并作废(否则握手半开着,界面残留对话框) */
+  private cancelHostKeyAsks(sessionId: number, sender: WebContents): void {
+    for (const [reqId, p] of Array.from(this.pendingHostKey)) {
+      if (p.sessionId !== sessionId) continue;
+      this.pendingHostKey.delete(reqId);
+      try { p.verify(false); } catch { /* ignore */ }
+      if (!sender.isDestroyed()) sender.send("knownhost:ask-cancel", reqId);
+    }
+  }
+
   /** 渲染层答复主机密钥询问。action: continue(仅本次) / add / replace / cancel */
   answerHostKey(reqId: string, action: "continue" | "add" | "replace" | "cancel"): boolean {
     const p = this.pendingHostKey.get(reqId);
@@ -178,6 +225,7 @@ export class SshService {
   dispose(id: number): void {
     const s = this.sessions.get(id);
     if (!s) return;
+    s.intentional = true; // T8:主动关闭不报断线
     this.sessions.delete(id);
     try { s.stream?.end(); } catch { /* ignore */ }
     try { s.client.end(); } catch { /* ignore */ }
