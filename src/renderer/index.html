@@ -65,6 +65,50 @@
     #term-wrap { flex: 1; padding: 6px; min-height: 0; }
     #term { width: 100%; height: 100%; }
 
+    /* T2 复刻 —— tab 条。原版实测:条高 51px、底色=终端主题底色(#141729)、
+       tab 高 30px/圆角 10px、非活动=5% 白叠加、活动会话 tab=#21b568 20% 叠加、
+       关闭按钮约 21×23 圆角 5、会话图标为绿色圆点。
+       快捷键亦取自原版自身的 shortcut_schemes:Cmd+T 新建 / Cmd+W 关闭 /
+       Cmd+Shift+[ ] 前后切换。 */
+    #tabstrip { display: flex; align-items: center; gap: 6px; height: 51px; padding: 0 10px;
+      background: #141729; border-bottom: 1px solid var(--wire); }
+    #tabs { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+    .tab-btn { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 6px;
+      border-radius: 10px; background: rgba(255,255,255,.05); color: #a4b3ba; cursor: pointer;
+      font-size: 13px; max-width: 240px; min-width: 0; user-select: none; flex: none; }
+    .tab-btn:not(.session) { padding-left: 12px; }
+    .tab-btn .dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7a8c; flex: none; }
+    .tab-btn .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tab-btn.active { background: rgba(255,255,255,.1); color: var(--fg); }
+    .tab-btn.session.active { background: rgba(33,181,104,.2); color: #21b568; }
+    .tab-btn.session .dot.on { background: #21b568; }
+    .tab-close { border: 0; background: transparent; color: inherit; opacity: .5; border-radius: 5px;
+      width: 21px; height: 23px; padding: 0; cursor: pointer; font-size: 11px; flex: none; }
+    .tab-close:hover { opacity: 1; background: rgba(255,255,255,.12); }
+    #btn-new-tab { width: 30px; height: 30px; border: 0; border-radius: 10px; background: transparent;
+      color: #a4b3ba; font-size: 16px; cursor: pointer; flex: none; }
+    #btn-new-tab:hover { background: rgba(255,255,255,.08); }
+    #stage { flex: 1; min-height: 0; position: relative; }
+    /* 注意:类名必须与 SFTP 弹层的 .pane/.panes 区分开(否则 position:absolute 会把 SFTP 布局弄坏) */
+    .tab-pane { position: absolute; inset: 0; display: none; }
+    .tab-pane.active { display: block; }
+    .tab-pane .term-host { width: 100%; height: 100%; padding: 6px; box-sizing: border-box; }
+
+    /* 新 tab 落地页。原版实测:居中搜索框(约占宽 667、高 36、圆角 10)、右侧 ⌘+K 提示、
+       下方图标 + "Recent sessions" 标题(18px/500)+ 两行提示语。 */
+    .newtab { height: 100%; display: flex; flex-direction: column; align-items: center; }
+    .nt-search { position: relative; width: min(667px, 70%); margin-top: 41px; }
+    .nt-search input { width: 100%; height: 36px; border-radius: 10px; border: 1px solid transparent;
+      background: #d5dde0; color: #141729; padding: 0 64px 0 14px; font-size: 14px; outline: none; }
+    .nt-search input:focus { border-color: #2091f6; }
+    .nt-search .kbd { position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      color: #798c94; font-size: 14px; font-weight: 450; pointer-events: none; }
+    .nt-empty { margin-top: 210px; text-align: center; color: var(--fg-dim); }
+    .nt-icon { width: 64px; height: 64px; margin: 0 auto 20px; border-radius: 14px; background: #e6ebed;
+      display: flex; align-items: center; justify-content: center; font-size: 26px; color: #141729; }
+    .nt-empty h3 { margin: 0 0 10px; font-size: 18px; font-weight: 500; color: var(--fg); }
+    .nt-empty p { margin: 0; font-size: 14px; line-height: 1.55; }
+
     /* host form (modal-ish) */
     #form-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none;
       align-items: center; justify-content: center; z-index: 10; }
@@ -128,13 +172,17 @@
     </aside>
     <section id="main">
       <div id="banner"></div>
+      <div id="tabstrip">
+        <div id="tabs"></div>
+        <button id="btn-new-tab" title="New Tab (⌘T)">＋</button>
+      </div>
       <div id="term-head">
         <span id="status-dot"></span>
         <span id="term-title">no session</span>
         <span style="flex:1"></span>
         <button id="btn-sftp" class="btn" disabled title="SFTP browser (ssh session required)">⇄ SFTP</button>
       </div>
-      <div id="term-wrap"><div id="term"></div></div>
+      <div id="stage"></div>
     </section>
   </div>
   <div id="form-backdrop">
