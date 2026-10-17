@@ -1,0 +1,212 @@
+#!/usr/bin/env node
+// bench/drive.mjs — CDP 驱动(会**改动**对面界面状态;与只读的 grab.mjs 严格分开)
+//
+// 用途:点开原版的面板/菜单取规格(T2 Tab、T3 端口转发、T6 Known Hosts…)。
+// 纪律:每一步都存 before/after 截图+DOM 并打印动作摘要,便于写进 FINDINGS。
+//       只点"导航/展开"类控件;不点删除、不提交表单、不建连接。
+//
+// 用法:
+//   node bench/drive.mjs --port 9222 --testid new-tab-button --tag t2-newtab
+//   node bench/drive.mjs --port 9222 --text "Port Forwarding" --tag t3-panel
+//   node bench/drive.mjs --port 9222 --selector 'button[aria-label="Change layout"]' --tag x
+//   node bench/drive.mjs --port 9223 --type 'printf "hi"' --enter --tag t1-echo   # 往终端打字
+//
+// 可选:--url-match primary  --wait 600(点后等多久再看)  --out-dir <目录>  --dry(只解析不点)
+//       --type 时用 --focus 指定先点哪个元素把焦点给终端(默认 .xterm-screen)
+
+import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+const opt = (n, d = null) => { const i = args.indexOf(n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
+const port = opt("--port", "9222");
+const urlMatch = opt("--url-match", null);
+const testid = opt("--testid", null);
+const selector = opt("--selector", null);
+const text = opt("--text", null);
+const typeText_ = opt("--type", null);
+const typeFile = opt("--type-file", null);
+const insertFile = opt("--insert-file", null);
+const insertStr = insertFile ? readFileSync(insertFile, "utf8").replace(/\n+$/, "") : opt("--insert", null);
+const typeStr = insertStr ?? (typeFile ? readFileSync(typeFile, "utf8").replace(/\n+$/, "") : typeText_);
+const useInsert = !!insertStr;
+const doEnter = args.includes("--enter");
+const focusSel = opt("--focus", ".xterm-screen");
+const tag = opt("--tag", "drive");
+const waitMs = Number(opt("--wait", "700"));
+const dry = args.includes("--dry");
+const outDir = opt("--out-dir", `bench/sessions/${new Date().toLocaleString("sv-SE").replace(/[: ]/g, "_")}-${tag}`);
+
+if (!testid && !selector && !text && !typeStr) { console.error("需要 --testid / --selector / --text / --type 之一"); process.exit(2); }
+
+const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+const pages = list.filter((t) => t.type === "page");
+const t = urlMatch ? pages.find((p) => (p.url || "").includes(urlMatch) || (p.title || "").includes(urlMatch)) : pages[0];
+if (!t) { console.error(`port ${port}: 没有匹配的 page target`); process.exit(2); }
+
+const ws = new WebSocket(t.webSocketDebuggerUrl);
+let id = 0; const pending = new Map();
+const send = (method, params = {}) => new Promise((res, rej) => {
+  const i = ++id; pending.set(i, { res, rej });
+  ws.send(JSON.stringify({ id: i, method, params }));
+  setTimeout(() => pending.has(i) && (pending.delete(i), rej(new Error(`${method} timeout`))), 15000);
+});
+ws.addEventListener("message", (ev) => {
+  const m = JSON.parse(ev.data);
+  if (m.id && pending.has(m.id)) { const { res, rej } = pending.get(m.id); pending.delete(m.id);
+    m.error ? rej(new Error(m.error.message)) : res(m.result); }
+});
+await new Promise((res, rej) => { ws.addEventListener("open", res); ws.addEventListener("error", () => rej(new Error("ws connect failed"))); });
+
+const ev = async (expr, extra = {}) => {
+  const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true, ...extra });
+  if (r.exceptionDetails) throw new Error(`eval: ${r.exceptionDetails.text} ${r.exceptionDetails.exception?.description ?? ""}`);
+  return r.result?.value;
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 便宜但够用的"变了没"指纹:节点数 + 可见按钮文本
+const fingerprint = () => ev(`(() => {
+  const n = document.querySelectorAll('*').length;
+  const b = [...document.querySelectorAll('button')].map(e => (e.textContent||'').replace(/\\s+/g,' ').trim()).join('|');
+  return n + '::' + b.length + '::' + b.slice(0, 400);
+})()`);
+
+mkdirSync(outDir, { recursive: true });
+const base = `${outDir}/${tag}`;
+
+async function shoot(p) {
+  const s = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+  writeFileSync(p, Buffer.from(s.data, "base64"));
+  return Buffer.from(s.data, "base64").length;
+}
+async function dump(p) { writeFileSync(p, String(await ev("document.documentElement.outerHTML") ?? "")); }
+
+// ---- 解析目标 ----
+let desc;
+if (testid) {
+  desc = { by: "testid", value: testid, sel: `[data-testid="${testid}"]` };
+} else if (selector) {
+  desc = { by: "selector", value: selector, sel: selector };
+} else {
+  desc = { by: "text", value: text, sel: null };
+}
+
+const found = await ev(`(() => {
+  const sel = ${JSON.stringify(desc.sel)};
+  let el = sel ? document.querySelector(sel) : null;
+  if (!el && ${JSON.stringify(text)} !== null) {
+    const want = ${JSON.stringify(text)}.toLowerCase();
+    const txt = (e) => (e.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+    const cands = [...document.querySelectorAll('button,[role=button],a,li,div,span')].filter((e) => txt(e).includes(want));
+    // 选"最小的那个" —— 避免点到把整页包住的大容器
+    cands.sort((a, b) => {
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      return (ra.width * ra.height) - (rb.width * rb.height);
+    });
+    el = cands.find((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; }) || null;
+  }
+  if (!el) return null;
+  el.scrollIntoView({block:'center'});
+  const r = el.getBoundingClientRect();
+  return { tag: el.tagName, text: (el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,60),
+           testid: el.dataset.testid||null, aria: el.getAttribute('aria-label'),
+           x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2),
+           w: Math.round(r.width), h: Math.round(r.height), visible: r.width>0 && r.height>0 };
+})()`);
+
+if (!typeStr && !found) { console.error(`找不到目标:${JSON.stringify(desc)}`); ws.close(); process.exit(3); }
+if (found) console.log(`目标: <${found.tag}> "${found.text}"${found.testid ? ` testid=${found.testid}` : ""}${found.aria ? ` aria=${found.aria}` : ""} @(${found.x},${found.y}) ${found.w}x${found.h} visible=${found.visible}`);
+
+if (dry && !typeStr) { console.log("--dry:不点击"); ws.close(); process.exit(0); }
+if (!typeStr && !found.visible) { console.error("目标不可见(0 尺寸)→ 不点,避免盲点"); ws.close(); process.exit(4); }
+
+// ---- 打字动作(--type)----
+async function clickPoint(x, y) {
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "none" });
+  await sleep(120);
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+}
+
+async function typeChar(ch) {
+  // ⚠️ 实测教训:不能把字符码直接当 windowsVirtualKeyCode。
+  // 'p'=112/'r'=114/'t'=116 恰好落在 VK_F1..F12(112..123)区间,xterm 会当功能键吃掉,
+  // 于是 "clear"→"clea"、"printf"→"in-f"。字母一律用大写码(即标准 VK 映射)。
+  const isLetter = /[a-zA-Z]/.test(ch);
+  const vk = isLetter ? ch.toUpperCase().charCodeAt(0) : ch.charCodeAt(0);
+  const code = isLetter ? `Key${ch.toUpperCase()}` : /[0-9]/.test(ch) ? `Digit${ch}` : ch;
+  const common = { key: ch, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk };
+  await send("Input.dispatchKeyEvent", { type: "keyDown", text: ch, unmodifiedText: ch, ...common });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", ...common });
+  await sleep(12);
+}
+
+if (typeStr) {
+  const focusBox = await ev(`(() => {
+    const el = document.querySelector(${JSON.stringify(focusSel)});
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2), w: Math.round(r.width), h: Math.round(r.height) };
+  })()`);
+  if (!focusBox) { console.error(`找不到焦点元素 ${focusSel}`); ws.close(); process.exit(3); }
+  console.log(`焦点: ${focusSel} @(${focusBox.x},${focusBox.y}) ${focusBox.w}x${focusBox.h}`);
+  if (dry) { console.log("--dry:不打字"); ws.close(); process.exit(0); }
+
+  await shoot(`${base}-before.png`); await dump(`${base}-before.html`);
+  await clickPoint(focusBox.x, focusBox.y);       // 点终端,把焦点交给 xterm 的 textarea
+  await sleep(250);
+  const focused = await ev(`document.activeElement ? document.activeElement.className : null`);
+  console.log(`activeElement: ${focused}`);
+  if (useInsert) {
+    // 整串插入:不经键位映射,故反斜杠等字符不会被吞(逐键模式实测会丢 '\')
+    await send("Input.insertText", { text: typeStr });
+  } else {
+    for (const ch of [...typeStr]) await typeChar(ch);
+  }
+  if (doEnter) {
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: "\r" });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+  }
+  await sleep(Math.max(waitMs, 1200));
+  const afterBytes = await shoot(`${base}-after.png`); await dump(`${base}-after.html`);
+  console.log(JSON.stringify({
+    port, targetId: t.id, action: "type", typed: typeStr, enter: doEnter, activeElement: focused,
+    artifacts: { beforePng: `${base}-before.png`, afterPng: `${base}-after.png`, afterHtml: `${base}-after.html` }, afterBytes,
+  }, null, 1));
+  console.log("✅ 已输入并抓图");
+  ws.close(); process.exit(0);
+}
+
+const beforeFp = await fingerprint();
+const beforeBytes = await shoot(`${base}-before.png`);
+await dump(`${base}-before.html`);
+
+// ---- 真实鼠标事件(比 el.click() 更接近人:带 move/hover) ----
+await clickPoint(found.x, found.y);
+await sleep(waitMs);
+
+const afterFp = await fingerprint();
+let afterBytes = await shoot(`${base}-after.png`);
+await dump(`${base}-after.html`);
+
+let changed = beforeFp !== afterFp;
+if (!changed) {
+  // 有些控件只认合成 click(React 委托),补一次
+  await ev(`(() => { const sel=${JSON.stringify(desc.sel)}; let el = sel ? document.querySelector(sel) : null;
+    if(!el && ${JSON.stringify(text)} !== null){const w=${JSON.stringify(text)}.toLowerCase();
+      el=[...document.querySelectorAll('button,[role=button],a')].find(e=>((e.textContent||'').replace(/\\s+/g,' ').trim().toLowerCase()).includes(w));}
+    if(el) el.click(); return !!el; })()`);
+  await sleep(waitMs);
+  const fp3 = await fingerprint();
+  if (fp3 !== beforeFp) { changed = true; afterBytes = await shoot(`${base}-after.png`); await dump(`${base}-after.html`); }
+}
+
+const summary = {
+  port, targetId: t.id, action: "click", target: { ...desc, resolved: found },
+  changed, waitMs,
+  artifacts: { beforePng: `${base}-before.png`, afterPng: `${base}-after.png`, beforeHtml: `${base}-before.html`, afterHtml: `${base}-after.html` },
+  beforeBytes, afterBytes,
+};
+console.log(JSON.stringify(summary, null, 1));
+console.log(changed ? "✅ 界面有变化(after.* 即新状态)" : "⚠️ 界面无变化 —— 可能不是点击触发(或需 hover/二次点击)");
+ws.close(); process.exit(0);

@@ -25,10 +25,14 @@ node bench/grab.mjs --port 9222 --url-match primary --out a.png --dom a.html   #
 node bench/grab.mjs --port 9223 --out b.png --dom b.html                       # sshkit:图+DOM
 node bench/grab.mjs --port 9222 --eval-file bench/probes/ui-skeleton.js        # 结构化 UI 骨架
 node bench/grab.mjs --port 9222 --eval 'document.querySelectorAll("button").length'   # 任意取值
+node bench/drive.mjs --port 9222 --testid new-tab-button --tag t2-newtab        # 点击(会改界面状态)
+node bench/drive.mjs --port 9223 --insert-file /tmp/cmd.txt --enter --tag t1-x  # 往终端投入同一串命令
+python3 bench/probes/ansi-palette.py A.png A.json B.png B.json                  # 逐格比对调色板/字体度量
 bash bench/down.sh                      # 收台(路径锚定,不误杀别的应用)
 ```
 
-`--eval` / `--eval-file` 会**求值**页面 JS —— 只用它**读**;不要借它去改对方状态(要驱动就明确另立步骤并记录)。
+`grab.mjs` 只读;`drive.mjs` 会**改动**对面状态(点击/打字),故两者分开,且每步都存 before/after 截图+DOM。
+投命令一律用 `--insert-file`(整串插入):逐键打字实测会吞 `\`,且字母键码若用小写码会撞 VK_F1..F12。
 
 端口约定:原版 **9222**,sshkit **9223**(可用 `TERMIUS_CDP_PORT` / `SSHKIT_CDP_PORT` 覆盖)。
 
@@ -65,7 +69,7 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 
 | # | 特性 | 观察点 | 我方实现 | 蓝图状态 |
 |---|---|---|---|---|
-| T1 | 终端渲染/主题/字体 | 默认配色、光标、字号、滚动回看 | `renderer/app.ts` + xterm 主题 | 06 部分覆盖;**F11 实测**:原版默认**浅色**(正文 `rgb(20,23,41)`),我方深色 |
+| T1 | 终端渲染/主题/字体 | 默认配色、光标、字号、滚动回看 | `renderer/app.ts` + xterm 主题 | 06 部分覆盖;**F12 已实测**:字体 `Meslo 14px` vs 我方 `Menlo 13px`;行距 18 vs 15;背景 `#141728` vs `#101418`;**原版 20+ 套内置主题**、canvas 渲染 vs 我方 DOM 渲染 |
 | T2 | **多 Tab / 分屏** | Tab 标题规则、新建/关闭、分屏入口、拖拽排序 | 无(单终端) | ❌ **缺**;**F11 实测落点**:原版顶部 tab 条 `Vaults\|SFTP\|+`(`data-testid=horizontal-tabs`/`new-tab-button`),且 **SFTP 是 tab**;原料 `ui-root/INDEX.md:226,240,263`(`workspaceTab*`、split terminal 文案) |
 | T3 | **端口转发** | 本地/远程/动态转发 UI、规则按主机持久化、连接后状态 | 无 | ❌ **缺**;**F11 实测落点**:原版左栏一级导航项 `Port Forwarding`;原料 `analysis/native-inventory.md:89`(`SshDynamicPortForwarding` 19 符号)、`INDEX.md:128,285`(`dynamic-port-forwarding`、`"Set up port forwarding"`) |
 | T4 | **快捷键** | 新建/关闭 Tab、复制粘贴、清屏、搜索 | 无自定义 | ❌ **缺**(0 命中) |
