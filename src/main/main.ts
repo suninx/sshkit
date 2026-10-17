@@ -23,6 +23,14 @@ function createWindow(): void {
   });
 
   mainWindow.on("closed", () => { mainWindow = null; });
+  mainWindow.webContents.on("console-message", (...args: unknown[]) => {
+    const ev = args[0] as { message?: string; lineNumber?: number; sourceId?: string } | undefined;
+    const legacy = args.slice(1) as [number, string, number | undefined, string | undefined];
+    const message = ev?.message ?? legacy[1] ?? "";
+    const line = ev?.lineNumber ?? legacy[2];
+    const sourceId = ev?.sourceId ?? legacy[3];
+    console.log("[renderer]", String(message).replace(/\s+/g, " ").slice(0, 300), sourceId ? `${sourceId}:${line ?? ""}` : "");
+  });
   void mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
 }
 
