@@ -44,6 +44,17 @@ const api = {
     connect: (hostId: string, opts: { cols: number; rows: number }) => ipcRenderer.invoke("ssh:connect", hostId, opts),
   },
 
+  knownhost: {
+    list: () => ipcRenderer.invoke("knownhost:list"),
+    remove: (host: string) => ipcRenderer.invoke("knownhost:remove", host),
+    answer: (reqId: string, action: string) => ipcRenderer.send("knownhost:answer", reqId, action),
+    onAsk: (callback: (req: unknown) => void) => {
+      const handler = (_e: unknown, req: unknown) => callback(req);
+      ipcRenderer.on("knownhost:ask", handler);
+      return () => { ipcRenderer.off("knownhost:ask", handler); };
+    },
+  },
+
   fwd: {
     rules: () => ipcRenderer.invoke("fwd:rules"),
     statuses: () => ipcRenderer.invoke("fwd:statuses"),

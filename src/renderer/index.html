@@ -207,6 +207,35 @@
     .fwd-hostitem .hs { color: var(--fg-dim); font-size: 12px; }
     .fwd-wiz-foot { display: flex; align-items: center; padding: 12px 14px; border-top: 1px solid var(--wire); }
 
+    /* T6 复刻 —— 已知主机视图 + 主机密钥询问(文案取自原版,见 renderer/knownhosts.ts 注释) */
+    .kh { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+    .kh-bar { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; }
+    .kh-bar-title { font-size: 14px; font-weight: 500; }
+    .kh-hint { font-size: 12px; color: var(--fg-dim); }
+    .kh-body { flex: 1; min-height: 0; overflow-y: auto; }
+    .kh-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .kh-empty-ico { width: 64px; height: 64px; border-radius: 14px; background: var(--bg3); display: flex;
+      align-items: center; justify-content: center; font-size: 26px; margin-bottom: 20px; }
+    .kh-empty h3 { margin: 0 0 10px; font-size: 18px; font-weight: 500; }
+    .kh-empty p { margin: 0; font-size: 14px; color: var(--fg-dim); }
+    .kh-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--wire); }
+    .kh-row:hover { background: rgba(255,255,255,.04); }
+    .kh-ico { width: 26px; height: 26px; border-radius: 8px; background: var(--bg3); display: flex;
+      align-items: center; justify-content: center; font-size: 13px; }
+    .kh-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .kh-host { font-size: 14px; }
+    .kh-fp { font-size: 12px; color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .kh-type { font-size: 12px; color: var(--fg-dim); }
+    .hk-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex;
+      align-items: center; justify-content: center; z-index: 70; }
+    .hk-dialog { width: min(560px, 92vw); background: var(--bg2); border: 1px solid var(--wire);
+      border-radius: 12px; padding: 20px; }
+    .hk-dialog h3 { margin: 0 0 14px; font-size: 18px; font-weight: 500; }
+    .hk-dialog h3.error { color: var(--danger); }
+    .hk-body { font-size: 13px; line-height: 1.6; margin-bottom: 18px; }
+    .hk-fp { font-family: ui-monospace, Menlo, monospace; word-break: break-all; color: var(--fg); }
+    .hk-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
     /* host form (modal-ish) */
     #form-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none;
       align-items: center; justify-content: center; z-index: 10; }
@@ -306,6 +335,7 @@
       <div id="nav">
         <button class="nav-item on" data-nav="hosts"><span class="ni">🖧</span>Hosts</button>
         <button class="nav-item" data-nav="forwarding"><span class="ni">⇥</span>Port Forwarding</button>
+        <button class="nav-item" data-nav="knownhosts"><span class="ni">🔑</span>Known Hosts</button>
       </div>
       <div id="host-list"></div>
     </aside>

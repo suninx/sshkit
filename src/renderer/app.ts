@@ -5,6 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
 import { createFwdView } from "./fwd";
+import { createKnownHostsView, installHostKeyDialog } from "./knownhosts";
 import { installShortcuts, MAC_SHORTCUTS, type ShortcutDef } from "./keys";
 import type { HostRecord } from "../shared/host";
 
@@ -26,7 +27,7 @@ const btnSftp = document.getElementById("btn-sftp")! as HTMLButtonElement;
 type TabState = "idle" | "on" | "off";
 type Tab = {
   id: string;
-  kind: "session" | "newtab" | "sftp" | "fwd";
+  kind: "session" | "newtab" | "sftp" | "fwd" | "kh";
   label: string;
   state: TabState;
   pane: HTMLDivElement;
@@ -115,7 +116,7 @@ function activateTab(id: string): void {
   setSftpSession(t.sftp);
   if (t.kind === "session" && t.sftp) lastSession = t.sftp;
   if (t.fit) { try { t.fit.fit(); } catch { /* transient */ } }
-  if (t.kind === "sftp" || t.kind === "fwd") t.view?.onShow();
+  if (t.kind === "sftp" || t.kind === "fwd" || t.kind === "kh") t.view?.onShow();
   else if (t.kind === "newtab") t.pane.querySelector("input")?.focus();
   else t.term?.focus();
 }
@@ -234,6 +235,19 @@ function openFwdTab(): void {
   const view = createFwdView();
   pane.append(view.el);
   const t: Tab = { id: `t${++seq}`, kind: "fwd", label: "Port Forwarding", state: "idle", pane,
+    term: null, fit: null, termId: null, disposers: [], sftp: null, view: view as unknown as SftpView };
+  tabs.push(t);
+  activateTab(t.id);
+}
+
+/** T6:已知主机视图(原版为左栏一级导航 Known Hosts)。 */
+function openKnownHostsTab(): void {
+  const existing = tabs.find((t) => t.kind === "kh");
+  if (existing) { activateTab(existing.id); return; }
+  const pane = makePane();
+  const view = createKnownHostsView();
+  pane.append(view.el);
+  const t: Tab = { id: `t${++seq}`, kind: "kh", label: "Known Hosts", state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null, view: view as unknown as SftpView };
   tabs.push(t);
   activateTab(t.id);
@@ -467,9 +481,11 @@ void (async () => {
       document.querySelectorAll("#nav .nav-item").forEach((x) => x.classList.remove("on"));
       b.classList.add("on");
       if (b.dataset.nav === "forwarding") openFwdTab();
-      else if (active && tabs.find((t) => t.id === active)?.kind === "fwd") newTabPage();
+      else if (b.dataset.nav === "knownhosts") openKnownHostsTab();
+      else if (active && ["fwd", "kh"].includes(tabs.find((t) => t.id === active)?.kind ?? "")) newTabPage();
     });
   });
+  installHostKeyDialog();
   installAllShortcuts();
   newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
 })();

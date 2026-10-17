@@ -5,6 +5,7 @@ import { HostStore } from "./store";
 import { SshService } from "./ssh";
 import { SftpController } from "./sftp";
 import { ForwardService, type ForwardRule } from "./forward";
+import { listKnownHosts, removeKnownHost } from "./knownhosts";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
 import type { HostInput } from "../shared/host";
 
@@ -112,6 +113,14 @@ ipcMain.handle("fwd:save", (_e, rule: ForwardRule) => forwardService.saveRule(ru
 ipcMain.handle("fwd:delete", (_e, id: string) => { forwardService.deleteRule(id); return forwardService.listRules(); });
 ipcMain.handle("fwd:start", (_e, rule: ForwardRule) => forwardService.start(rule));
 ipcMain.handle("fwd:stop", (_e, id: string) => { forwardService.stop(id); return forwardService.statusOf(id); });
+
+/* ---------- T6 known_hosts ---------- */
+
+ipcMain.on("knownhost:answer", (_e, reqId: string, action: "continue" | "add" | "replace" | "cancel") => {
+  sshService.answerHostKey(reqId, action);
+});
+ipcMain.handle("knownhost:list", () => listKnownHosts());
+ipcMain.handle("knownhost:remove", (_e, host: string) => { removeKnownHost(host); return listKnownHosts(); });
 
 ipcMain.handle("app:info", () => ({
   versions: { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node },

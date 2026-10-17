@@ -1,5 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -50,6 +50,79 @@ function hostMatches(e: Entry, host: string): boolean {
 export interface HostKeyVerdict {
   status: "ok" | "learned" | "mismatch";
   message?: string;
+}
+
+/** T6:把"验"与"记"拆开 —— 未知/变更时先问用户,再由用户决定是否落盘 */
+export interface HostKeyInfo {
+  host: string;
+  keyType: string;
+  fingerprint: string;
+  status: "ok" | "unknown" | "changed";
+}
+
+export interface KnownHostRow {
+  host: string;
+  keyType: string;
+  fingerprint: string;
+  /** OpenSSH 哈希化条目无法反显主机名 */
+  hashed: boolean;
+}
+
+const fpOf = (keys: Buffer): string => fingerprint(keys);
+
+/** OpenSSH 约定:22 端口写裸主机名,其它端口写 `[host]:port` */
+export function knownHostField(host: string, port = 22): string {
+  return port === 22 ? host : `[${host}]:${port}`;
+}
+
+export function checkHostKey(host: string, keyData: Buffer, file = KNOWN_HOSTS): HostKeyInfo {
+  const keyType = keyTypeFromBlob(keyData);
+  const fp = fpOf(keyData);
+  const matching = loadEntries(file).filter((e) => hostMatches(e, host));
+  if (!matching.length) return { host, keyType, fingerprint: fp, status: "unknown" };
+  if (matching.some((e) => e.keyType === keyType && e.keyBytes.equals(keyData))) {
+    return { host, keyType, fingerprint: fp, status: "ok" };
+  }
+  return { host, keyType, fingerprint: fp, status: "changed" };
+}
+
+/** 写入已知主机;replace=true 时先剔除该主机的旧条目(对应原版 Replace) */
+export function addHostKey(host: string, keyData: Buffer, file = KNOWN_HOSTS, replace = false): void {
+  const keyType = keyTypeFromBlob(keyData);
+  try {
+    mkdirSync(path.dirname(file), { recursive: true });
+    if (replace) removeKnownHost(host, file);
+    appendFileSync(file, `${host} ${keyType} ${keyData.toString("base64")}\n`);
+  } catch { /* 只读家目录等:连接照常,只是没写盘 */ }
+}
+
+export function listKnownHosts(file = KNOWN_HOSTS): KnownHostRow[] {
+  return loadEntries(file).map((e) => ({
+    host: e.hashed ? "|1|(hashed)" : e.rawHostField,
+    keyType: e.keyType,
+    fingerprint: fpOf(e.keyBytes),
+    hashed: !!e.hashed,
+  }));
+}
+
+/** 删除某主机的已知主机条目(重写文件;哈希化条目无法按主机名匹配,故一并保留) */
+export function removeKnownHost(host: string, file = KNOWN_HOSTS): number {
+  let raw = "";
+  try { raw = readFileSync(file, "utf8"); } catch { return 0; }
+  const keep: string[] = [];
+  let removed = 0;
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) { if (trimmed) keep.push(line); continue; }
+    const field = trimmed.split(" ")[0];
+    const hit = field.startsWith("|1|") ? false : (field === host || field.split(",").includes(host));
+    if (hit) removed++;
+    else keep.push(line);
+  }
+  if (removed) {
+    try { writeFileSync(file, keep.join("\n")); } catch { /* ignore */ }
+  }
+  return removed;
 }
 
 function fingerprint(keyData: Buffer): string {

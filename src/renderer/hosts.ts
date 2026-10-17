@@ -1,5 +1,6 @@
 import type { HostInput, HostRecord } from "../shared/host";
 import type { ForwardRule, ForwardStatus } from "../shared/forward";
+import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
 import type { SftpEntry, TransferProgress } from "../shared/sftp";
 
 interface SshkitBridge {
@@ -24,6 +25,12 @@ interface SshkitBridge {
   };
   ssh: {
     connect(hostId: string, opts: { cols: number; rows: number }): Promise<{ id: number }>;
+  };
+  knownhost: {
+    list(): Promise<KnownHostRow[]>;
+    remove(host: string): Promise<KnownHostRow[]>;
+    answer(reqId: string, action: "continue" | "add" | "replace" | "cancel"): void;
+    onAsk(callback: (req: HostKeyAsk) => void): () => void;
   };
   fwd: {
     rules(): Promise<ForwardRule[]>;

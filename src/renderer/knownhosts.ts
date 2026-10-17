@@ -1,0 +1,136 @@
+import { bridge } from "./hosts";
+import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
+
+/* T6 复刻 —— 已知主机视图 + 主机密钥询问对话框。
+   文案逐字取自原版自身代码(F18):
+     未知主机(首连):
+       标题 "Are you sure you want to connect?"
+       正文 "The authenticity of <host> can not be established." / "<keyType> fingerprint is SHA256:<fp>"
+            / "Do you want to add it to the list of known hosts?"
+       按钮 Close / Continue / "Add and continue"
+     指纹变更:
+       标题 "The fingerprint for <host> has changed"(error 色)
+       正文 "Termius notices a potential security breach." / "New <keyType> fingerprint is SHA256:<fp>"
+       按钮 Replace / "Add as new" / Cancel
+     列表空态:"Known hosts will appear here" / "Known hosts are trusted server identities saved for secure future connections."
+   注:正文里的产品名按本产品替换为 sshkit(与 T3 同策略),其余原样。 */
+
+export interface KhView {
+  el: HTMLElement;
+  onShow: () => void;
+}
+
+const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+
+export function createKnownHostsView(): KhView {
+  const root = document.createElement("div");
+  root.className = "kh";
+  root.innerHTML = `
+    <div class="kh-bar">
+      <span class="kh-bar-title">Known Hosts</span>
+      <span style="flex:1"></span>
+      <span class="kh-hint">读取自 ~/.ssh/known_hosts(与系统 ssh 共用)</span>
+    </div>
+    <div class="kh-body"></div>`;
+  const body = root.querySelector(".kh-body")! as HTMLElement;
+
+  async function refresh(): Promise<void> {
+    const rows = await bridge.knownhost.list();
+    if (!rows.length) {
+      body.innerHTML = `
+        <div class="kh-empty">
+          <div class="kh-empty-ico">🔑</div>
+          <h3>Known hosts will appear here</h3>
+          <p>Known hosts are trusted server identities saved for secure future connections.</p>
+        </div>`;
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "kh-list";
+    for (const r of rows) {
+      list.append(row(r));
+    }
+    body.replaceChildren(list);
+  }
+
+  function row(r: KnownHostRow): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "kh-row";
+    el.innerHTML = `
+      <span class="kh-ico">🔑</span>
+      <span class="kh-main"><span class="kh-host"></span><span class="kh-fp"></span></span>
+      <span class="kh-type"></span>
+      <button class="btn danger kh-del" title="Remove">✕</button>`;
+    (el.querySelector(".kh-host")! as HTMLElement).textContent = r.host;
+    (el.querySelector(".kh-fp")! as HTMLElement).textContent = r.fingerprint;
+    (el.querySelector(".kh-type")! as HTMLElement).textContent = r.keyType;
+    const del = el.querySelector(".kh-del")! as HTMLButtonElement;
+    del.disabled = r.hashed;
+    if (r.hashed) del.title = "哈希化条目无法按主机名删除";
+    del.addEventListener("click", async () => {
+      await bridge.knownhost.remove(r.host);
+      await refresh();
+    });
+    return el;
+  }
+
+  return { el: root, onShow: () => void refresh() };
+}
+
+/* ---------- 主机密钥询问 ---------- */
+
+export function installHostKeyDialog(): void {
+  bridge.knownhost.onAsk((req: HostKeyAsk) => show(req));
+}
+
+function show(req: HostKeyAsk): void {
+  if (document.querySelector(".hk-backdrop")) return; // 一次只问一个
+  const changed = req.status === "changed";
+
+  const back = document.createElement("div");
+  back.className = "hk-backdrop";
+  back.innerHTML = `
+    <div class="hk-dialog">
+      <h3 class="${changed ? "error" : "primary"}"></h3>
+      <div class="hk-body"></div>
+      <div class="hk-actions"></div>
+    </div>`;
+  const title = back.querySelector("h3")! as HTMLElement;
+  const bodyEl = back.querySelector(".hk-body")! as HTMLElement;
+  const actions = back.querySelector(".hk-actions")! as HTMLElement;
+
+  const fpLine = (lead: string): string =>
+    `${esc(lead)}<br><br>${esc(req.keyType)} fingerprint is SHA256:<br><span class="hk-fp">${esc(req.fingerprint)}</span>`;
+
+  if (changed) {
+    title.textContent = `The fingerprint for ${req.host} has changed`;
+    bodyEl.innerHTML = `${esc("sshkit notices a potential security breach.")}<br><br>New ${esc(req.keyType)} fingerprint is SHA256:<br><span class="hk-fp">${esc(req.fingerprint)}</span>`;
+  } else {
+    title.textContent = "Are you sure you want to connect?";
+    bodyEl.innerHTML = `${fpLine(`The authenticity of ${req.host} can not be established.`)}<br><br>Do you want to add it to the list of known hosts?`;
+  }
+
+  const answer = (action: "continue" | "add" | "replace" | "cancel"): void => {
+    bridge.knownhost.answer(req.reqId, action);
+    back.remove();
+  };
+  const btn = (label: string, cls: string, action: "continue" | "add" | "replace" | "cancel"): void => {
+    const b = document.createElement("button");
+    b.className = `btn ${cls}`;
+    b.textContent = label;
+    b.addEventListener("click", () => answer(action));
+    actions.append(b);
+  };
+
+  if (changed) {
+    btn("Replace", "primary", "replace");
+    btn("Add as new", "", "add");
+    btn("Cancel", "danger", "cancel");
+  } else {
+    btn("Close", "", "cancel");
+    btn("Continue", "", "continue");
+    btn("Add and continue", "primary", "add");
+  }
+
+  document.body.append(back);
+}
