@@ -70,7 +70,7 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 | # | 特性 | 观察点 | 我方实现 | 蓝图状态 |
 |---|---|---|---|---|
 | T1 | 终端渲染/主题/字体 | 默认配色、光标、字号、滚动回看 | `renderer/app.ts` + xterm 主题 | **渲染已复刻(F13)**:字体同文件/14px、格 8×18、底色与默认前景、16 色 `Δ=0`、canvas 四层渲染器 —— 全部与原版一致。**未做**:主题切换 UI(原版 20+ 套,数据源已定位在 `colorSchemesArray`)、字体选择器(原版打包 12 个等宽族)、字号设置(4–40) |
-| T2 | **多 Tab / 分屏** | Tab 标题规则、新建/关闭、分屏入口、拖拽排序 | 无(单终端) | ❌ **缺**;**F11 实测落点**:原版顶部 tab 条 `Vaults\|SFTP\|+`(`data-testid=horizontal-tabs`/`new-tab-button`),且 **SFTP 是 tab**;原料 `ui-root/INDEX.md:226,240,263`(`workspaceTab*`、split terminal 文案) |
+| T2 | **多 Tab / 分屏** | Tab 标题规则、新建/关闭、分屏入口、拖拽排序 | `renderer/app.ts`(tab 模型)+ `index.html` | ✅ **已复刻主体(F14)**:多会话 tab(每 tab 独立 Terminal/会话 id)、活动/会话态配色、关闭在左、`Cmd+T/W/Shift+[ ]`、`+` 直接新建、新 tab 落地页(搜索框 + Recent sessions 空态)—— 均已实测通过。**未做**:拖拽排序、分屏入口、固定 tab(Vaults/SFTP 无对应物)、tab 右键菜单 |
 | T3 | **端口转发** | 本地/远程/动态转发 UI、规则按主机持久化、连接后状态 | 无 | ❌ **缺**;**F11 实测落点**:原版左栏一级导航项 `Port Forwarding`;原料 `analysis/native-inventory.md:89`(`SshDynamicPortForwarding` 19 符号)、`INDEX.md:128,285`(`dynamic-port-forwarding`、`"Set up port forwarding"`) |
 | T4 | **快捷键** | 新建/关闭 Tab、复制粘贴、清屏、搜索 | 无自定义 | ❌ **缺**(0 命中) |
 | T5 | SFTP 双栏 | 列目录字段、进度呈现、覆盖/改名交互 | `main/sftp.ts` + `renderer/sftp.ts`(M2) | 03 覆盖 |

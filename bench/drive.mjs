@@ -34,9 +34,12 @@ const focusSel = opt("--focus", ".xterm-screen");
 const tag = opt("--tag", "drive");
 const waitMs = Number(opt("--wait", "700"));
 const dry = args.includes("--dry");
+const probeFile = opt("--probe-file", null); // 点击后立刻在同一次会话里求值(弹层类 UI 必须如此:
+                                             // 中间任何停顿/失焦都会让弹层关闭,分两步探测只能拿到空结果)
+const keyCombo = opt("--key", null);         // 例:"cmd+w" / "cmd+shift+]" —— 发组合键(测快捷键用)
 const outDir = opt("--out-dir", `bench/sessions/${new Date().toLocaleString("sv-SE").replace(/[: ]/g, "_")}-${tag}`);
 
-if (!testid && !selector && !text && !typeStr) { console.error("需要 --testid / --selector / --text / --type 之一"); process.exit(2); }
+if (!testid && !selector && !text && !typeStr && !keyCombo) { console.error("需要 --testid / --selector / --text / --type / --key 之一"); process.exit(2); }
 
 const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
 const pages = list.filter((t) => t.type === "page");
@@ -114,11 +117,52 @@ const found = await ev(`(() => {
            w: Math.round(r.width), h: Math.round(r.height), visible: r.width>0 && r.height>0 };
 })()`);
 
-if (!typeStr && !found) { console.error(`找不到目标:${JSON.stringify(desc)}`); ws.close(); process.exit(3); }
+if (!typeStr && !keyCombo && !found) { console.error(`找不到目标:${JSON.stringify(desc)}`); ws.close(); process.exit(3); }
 if (found) console.log(`目标: <${found.tag}> "${found.text}"${found.testid ? ` testid=${found.testid}` : ""}${found.aria ? ` aria=${found.aria}` : ""} @(${found.x},${found.y}) ${found.w}x${found.h} visible=${found.visible}`);
 
-if (dry && !typeStr) { console.log("--dry:不点击"); ws.close(); process.exit(0); }
-if (!typeStr && !found.visible) { console.error("目标不可见(0 尺寸)→ 不点,避免盲点"); ws.close(); process.exit(4); }
+if (dry && !typeStr && !keyCombo) { console.log("--dry:不点击"); ws.close(); process.exit(0); }
+if (!typeStr && !keyCombo && !found.visible) { console.error("目标不可见(0 尺寸)→ 不点,避免盲点"); ws.close(); process.exit(4); }
+
+
+// ---- 组合键动作(--key)----
+function parseCombo(combo) {
+  const parts = combo.toLowerCase().split("+").map((s) => s.trim()).filter(Boolean);
+  const mods = { cmd: 4, meta: 4, ctrl: 2, control: 2, alt: 1, option: 1, shift: 8 };
+  let modifiers = 0; const keys = [];
+  for (const p of parts) (mods[p] !== undefined ? (modifiers |= mods[p]) : keys.push(p));
+  const k = keys[keys.length - 1] || "";
+  const named = { enter: ["Enter", "Enter", 13], tab: ["Tab", "Tab", 9], esc: ["Escape", "Escape", 27],
+    escape: ["Escape", "Escape", 27], space: [" ", "Space", 32], backspace: ["Backspace", "Backspace", 8] };
+  let key = k, code, vk;
+  if (named[k]) { [key, code, vk] = named[k]; }
+  else if (/^[a-z]$/.test(k)) { key = k; code = "Key" + k.toUpperCase(); vk = k.toUpperCase().charCodeAt(0); }
+  else if (/^[0-9]$/.test(k)) { key = k; code = "Digit" + k; vk = k.charCodeAt(0); }
+  else { key = k; code = k; vk = k.length === 1 ? k.charCodeAt(0) : 0; }
+  return { key, code, vk, modifiers };
+}
+
+if (keyCombo) {
+  const c = parseCombo(keyCombo);
+  console.log(`组合键: ${keyCombo} → key=${c.key} code=${c.code} vk=${c.vk} modifiers=${c.modifiers}`);
+  if (dry) { console.log("--dry:不发键"); ws.close(); process.exit(0); }
+  await shoot(`${base}-before.png`);
+  const common = { key: c.key, code: c.code, windowsVirtualKeyCode: c.vk, nativeVirtualKeyCode: c.vk, modifiers: c.modifiers };
+  await send("Input.dispatchKeyEvent", { type: "keyDown", text: c.modifiers === 0 && c.key.length === 1 ? c.key : undefined, ...common });
+  await sleep(60);
+  await send("Input.dispatchKeyEvent", { type: "keyUp", ...common });
+  await sleep(Math.max(waitMs, 600));
+  await shoot(`${base}-after.png`); await dump(`${base}-after.html`);
+  const fp = await fingerprint();
+  let probeResult2;
+  if (probeFile) {
+    const r2 = await send("Runtime.evaluate", { expression: readFileSync(probeFile, "utf8"), returnByValue: true, awaitPromise: true });
+    probeResult2 = r2.exceptionDetails ? { probeError: r2.exceptionDetails.text } : r2.result?.value;
+  }
+  console.log(JSON.stringify({ port, targetId: t.id, action: "key", combo: keyCombo, parsed: c,
+    artifacts: { beforePng: `${base}-before.png`, afterPng: `${base}-after.png` }, ...(probeFile ? { probe: probeResult2 } : {}) }, null, 1));
+  console.log("✅ 已发送组合键");
+  ws.close(); process.exit(0);
+}
 
 // ---- 打字动作(--type)----
 async function clickPoint(x, y) {
@@ -190,7 +234,7 @@ let afterBytes = await shoot(`${base}-after.png`);
 await dump(`${base}-after.html`);
 
 let changed = beforeFp !== afterFp;
-if (!changed) {
+if (!changed && !probeFile) {
   // 有些控件只认合成 click(React 委托),补一次
   await ev(`(() => { const sel=${JSON.stringify(desc.sel)}; let el = sel ? document.querySelector(sel) : null;
     if(!el && ${JSON.stringify(text)} !== null){const w=${JSON.stringify(text)}.toLowerCase();
@@ -201,11 +245,22 @@ if (!changed) {
   if (fp3 !== beforeFp) { changed = true; afterBytes = await shoot(`${base}-after.png`); await dump(`${base}-after.html`); }
 }
 
+// ---- 点击后当场探测(--probe-file)----
+// 弹层/菜单/悬浮面板必须这样测:同一次会话、紧接着点完就求值。
+let probeResult;
+if (probeFile) {
+  const src = readFileSync(probeFile, "utf8");
+  const r = await send("Runtime.evaluate", { expression: src, returnByValue: true, awaitPromise: true });
+  if (r.exceptionDetails) probeResult = { probeError: r.exceptionDetails.text };
+  else probeResult = r.result?.value;
+}
+
 const summary = {
   port, targetId: t.id, action: "click", target: { ...desc, resolved: found },
   changed, waitMs,
   artifacts: { beforePng: `${base}-before.png`, afterPng: `${base}-after.png`, beforeHtml: `${base}-before.html`, afterHtml: `${base}-after.html` },
   beforeBytes, afterBytes,
+  ...(probeFile ? { probe: probeResult } : {}),
 };
 console.log(JSON.stringify(summary, null, 1));
 console.log(changed ? "✅ 界面有变化(after.* 即新状态)" : "⚠️ 界面无变化 —— 可能不是点击触发(或需 hover/二次点击)");

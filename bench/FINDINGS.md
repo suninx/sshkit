@@ -204,3 +204,39 @@
   应改回 Source Code Pro —— 需用户裁定。附带情报:原版打包 12 个 Nerd Font 等宽族
   (Meslo/JetBrains Mono/Fira Code·Mono/SauceCodePro/Ubuntu Mono/Inconsolata/Anonymice Pro/
   Caskaydia Cove/DejaVu Sans M/Droid Sans M),外加 UI 商业字体 **CircularXX**(**不可搬用**,我方 UI 用系统字体栈)。
+
+### F14 T2 多 Tab 体系:规格、实现与复验                      [2026-10-17 14:15]
+- **原版规格(实测)**:
+  - 条:`[data-testid=horizontal-tabs]`,**高 51px**、底色 = **终端主题底色**(`#141729`,即条随终端主题走),
+    内容区随应用主题(同一台机器上先后测到浅色与深色两种,故比较样式时必须注明当时的主题)。
+  - tab:高 30px、圆角 10px;非活动 = `rgba(255,255,255,.05)` 叠加、文字 `#a4b3ba`;
+    **活动会话 tab = `rgba(33,181,104,.2)` 叠加、文字 `#21b568`**(会话图标同为绿色)。
+  - 宽度:固定 tab(Vaults/SFTP)80px;会话 tab 随标题(实测 168~240px)。
+  - **关闭按钮在会话 tab 的左侧**(`close-tab` x=264,而该 tab 起于 259;21×23,圆角 5)。
+    右侧另有一个图标,**用途未验证**(记为待查)。
+  - **"+" 直接新建 tab,不弹菜单**(我先前误判为弹菜单:那次看到的 "Recent sessions/New Tab" 其实是
+    新 tab 的落地页内容)。`new-tab-button` 30×30 圆角 10;菜单/落地页打开时该按钮会被弹层取代。
+  - 新 tab 落地页:居中搜索/连接框(宽约 667、高 36、圆角 10、占位符 **"Search hosts or tabs"**、
+    右侧 **⌘+K** 提示),下方图标 + **"Recent sessions"**(18px/500)+ 两行空态文案
+    "Your recent sessions will be visible here." / "In the meantime, start connecting with CMD+K"。
+    另在 F11 时曾测到占位符 `Type "ssh user@hostname -p port" to connect...` —— 同一位置的两种文案,
+    疑与版本/状态有关,按最近一次实测为准。
+  - **快捷键(权威来源:原版 `localStorage.shortcut_schemes`)**:
+    Mac = `Cmd+T` 新建 / `Cmd+W` 关闭 / `Cmd+Shift+]` 下一个 / `Cmd+Shift+[` 上一个;
+    PC = `Ctrl+T` / `Ctrl+Shift+W` / `Alt+→` / `Alt+←`。
+- **实现(sshkit)**:主进程与桥接本就按 id 区分会话(`terminal:create`/`ssh:connect` 各返回独立 id、
+  事件都带 id),故多 tab 只动渲染层:
+  `app.ts` 引入 tab 模型(每 tab 一个 `.tab-pane`,内含自己的 `Terminal` 与会话 id)、
+  条渲染(活动态/会话绿/连接指示点/关闭按钮)、`Cmd+T/W/Shift+[ ]`、新 tab 落地页;
+  `index.html` 增 tab 条与落地页样式(**类名用 `.tab-pane` 以免与 SFTP 弹层的 `.pane/.panes` 冲突**)。
+  行为对齐原版:点主机即**在活动 tab 内**连接;活动 tab 已是会话时才新开 tab;初始为一个 New Tab 落地页。
+- **复验(对自家实例走 CDP 驱动)**:`Cmd+T` → 新增 New Tab ✓;点 `node-1` → 在活动 tab 内连上(标题变
+  `node-1`、指示点转绿)✓;点 `Local shell` → **第二个并发会话** ✓(两会话同时 on);`Cmd+Shift+]` → 循环 ✓;
+  `Cmd+W` → 关闭并激活邻居 ✓;样式实测 `条高 51 / tab 30 / 圆角 10 / 活动会话 rgba(33,181,104,.2) / 文字 #21b568`
+  —— 与原版实测值一致。改类名后 SFTP 弹层复测正常(`display:flex`、`position:static`、双栏各 422px)。
+- 待查/待定:原版会话 tab 右侧那个图标是什么(用途未验证);原版的 Vaults/SFTP 固定 tab 我方无对应物
+  (我方以侧栏承担 vault 角色),是否补固定 tab 待定。
+- 方法学:① 探针要发组合键,给 `drive.mjs` 加了 `--key "cmd+shift+]"`(发真实 keyDown/keyUp + modifiers),
+  并用它验证了原版的 `Cmd+W` 确实逐次关 tab;② 弹层类 UI 必须"点完当场求值"(`--probe-file`),
+  分两步探测会因失焦关闭而拿到空结果;③ 我一度把"点 + 后出现的 Recent sessions"误读成弹出菜单 ——
+  教训是**先看一眼截图再解释 DOM**。
