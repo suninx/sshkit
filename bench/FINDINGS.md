@@ -853,3 +853,29 @@
 - 自动补全:打开 `Edit node-1` → `#f-tags` 值 `"prod, db"`、`list="tag-suggest"`、
   候选项 = `bench / db / prod / web` ✓;
 - **看画面确认**(F37 的教训):截图里 node-1 与 alpha-web 的 `prod` 显示同一个蓝点与蓝色描边,其余标签素色 ✓。
+
+### F39 T3 收尾:规则编辑复用向导;并更正一条我自己的臆测           [2026-10-18 14:00]
+## 实现(编辑复用同一向导)
+- openWizard(edit?):传既有规则即进入编辑态 —— 四步字段全部预填、第一步标题变 Edit rule、
+  后续步骤标题带 `· editing`、保存时沿用原 id 与自定义名(原地更新,不新增)。
+- 规则行新增 Edit(运行中禁用并提示 Stop the rule before editing —— 运行中改端口没有意义)。
+## 复验(完整走了「建 → 改」)
+- 建:向导四步驱动(Local → 端口 19099 → 中间主机 fake-ssh → 目的 127.0.0.1:80)→ 列表出现
+  `Local 19099 / 0.0.0.0:19099 → 127.0.0.1:80 via fake-ssh`,行上有 Edit / Start / ✕ ✓;
+- 改:点 Edit → crumb `Edit rule`、类型 Local 预选 ✓ → 第二步 crumb `Local Rule · editing`、
+  端口预填 19099、bind 0.0.0.0 ✓ → 第三步主机按钮显示 fake-ssh ✓ → 第四步目的 127.0.0.1 / 端口 80 预填、
+  按钮变 Save ✓;
+- 保存后:仍是 1 条规则、id 未变(f_mvc7u0tf)、端口变为 19098 ✓(确实是原地更新);
+- 复验后已删除该测试规则,恢复原状(0 条)✓。
+## 测量:向导文案有据(逐条确认)
+Local/Remote/Dynamic Port Forwarding、Local port number、Remote port number、Intermediate host、
+Select the port forwarding type、Skip wizard、Bind address、Destination address、Destination port number
+—— 全部命中(我方实现用的正是这些字样)。
+唯一自拟的是 Remote 型第二步那句提示(…will be open on the remote machine 未命中),已标注。
+## 更正:我此前记的一条「未做」是臆测
+PROTOCOL 里我曾写 T3 「未做:Import/分组」。实测原版里的 Import 是
+`redirectToImportIdeas = () => openExternal({title:"Import", url:"https://ideas.termius.com/c/49-import"})`
+—— 一个跳转到功能请求站点的外链,与端口转发无关;Create group / New group 也都不存在。
+⇒ 那条「未做」是我的猜测,不是原版的可观测特性,已从清单删除。
+教训:「未做」列表里写下的每一条,都应当是「有据但没做」,而不是「我觉得应该有」——
+否则后续每一轮都会去追一个不存在的东西。
