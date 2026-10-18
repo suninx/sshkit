@@ -424,6 +424,9 @@ function splitTab(tab: Tab): void {
 
   const term = new Terminal({
     fontFamily: TERM_FONT, fontSize: TERM_FONT_SIZE, theme: TERM_THEME,
+    /* lineHeight 必须与分屏终端一致 —— 之前只给分屏设了,主终端漏了,
+       结果主终端格高 16 而不是原版的 18(14px + 1.05 → 18)。 */
+    lineHeight: TERM_LINE_HEIGHT,
     cursorBlink: true, allowProposedApi: true, scrollback: 5000, macOptionIsMeta: true,
   });
   const fit = new FitAddon();
@@ -1304,7 +1307,13 @@ document.getElementById("btn-prefs")!.addEventListener("click", (ev) => {
 });
 document.addEventListener("click", (ev) => {
   const el = document.querySelector(".prefs");
-  if (el && !el.contains(ev.target as Node) && (ev.target as HTMLElement).id !== "btn-prefs") el.remove();
+  if (!el) return;
+  const t = ev.target as HTMLElement;
+  /* 白名单必须包含**所有**开启者。之前只写了 #btn-prefs,而 Vaults 工具条上的开启者是
+     #btn-appearance —— 于是点它时:自己的监听先开、紧接着这个"点外部关闭"又把它关掉,
+     表现为"按钮点了没反应"(踩过)。 */
+  if (el.contains(t) || t.closest("#btn-prefs, #btn-appearance")) return;
+  el.remove();
 });
 
 /* ---------- T8:断线与重连 ---------- */
