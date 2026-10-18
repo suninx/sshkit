@@ -788,6 +788,20 @@
     #host-list .host-item .hcol { min-width: 96px; flex: 1 1 auto; }
     #host-list .host-item .tag-chips { flex: 0 1 auto; min-width: 0; max-width: 88px;
       max-height: 34px; overflow: hidden; }
+
+    /* ===== 会话 tab 内部结构(按原版实测)=====
+       活动 pill 259..498:[✕ 269..278][标签 290..349]………[会话徽标 469..488];标签/✕ = #42b16e,徽标暗一档 #2c674c。
+       非活动 pill = [主机头像][标签]。✕ 在左槽:静止显头像,悬停或活动换成 ✕;徽标只在活动时出现。
+       常驻 tab(Vaults/SFTP)没有 ✕。 */
+    .tab-btn.session { min-width: 150px; padding-left: 10px; padding-right: 10px; }
+    .tab-btn.session .tab-close { display: none; opacity: 1; color: #42b16e; }
+    .tab-btn.session:hover .tab-close, .tab-btn.session.active .tab-close { display: flex; }
+    .tab-btn.session:hover .tico, .tab-btn.session.active .tico { display: none; }
+    .tab-btn.session .tbadge { display: none; }
+    .tab-btn.session.active .tbadge { display: flex; margin-left: auto; color: #2c674c; }
+    .tab-btn.session.active .tbadge svg { width: 18px; height: 18px; }   /* 原版徽标 19px 宽 */
+    .tab-btn.session.on.active .lbl { color: #42b16e; }
+    .tab-btn:not(.session) .tab-close { color: inherit; }
 </style>
 </head>
 <body>

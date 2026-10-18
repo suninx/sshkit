@@ -301,7 +301,9 @@ function renderTabs(): void {
         + `${t.kind === "session" && t.state === "on" ? " on" : ""}`
         + `${t.kind === "session" && t.state === "off" ? " off" : ""}`
         + `${t.id === active ? " active" : ""}`;
-      if (t.kind === "session" && t.state === "on") {
+      /* 绿色是"当前活动会话"的标志:原版非活动会话 pill 就是普通深色(只有头像+白字),没有绿调。
+         所以绿调填充只在**活动**的会话 tab 上给。 */
+      if (t.kind === "session" && t.state === "on" && t.id === active) {
         const bg = (t.term?.options.theme as { background?: string } | undefined)?.background;
         const m = /^#?([0-9a-f]{6})$/i.exec(bg ?? "");
         if (m) {
@@ -319,14 +321,15 @@ function renderTabs(): void {
       ico.className = "tico";
       ico.innerHTML = TICON[t.kind] ?? TICON.newtab;
       el.append(ico);
+      let chev: HTMLElement | null = null;
       if (t.kind === "vault") {
-        /* 原版 `Vaults` pill 右侧紧跟一个下拉箭头(实测 x 193..222),用于切换 vault */
-        const chev = document.createElement("span");
-        chev.className = "tchev";
-        chev.title = "Switch vault";
-        chev.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>';
-        chev.addEventListener("click", (ev) => { ev.stopPropagation(); toast("Vault 切换:目前只有一个本地 vault"); });
-        el.append(chev);
+        /* 原版 `Vaults` pill 是 [图标][标签][▾](箭头在标签**之后**),不是紧跟图标 */
+        const chevEl = document.createElement("span");
+        chevEl.className = "tchev";
+        chevEl.title = "Switch vault";
+        chevEl.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>';
+        chevEl.addEventListener("click", (ev) => { ev.stopPropagation(); toast("Vault 切换:目前只有一个本地 vault"); });
+        chev = chevEl;
       }
 
       /* T2:拖拽重排。原版有 over-horizontal-tab / over-horizontal-tabs-area / over-draft-horizontal-tab
@@ -365,23 +368,34 @@ function renderTabs(): void {
         openTabMenu(t, ev.clientX, ev.clientY);
       });
 
-      const dotEl = document.createElement("span");
-      dotEl.className = `dot${t.state === "on" ? " on" : ""}`;
       const lbl = document.createElement("span");
       lbl.className = "lbl";
       lbl.textContent = t.customLabel ?? t.label;
-
-      if (t.kind === "session") {
-        // 原版实测:会话 tab 的关闭按钮在**左侧**(close-tab x=264,而该 tab 起于 259)
+      const mkClose = (): HTMLButtonElement => {
         const x = document.createElement("button");
         x.className = "tab-close";
         x.textContent = "✕";
         x.title = "Close Tab (⌘W)";
         x.setAttribute("aria-label", "close-tab");
         x.addEventListener("click", (ev) => { ev.stopPropagation(); closeTab(t.id); });
-        el.append(x, dotEl, lbl);
+        return x;
+      };
+      /* 会话 tab 的结构按原版实测排:
+         活动 pill(259..498)= [✕ 269..278][标签 290..349]………[会话徽标 469..488],标签与 ✕ 同为 #42b16e;
+         非活动 pill = [主机头像][标签]。所以 ✕ 在**左槽**(静止时该槽显示头像,悬停/活动换成 ✕),
+         右槽在活动时出现会话徽标。原来我把 [图标][✕][状态点][标签] 排在一起,位置自然不对;
+         状态点也是我多出来的,原版没有。 */
+      if (t.kind === "session") {
+        el.append(ico, mkClose(), lbl);
+        const badge = document.createElement("span");
+        badge.className = "tbadge";
+        /* 原版右槽是"终端会话"徽标(实测 19px 宽、色 #2c674c) */
+        badge.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="4" width="19" height="13" rx="3"/><path d="M7 8.5l2.6 2.2L7 13M12.5 13h4"/><circle cx="16" cy="20" r="2.4"/><path d="M12.4 22.4c.6-1.4 2-2.2 3.6-2.2s3 .8 3.6 2.2"/></svg>';
+        el.append(badge);
       } else {
-        el.append(dotEl, lbl);
+        el.append(ico, lbl);
+        if (chev) el.append(chev);
+        else if (t.kind !== "vault" && t.kind !== "sftp") el.append(mkClose());  // 常驻 tab 无 ✕
       }
       el.addEventListener("click", () => activateTab(t.id));
       return el;
@@ -910,6 +924,9 @@ function disposeTab(t: Tab): void {
 }
 
 function closeTab(id: string): void {
+  /* Vaults / SFTP 是常驻 tab:原版这两个 pill 上没有关闭按钮,⌘W 也关不掉。 */
+  const t0 = tabs.find((x) => x.id === id);
+  if (t0 && (t0.kind === "vault" || t0.kind === "sftp")) return;
   const i = tabs.findIndex((t) => t.id === id);
   if (i < 0) return;
   const [t] = tabs.splice(i, 1);
