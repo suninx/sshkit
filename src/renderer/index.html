@@ -786,8 +786,13 @@
        = 314 ≤ 317 ✓。之前芯片给 118 且间隙 12,总和 360 —— 芯片被挤出卡片右缘 31px(实测)。 */
     #host-list .host-item { gap: 8px; }
     #host-list .host-item .hcol { min-width: 96px; flex: 1 1 auto; }
-    #host-list .host-item .tag-chips { flex: 0 1 auto; min-width: 0; max-width: 88px;
-      max-height: 34px; overflow: hidden; }
+    /* 单行不换行:首枚标签 + `+N`;不再出现被裁掉一半的芯片。
+       宽度预算同上(标签区约 108px)。 */
+    #host-list .host-item .tag-chips { flex: 0 1 auto; min-width: 0; max-width: 108px;
+      flex-wrap: nowrap; overflow: hidden; }
+    #host-list .host-item .tag-chip { flex: none; }
+    #host-list .host-item .tag-chip.tag-more { background: var(--h12); border-color: transparent;
+      color: var(--fg-dim); padding: 1px 6px; }
 
     /* ===== 会话 tab 内部结构(按原版实测)=====
        活动 pill 259..498:[✕ 269..278][标签 290..349]………[会话徽标 469..488];标签/✕ = #42b16e,徽标暗一档 #2c674c。
@@ -810,6 +815,13 @@
     .tab-btn.session .tico.tav { width: 24px; height: 24px; border-radius: 6px; background: #35d39a;
       color: #10321f; align-items: center; justify-content: center; flex: none; }
     .tab-btn.session .tico.tav svg { width: 15px; height: 15px; }
+
+    /* 卡片上的编辑/删除按钮按原版做成中性(浅底 + 浅字形),不再用红框 —— 用户截图里原版就没有红。
+       悬停删除键时才转成危险色。 */
+    #host-list .host-item .btn { border-color: transparent; background: var(--h08); color: var(--fg); }
+    #host-list .host-item .btn:hover { background: var(--h12); }
+    #host-list .host-item .btn.danger { color: var(--fg); }   /* 字形也是浅色(原版如此),红只在悬停时 */
+    #host-list .host-item .btn.danger:hover { color: var(--danger); }
 </style>
 </head>
 <body>

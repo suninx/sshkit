@@ -336,6 +336,8 @@ const SORT_LABEL: Record<SortMode, string> = {
     if (host?.tags?.length) {
       const chips = document.createElement("div");
       chips.className = "tag-chips";
+      /* 只放第一枚,其余收进 `+N`(见下);单行不换行,永不出现半截芯片 */
+      const MAX_VISIBLE = 1;
       for (const tag of host.tags) {
         const c = document.createElement("span");
         c.className = "tag-chip";
@@ -363,6 +365,15 @@ const SORT_LABEL: Record<SortMode, string> = {
         });
         c.append(dot, label, rm);
         chips.append(c);
+        if (chips.querySelectorAll(".tag-chip").length >= MAX_VISIBLE) break;
+      }
+      if (host.tags.length > MAX_VISIBLE) {
+        /* 卡片右侧空间有限:多余的标签收进 `+N`(悬停 title 列出全部),避免出现被裁半截的芯片 */
+        const more = document.createElement("span");
+        more.className = "tag-chip tag-more";
+        more.textContent = `+${host.tags.length - MAX_VISIBLE}`;
+        more.title = host.tags.join(", ");
+        chips.append(more);
       }
       el.append(chips);
     }
