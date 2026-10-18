@@ -208,8 +208,11 @@ export function createSftpView(
       }
       render(st);
     } catch (err) {
-      banner(pick(String((err as Error).message ?? err)));
-      render(st);
+      const msg = pick(String((err as Error).message ?? err));
+      banner(msg);
+      /* 远端失败要显示错误态(带原因与 Retry),不能停在"Connect to host"空态 —— 那是"没有会话"的语义。 */
+      if (st.which === "remote" && session()) renderError(st, msg);
+      else render(st);
     }
   }
 
@@ -218,13 +221,19 @@ export function createSftpView(
     const cols = st.rowsEl.closest(".sftp-pane")?.querySelector(".sp-cols") as HTMLElement | null;
     if (cols) cols.style.display = "none";   // 原版空态不显示列表头
     const body = st.rowsEl.parentElement!;
+    /* 注意:这里必须**保留** .sp-rows 容器并在之后重新取回 st.rowsEl。
+       之前直接 body.innerHTML = 空态,把 st.rowsEl 所在的容器整个换掉 →
+       st.rowsEl 成了游离节点,之后所有 render() 都写进脱离文档的节点,
+       面板就永远停在 "Connect to host"(实测:Reload 报通道错误但界面纹丝不动)。 */
     body.innerHTML = `
       <div class="sftp-empty">
         <div class="sp-empty-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e3e7e9" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></div>
         <h3>Connect to host</h3>
         <p>Start by connecting to a saved host<br>to manage your files with SFTP.</p>
         <button class="sp-select">Select host</button>
-      </div>`;
+      </div>
+      <div class="sp-rows"></div>`;
+    st.rowsEl = body.querySelector(".sp-rows")! as HTMLElement;
     body.querySelector(".sp-select")?.addEventListener("click", (ev) => {
       const list = listSessions();
       if (!list.length) { banner("还没有可用会话:先从左侧主机列表连接一台主机"); return; }
@@ -232,6 +241,27 @@ export function createSftpView(
       menuAt(anchor, list.map((x) => [x.label, () => { bound = x; void refresh(st); }] as [string, () => void]),
         "选择要绑定的会话");
     });
+  }
+
+  /** 远端列表失败时的错误态(不要把失败画成"未连接"空态) */
+  function renderError(st: PaneState, msg: string): void {
+    st.crumbsEl.textContent = "";
+    const pane = st.rowsEl.closest(".sftp-pane");
+    const cols = pane?.querySelector(".sp-cols") as HTMLElement | null;
+    if (cols) cols.style.display = "none";
+    const body = st.rowsEl.parentElement!;
+    body.innerHTML = `
+      <div class="sftp-empty sftp-err">
+        <div class="sp-empty-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e08a8a" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.2v.3"/></svg></div>
+        <h3>SFTP unavailable</h3>
+        <p></p>
+        <button class="sp-select sp-retry">Retry</button>
+      </div>
+      <div class="sp-rows"></div>`;
+    st.rowsEl = body.querySelector(".sp-rows")! as HTMLElement;
+    const p = body.querySelector("p")!;
+    p.textContent = msg;
+    body.querySelector(".sp-retry")?.addEventListener("click", () => { void refresh(st); });
   }
 
   function renderCrumbs(st: PaneState): void {
@@ -280,6 +310,12 @@ export function createSftpView(
 
   function render(st: PaneState): void {
     renderCrumbs(st);
+    /* 从"空态/错误态"回到列表:列头要恢复显示,占位块要移除。
+       (renderEmpty 会隐藏 .sp-cols,而此前没有任何地方把它恢复回来。) */
+    const pane = st.rowsEl.closest(".sftp-pane");
+    const cols = pane?.querySelector(".sp-cols") as HTMLElement | null;
+    if (cols) cols.style.display = "";
+    st.rowsEl.parentElement?.querySelectorAll(".sftp-empty").forEach((n) => n.remove());
     // 列头指示器:仅在当前排序列显示(ASC ▲ / DESC ▼)
     st.rowsEl.parentElement?.parentElement?.querySelectorAll<HTMLButtonElement>(".sp-col").forEach((b) => {
       const on = st.sortBy === b.dataset.sort;

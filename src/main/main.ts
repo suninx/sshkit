@@ -195,6 +195,15 @@ const sftpController = new SftpController(
   (progress) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("sftp:progress", progress);
   },
+  /* 交互会话上开不出 sftp 子系统时,给 SFTP 单独开一条连接(主机与凭据只有这里知道) */
+  async (sid: number) => {
+    const hostId = sshService.hostIdOf(sid);
+    if (!hostId) return null;
+    const host = hostStore.get(hostId);
+    if (!host) return null;
+    const secrets = host.authType === "password" || host.authType === "key" ? await getCreds(hostId) : {};
+    return await sshService.openAux(host, secrets);
+  },
 );
 
 ipcMain.handle("sftp:list", (_e, sid: number, dir: string) => sftpController.listRemote(sid, dir));

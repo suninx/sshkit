@@ -210,6 +210,32 @@ export class SshService {
     return true;
   }
 
+  /** 某个会话 id 对应的主机(供 SFTP 开专用连接时查主机与凭据) */
+  hostIdOf(sessionId: number): string | undefined {
+    return this.sessions.get(sessionId)?.hostId;
+  }
+
+  /** 给 SFTP 单独开一条连接。
+      原因:部分服务器限制单条连接上的会话/通道数(MaxSessions 1 之类),交互 shell 一占,
+      再请求 `sftp` 子系统就报 "Unable to start subsystem: sftp" / "Channel open failure: open failed"
+      (实测 node-1)。SFTP 另开一条连接即可绕开。这条连接不属于终端会话,由调用方负责 end()。 */
+  async openAux(host: HostRecord, secrets: HostSecrets): Promise<Client> {
+    const client = new Client();
+    const cfg = this.buildConfig(host, secrets);
+    /* 交互会话已经把主机密钥确认过了(写进 known_hosts),这里不再弹窗:一致才通过,否则拒绝。 */
+    cfg.hostVerifier = (key: unknown, verify: (valid: boolean) => void) => {
+      const blob = Buffer.from(key as Uint8Array);
+      verify(checkHostKey(knownHostField(host.host, host.port), blob).status === "ok");
+    };
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("aux connect timed out")), 20_000);
+      client.once("ready", () => { clearTimeout(timer); resolve(); });
+      client.once("error", (err: Error) => { clearTimeout(timer); reject(err); });
+      try { client.connect(cfg); } catch (e) { clearTimeout(timer); reject(e as Error); }
+    });
+    return client;
+  }
+
   /** T3:该主机当前可用的 ssh 通道(取最新一个) */
   clientOfHost(hostId: string): Client | undefined {
     let found: Client | undefined;

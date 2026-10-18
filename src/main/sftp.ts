@@ -16,17 +16,42 @@ type ErrBox = Error | null | undefined;
 export class SftpController {
   private nextJobId = 1;
 
+  /** 每个会话缓存一条"专用 SFTP 连接"(见 openAux 的说明) */
+  private readonly aux = new Map<number, { client: Client; sftp: SFTPWrapper }>();
+
   constructor(
     private readonly clientOf: (sessionId: number) => Client | undefined,
     private readonly sink: ProgressSink,
+    /* 需要时给某会话开一条专用连接(由 main 注入:它才知道该会话的主机与凭据) */
+    private readonly connectAux?: (sessionId: number) => Promise<Client | null>,
   ) {}
 
   async sftp(sid: number): Promise<SFTPWrapper> {
+    const cached = this.aux.get(sid);
+    if (cached) return cached.sftp;
     const client = this.clientOf(sid);
     if (!client) throw new Error("no active ssh session");
-    return await new Promise<SFTPWrapper>((resolve, reject) => {
-      client.sftp((err: ErrBox, s: SFTPWrapper) => (err ? reject(err) : resolve(s)));
-    });
+    try {
+      return await new Promise<SFTPWrapper>((resolve, reject) => {
+        client.sftp((err: ErrBox, s: SFTPWrapper) => (err ? reject(err) : resolve(s)));
+      });
+    } catch (first) {
+      /* 交互会话上开不出 sftp 通道时,改用一条专用连接再试(见 SshService.openAux)。 */
+      if (!this.connectAux) throw first;
+      const aux = await this.connectAux(sid);
+      if (!aux) throw first;
+      try {
+        const sftp = await new Promise<SFTPWrapper>((resolve, reject) => {
+          aux.sftp((err: ErrBox, s: SFTPWrapper) => (err ? reject(err) : resolve(s)));
+        });
+        this.aux.set(sid, { client: aux, sftp });
+        aux.once("close", () => this.aux.delete(sid));
+        return sftp;
+      } catch (second) {
+        try { aux.end(); } catch { /* ignore */ }
+        throw second;
+      }
+    }
   }
 
   private cb<T>(resolve: (v: T) => void, reject: (e: Error) => void) {
