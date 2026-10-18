@@ -108,7 +108,10 @@
     /* 注意:类名必须与 SFTP 弹层的 .pane/.panes 区分开(否则 position:absolute 会把 SFTP 布局弄坏) */
     .tab-pane { position: absolute; inset: 0; display: none; }
     .tab-pane.active { display: block; }
-    .tab-pane .term-host { position: relative; width: 100%; height: 100%; padding: 6px; box-sizing: border-box; }
+    /* 原版终端是**贴满**整个内容区的(会话态截图 x=0..1279、y 从 50 起都是终端底色),
+       我早期给 .term-host 加的 6px 内边距会露出底下一层 #282c3c,看起来像一圈浅边框。 */
+    .tab-pane .term-host { position: relative; width: 100%; height: 100%; padding: 0; box-sizing: border-box;
+      background: var(--term-bg); }   /* 终端行高取整后底部会剩几像素,原版那里也是终端底色 */
 
     /* T4 复刻 —— 终端内搜索栏。原版实测:Cmd+F 在终端区右上出现,输入框占位符
        "Search terminal - ⌘ + F",右侧有上/下箭头按钮。 */
