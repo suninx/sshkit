@@ -539,9 +539,9 @@
     #topbar { display: flex; align-items: center; gap: 6px; height: 49px; flex: none;
       padding: 0 10px 0 var(--tl-inset); background: var(--bg3); -webkit-app-region: drag; }
     #topbar button, #topbar .tab-btn { -webkit-app-region: no-drag; }
-    .top-icon { border: 0; background: transparent; color: var(--fg); cursor: pointer;
+    .top-icon { border: 0; background: transparent; color: var(--fg-dim); cursor: pointer;
       width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-    .top-icon:hover { background: rgba(255,255,255,.07); }
+    .top-icon:hover { background: rgba(255,255,255,.07); color: var(--fg); }
     #shell { display: flex; flex: 1; min-height: 0; }
     #rail { width: 184px; flex: none; background: var(--bg2); padding: 12px 8px;
       display: flex; flex-direction: column; gap: 8px; }
@@ -562,8 +562,8 @@
     .tab-btn.active .tico { color: var(--fg); }
     #btn-new-tab { height: 28px; width: 28px; border-radius: 8px; color: var(--fg); }
     /* --- Vaults(Hosts 分区)--- */
-    .vault { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 14px 10px 0; }
-    #host-toolbar { display: flex; align-items: center; gap: 6px; height: 30px; }
+    .vault { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 10px 10px 0; }
+    #host-toolbar { display: flex; align-items: center; gap: 6px; height: 30px; margin-top: 20px; }
     .tb-btn { height: 30px; border: 0; border-radius: 8px; background: var(--btn2); color: var(--fg);
       font-size: 13px; padding: 0 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
     .tb-btn.caret { padding: 0 7px; }
@@ -573,7 +573,7 @@
     .tb-icon:hover { background: rgba(255,255,255,.07); }
     .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff;
       display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; }
-    #host-tools { display: flex; align-items: center; gap: 8px; height: 36px; margin-top: 12px;
+    #host-tools { display: flex; align-items: center; gap: 8px; height: 36px;
       background: var(--panel); border-radius: 9px; padding: 0 6px 0 12px; }
     #host-tools #host-search { flex: 1; min-width: 0; background: transparent; border: 0; outline: none;
       color: var(--fg); font-size: 13px; height: 100%; }
@@ -581,8 +581,9 @@
     #host-tools #btn-connect { height: 26px; border: 0; border-radius: 7px; background: transparent;
       color: var(--disabled); font-size: 13px; padding: 0 10px; cursor: default; }
     /* 组头 = 原版的分区标题(白色 13.5px,首字母大写) */
-    #host-list .group-label { color: var(--fg); font-size: 13.5px; font-weight: 500;
-      text-transform: none; margin: 20px 0 10px; letter-spacing: 0; }
+    /* 组头盒高必须正好 15px:旧规则带的 padding(10/3)会让它变 28px,把下面的卡片整体推低 */
+    #host-list .group-label { color: var(--fg); font-size: 13.5px; font-weight: 500; line-height: 15px;
+      padding: 0; text-transform: none; margin: 23px 0 13px; letter-spacing: 0; }
     #host-list .group-label::first-letter { text-transform: uppercase; }
     .sec-h { color: var(--fg); font-size: 13.5px; font-weight: 500; margin: 20px 0 12px; }
     #host-list { overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; display: flex;
@@ -604,7 +605,8 @@
     #host-list .host-item .sub { color: var(--fg-dim); font-size: 12px; margin-top: 2px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #host-list .host-item .tag-chips { flex: none; max-width: 150px; flex-wrap: wrap;
-      justify-content: flex-end; }
+      justify-content: flex-end; opacity: 0; transition: opacity .12s; }
+    #host-list .host-item:hover .tag-chips { opacity: 1; }
     #host-list .host-item .tag-chip { font-size: 10.5px; }
     #host-list .host-item [data-act] { opacity: 0; }
     #host-list .host-item:hover [data-act] { opacity: 1; }
@@ -640,6 +642,9 @@
     .tab-close { opacity: 0; transition: opacity .12s; }
     .tab-btn:hover .tab-close, .tab-btn.active .tab-close { opacity: .55; }
     .tab-btn .tab-close:hover { opacity: 1; }
+
+    .menu-sep { height: 1px; background: var(--wire); margin: 6px 0; }
+    .menu-cap { font-size: 11px; color: var(--fg-dim); padding: 4px 10px; }
 </style>
 </head>
 <body>
@@ -657,12 +662,12 @@
     <div id="shell">
       <!-- 左侧导航栏:184px,原版 6 项(文案取自原版自身字面量),单色图标 + 活动项药丸 -->
       <nav id="rail">
-        <button class="rail-item on" data-nav="hosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none"/><circle cx="7.5" cy="16.5" r="1" fill="currentColor" stroke="none"/></svg></span><span class="rl">Hosts</span></button>
-        <button class="rail-item" data-nav="keychain"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8M16.5 16.5l2-2M14 14l2-2"/></svg></span><span class="rl">Keychain</span></button>
-        <button class="rail-item" data-nav="forwarding"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 8h13l-3-3M21 16H8l3 3"/></svg></span><span class="rl">Port Forwarding</span></button>
-        <button class="rail-item" data-nav="snippets"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg></span><span class="rl">Snippets</span></button>
-        <button class="rail-item" data-nav="knownhosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="rl">Known Hosts</span></button>
-        <button class="rail-item" data-nav="logs"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span><span class="rl">Logs</span></button>
+        <button class="rail-item on" data-nav="hosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4.5" width="19" height="6.5" rx="2"/><rect x="2.5" y="13" width="19" height="6.5" rx="2"/><rect x="5.8" y="6.9" width="3.4" height="1.8" rx="0.6" fill="currentColor" stroke="none"/><circle cx="17.3" cy="7.8" r="1.05" fill="currentColor" stroke="none"/><rect x="5.8" y="15.4" width="3.4" height="1.8" rx="0.6" fill="currentColor" stroke="none"/><circle cx="17.3" cy="16.3" r="1.05" fill="currentColor" stroke="none"/></svg></span><span class="rl">Hosts</span></button>
+        <button class="rail-item" data-nav="keychain"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="6.8" r="4.2"/><circle cx="12" cy="6.8" r="1.3"/><path d="M12 11v9M12 16.4h3.3M12 18.6h2.4"/></svg></span><span class="rl">Keychain</span></button>
+        <button class="rail-item" data-nav="forwarding"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 15.6h9.6l-3.1-3.1M20 8.4h-9.6l3.1 3.1"/></svg></span><span class="rl">Port Forwarding</span></button>
+        <button class="rail-item" data-nav="snippets"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg></span><span class="rl">Snippets</span></button>
+        <button class="rail-item" data-nav="knownhosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8.3" cy="15.7" r="3.6"/><circle cx="8.3" cy="15.7" r="1.1"/><path d="M11 13L20.2 3.8M15.2 8.6l2.3 2.3M17.7 6.1l2.3 2.3"/></svg></span><span class="rl">Known Hosts</span></button>
+        <button class="rail-item" data-nav="logs"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7.2v5.2l3.4 2" fill="none" stroke="var(--bg2)" stroke-width="2" stroke-linecap="round"/></svg></span><span class="rl">Logs</span></button>
       </nav>
     <section id="main">
       <div id="banner"></div>
@@ -714,10 +719,9 @@
     <button id="btn-quick-term" class="tb-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7 10l2.5 2L7 14M12.5 14H16"/></svg>Terminal</button>
     <button id="btn-quick-serial" class="tb-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 3v5M15 3v5M6 8h12v5a6 6 0 0 1-12 0V8ZM12 19v2"/></svg>Serial</button>
     <span style="flex:1"></span>
-    <button id="host-tags" class="tb-icon" title="Filter by tags" aria-label="Filter by tags"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12.5 3H21v8.5L11 21.5 2.5 13 12.5 3Z"/><circle cx="17" cy="7" r="1.4"/></svg></button>
-    <button id="host-layout" class="tb-icon" title="Change layout" aria-label="Change layout"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg></button>
-    <button id="host-sort" class="tb-icon" title="Sort options" aria-label="Sort options"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 4v16M7 20l-3-3M17 20V4M17 4l3 3"/></svg></button>
-    <button class="tb-icon" title="Appearance" id="btn-appearance"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v2H4V7Z"/><path d="M12 9v3"/><rect x="8" y="15" width="5" height="6" rx="1.5"/></svg></button>
+    <button id="host-tags" class="tb-icon" title="Filter and sort" aria-label="Filter and sort"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.6 2.6H21a.4.4 0 0 1 .4.4v9.4a1 1 0 0 1-.3.7l-8.4 8.4a1 1 0 0 1-1.4 0l-8.1-8.1a1 1 0 0 1 0-1.4l8.4-8.4a1 1 0 0 1 .7-.3Z"/><circle cx="17" cy="7" r="1.6" fill="var(--bg2)"/></svg></button>
+    <button id="host-layout" class="tb-icon" title="Change layout" aria-label="Change layout"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2.2"/><rect x="13" y="3" width="8" height="8" rx="2.2"/><rect x="3" y="13" width="8" height="8" rx="2.2"/><rect x="13" y="13" width="8" height="8" rx="2.2"/></svg></button>
+    <button id="btn-appearance" class="tb-icon" title="Appearance — theme / font" aria-label="Appearance"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4.5 3h15A2.5 2.5 0 0 1 22 5.5v13A2.5 2.5 0 0 1 19.5 21h-15A2.5 2.5 0 0 1 2 18.5v-13A2.5 2.5 0 0 1 4.5 3Zm.4 4.4v1.7h14.2V7.4H4.9Zm3.2 4.1-2.1 2.1 2.1 2.1.9-.9-1.2-1.2 1.2-1.2-.9-.9Zm4 3.4v1.3h4.6v-1.3H12.1Z"/></svg></button>
     <span class="avatar" title="Account"><svg width="16" height="16" viewBox="0 0 24 24" fill="#3a2f00" stroke="#3a2f00" stroke-width="1.6"><circle cx="12" cy="9" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
     <button class="avatar-add" title="Add account"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></button>
   </div>

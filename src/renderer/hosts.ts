@@ -145,7 +145,6 @@ const SORT_LABEL: Record<SortMode, string> = {
   let tagFilter = new Set<string>();
   let layout: "list" | "grid" = (localStorage.getItem("sshkit.hostLayout") as "list" | "grid") || "list";
   const searchEl = document.getElementById("host-search")! as HTMLInputElement;
-  const sortBtn = document.getElementById("host-sort")! as HTMLButtonElement;
 
   function comparer(): (a: HostRecord, b: HostRecord) => number {
     switch (sortMode) {
@@ -154,31 +153,6 @@ const SORT_LABEL: Record<SortMode, string> = {
       case "oldest": return (a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
       default: return (a, b) => a.name.localeCompare(b.name);
     }
-  }
-
-  function openSortMenu(): void {
-    document.querySelectorAll(".sort-menu").forEach((e) => e.remove());
-    const r = sortBtn.getBoundingClientRect();
-    const menu = document.createElement("div");
-    menu.className = "sort-menu";
-    menu.style.left = `${Math.round(r.left - 130)}px`;
-    menu.style.top = `${Math.round(r.bottom + 4)}px`;
-    for (const mode of Object.keys(SORT_LABEL) as SortMode[]) {
-      const item = document.createElement("button");
-      item.className = `sort-item${mode === sortMode ? " on" : ""}`;
-      item.textContent = SORT_LABEL[mode];
-      item.addEventListener("click", () => {
-        sortMode = mode;
-        localStorage.setItem("sshkit.hostSort", mode);
-        menu.remove();
-        void refresh();
-      });
-      menu.append(item);
-    }
-    document.body.append(menu);
-    setTimeout(() => document.addEventListener("click", function once(ev) {
-      if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener("click", once); }
-    }), 0);
   }
 
   const tagsBtn = document.getElementById("host-tags")! as HTMLButtonElement;
@@ -227,6 +201,26 @@ const SORT_LABEL: Record<SortMode, string> = {
       });
       menu.append(clear);
     }
+    /* 原版工具条右侧只有 3 个图标,所以把「排序」并进这个菜单(筛标签 + 排序同属列表筛选) */
+    const sep = document.createElement("div");
+    sep.className = "menu-sep";
+    menu.append(sep);
+    const cap = document.createElement("div");
+    cap.className = "menu-cap";
+    cap.textContent = "Sort by";
+    menu.append(cap);
+    for (const mode of Object.keys(SORT_LABEL) as SortMode[]) {
+      const item = document.createElement("button");
+      item.className = `sort-item${mode === sortMode ? " on" : ""}`;
+      item.textContent = SORT_LABEL[mode];
+      item.addEventListener("click", () => {
+        sortMode = mode;
+        localStorage.setItem("sshkit.hostSort", mode);
+        menu.remove();
+        void refresh();
+      });
+      menu.append(item);
+    }
     document.body.append(menu);
     setTimeout(() => document.addEventListener("click", function once(ev) {
       if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener("click", once); }
@@ -245,7 +239,6 @@ const SORT_LABEL: Record<SortMode, string> = {
   applyLayout();
 
   searchEl.addEventListener("input", () => { query = searchEl.value.trim().toLowerCase(); void refresh(); });
-  sortBtn.addEventListener("click", (ev) => { ev.stopPropagation(); openSortMenu(); });
 
   const authSel = document.getElementById("f-auth")! as HTMLSelectElement;
   authSel.addEventListener("change", syncAuthVisibility);
@@ -254,7 +247,6 @@ const SORT_LABEL: Record<SortMode, string> = {
   async function refresh(): Promise<void> {
     const hosts = await bridge.hosts.list();
     listEl.textContent = "";
-    listEl.appendChild(renderItem(null));
     if (hosts.length === 0) {
       const hint = document.createElement("div");
       hint.className = "empty-hint";

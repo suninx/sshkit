@@ -1520,6 +1520,15 @@ void (async () => {
   initHostPanel((host) => void openSession(host ? "ssh" : "local", host ?? undefined));
   /* 新建:左导航栏(184px,6 项)。原版这 6 项是一级导航,点击后主区切到对应分区
      (Hosts 分区就是原版的 `Vaults` tab;转发/Known Hosts 等各自成为主区视图)。 */
+  document.getElementById("btn-quick-term")?.addEventListener("click", () => { void openSession("local"); });
+  document.getElementById("btn-quick-serial")?.addEventListener("click", () => {
+    toast("Serial 未支持:需要串口原生依赖与真实设备,本项目不引入");
+  });
+  document.getElementById("btn-appearance")?.addEventListener("click", () => openPrefs());
+  document.getElementById("btn-new-host-caret")?.addEventListener("click", () => {
+    document.getElementById("btn-new-host")?.click();
+  });
+
   document.querySelectorAll<HTMLElement>("#rail .rail-item").forEach((b) => {
     b.addEventListener("click", () => {
       switch (b.dataset.nav) {
