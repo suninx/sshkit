@@ -386,6 +386,12 @@ function renderTabs(): void {
          右槽在活动时出现会话徽标。原来我把 [图标][✕][状态点][标签] 排在一起,位置自然不对;
          状态点也是我多出来的,原版没有。 */
       if (t.kind === "session") {
+        /* 左槽原版是**主机头像**(圆角方块,约 24px,用的就是该主机卡片上的那枚图标);
+           本地 shell 没有主机,用终端图形。 */
+        ico.className = "tico tav";
+        ico.innerHTML = t.host
+          ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none"/><circle cx="7.5" cy="16.5" r="1" fill="currentColor" stroke="none"/></svg>'
+          : (TICON.session ?? "");
         el.append(ico, mkClose(), lbl);
         const badge = document.createElement("span");
         badge.className = "tbadge";

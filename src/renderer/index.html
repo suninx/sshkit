@@ -802,6 +802,14 @@
     .tab-btn.session.active .tbadge svg { width: 18px; height: 18px; }   /* 原版徽标 19px 宽 */
     .tab-btn.session.on.active .lbl { color: #42b16e; }
     .tab-btn:not(.session) .tab-close { color: inherit; }
+
+    /* 原版会话 tab 的宽度与头像:非活动 pill 约 181px、活动约 239px;
+       左槽是约 24px 的圆角方块"主机头像"(与主机卡片同一枚图标)。 */
+    .tab-btn.session { min-width: 180px; }
+    .tab-btn.session .lbl { min-width: 120px; }
+    .tab-btn.session .tico.tav { width: 24px; height: 24px; border-radius: 6px; background: #35d39a;
+      color: #10321f; align-items: center; justify-content: center; flex: none; }
+    .tab-btn.session .tico.tav svg { width: 15px; height: 15px; }
 </style>
 </head>
 <body>
