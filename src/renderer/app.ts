@@ -28,7 +28,8 @@ const btnSftp = document.getElementById("btn-sftp")! as HTMLButtonElement;
 type TabState = "idle" | "on" | "off";
 type Tab = {
   id: string;
-  kind: "session" | "newtab" | "sftp" | "fwd" | "kh";
+  /* 分区类 tab:原版把一级导航的分区也做成主区视图(Vaults / Snippets / Keychain / Logs …) */
+  kind: "session" | "newtab" | "sftp" | "fwd" | "kh" | "vault" | "snippets" | "keychain" | "logs";
   label: string;
   state: TabState;
   pane: HTMLDivElement;
@@ -300,6 +301,19 @@ function renderTabs(): void {
       el.setAttribute("aria-selected", t.id === active ? "true" : "false");
       el.dataset.tabId = t.id;
       el.dataset.kind = t.kind; // 便于对照台断言,也便于排查
+      const ico = document.createElement("span");
+      ico.className = "tico";
+      ico.innerHTML = TICON[t.kind] ?? TICON.newtab;
+      el.append(ico);
+      if (t.kind === "vault") {
+        /* 原版 `Vaults` pill 右侧紧跟一个下拉箭头(实测 x 193..222),用于切换 vault */
+        const chev = document.createElement("span");
+        chev.className = "tchev";
+        chev.title = "Switch vault";
+        chev.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>';
+        chev.addEventListener("click", (ev) => { ev.stopPropagation(); toast("Vault 切换:目前只有一个本地 vault"); });
+        el.append(chev);
+      }
 
       /* T2:拖拽重排。原版有 over-horizontal-tab / over-horizontal-tabs-area / over-draft-horizontal-tab
          三种拖放态,说明 tab 可拖到别的 tab 上(插入其位置)也可拖到条上(移到最后)。 */
@@ -546,7 +560,7 @@ function duplicateTab(t: Tab): void {
   if (t.kind === "sftp") { openSftpTab(); return; }
   if (t.kind === "fwd") { openFwdTab(); return; }
   if (t.kind === "kh") { openKnownHostsTab(); return; }
-  newTabPage();
+  openVaultTab();   // 原版首屏是 `Vaults`(主机列表),不是空白页
 }
 
 function activateTab(id: string): void {
@@ -556,13 +570,177 @@ function activateTab(id: string): void {
   for (const x of tabs) x.pane.classList.toggle("active", x.id === id);
   renderTabs();
   setStatus(t.state);
-  setTitle(t.kind === "session" ? t.label : "New Tab");
+  setTitle(t.label);
+  syncRail(t.kind);
+  updateTermHead(t.kind);
   setSftpSession(t.sftp);
   if (t.kind === "session" && t.sftp) lastSession = t.sftp;
   if (t.fit) { try { t.fit.fit(); } catch { /* transient */ } }
   if (t.kind === "sftp" || t.kind === "fwd" || t.kind === "kh") t.view?.onShow();
   else if (t.kind === "newtab") t.pane.querySelector("input")?.focus();
   else t.term?.focus();
+}
+
+/* ============ 对齐原版:tab 图标 / 分区视图 / 连接日志 ============ */
+const TICON: Record<string, string> = {
+  session: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 7l4 5-4 5M13 17h6"/></svg>',
+  sftp: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>',
+  vault: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg>',
+  fwd: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 8h13l-3-3M21 16H8l3 3"/></svg>',
+  kh: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3Z"/></svg>',
+  snippets: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg>',
+  keychain: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8"/></svg>',
+  logs: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  newtab: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>',
+};
+
+/* Logs 分区的数据:连接/断开/重连这些"会话事件"的环形缓冲(最近 500 条) */
+type LogRow = { at: number; level: "info" | "warn" | "error"; text: string };
+const LOGS: LogRow[] = [];
+function pushLog(level: LogRow["level"], text: string): void {
+  LOGS.push({ at: Date.now(), level, text });
+  if (LOGS.length > 500) LOGS.shift();
+  if (tabs.find((t) => t.id === active)?.kind === "logs") renderLogsSection();
+}
+function fmtTime(t: number): string {
+  const d = new Date(t);
+  const p = (x: number): string => String(x).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/** 分区视图的通用外壳 */
+type TabKind = Tab["kind"];
+function openSection(kind: TabKind, label: string, build: (host: HTMLElement) => void): void {
+  const existing = tabs.find((t) => t.kind === kind);
+  if (existing) { activateTab(existing.id); return; }
+  const pane = makePane();
+  const vault = document.createElement("div");
+  vault.className = "vault";
+  pane.append(vault);
+  build(vault);
+  const t: Tab = { id: `t${++seq}`, kind, label, state: "idle", pane,
+    term: null, fit: null, termId: null, disposers: [], sftp: null };
+  tabs.push(t);
+  activateTab(t.id);
+}
+
+/** Hosts / Vaults:把 #vault-src 里的节点**移动**进来(id 不变,主机面板原有绑定继续有效) */
+function openVaultTab(): void {
+  openSection("vault", "Vaults", (host) => {
+    const src = document.getElementById("vault-src");
+    if (src) host.append(...Array.from(src.children));
+    else host.innerHTML = `<div class="sec-h">Hosts</div><div id="host-list"></div>`;
+  });
+}
+
+function openSnippetsTab(): void {
+  openSection("snippets", "Snippets", (host) => {
+    host.innerHTML = `<div class="sec-h">Snippets</div><div id="snip-sec-list" class="sec-list"></div>
+      <div class="snip-add" style="margin-top:10px">
+        <input class="snip-name" placeholder="Name" spellcheck="false">
+        <input class="snip-cmd" placeholder="Command" spellcheck="false">
+        <button class="btn snip-save-sec">Save</button></div>`;
+    host.querySelector(".snip-save-sec")!.addEventListener("click", () => {
+      const name = (host.querySelector(".snip-name") as HTMLInputElement).value.trim();
+      const command = (host.querySelector(".snip-cmd") as HTMLInputElement).value;
+      if (!name && !command) return;
+      void bridge.snippets.save({ name: name || command, command }).then(() => {
+        (host.querySelector(".snip-name") as HTMLInputElement).value = "";
+        (host.querySelector(".snip-cmd") as HTMLInputElement).value = "";
+        renderSnippetsSection();
+      });
+    });
+    void renderSnippetsSection();
+  });
+}
+
+async function renderSnippetsSection(): Promise<void> {
+  const box = document.getElementById("snip-sec-list");
+  if (!box) return;
+  const items = await bridge.snippets.list();
+  if (!items.length) { box.innerHTML = `<div class="sec-empty">No snippets yet</div>`; return; }
+  box.replaceChildren(...items.map((sn) => {
+    const row = document.createElement("div");
+    row.className = "sec-row";
+    row.innerHTML = `<span class="nm"></span><span class="cm"></span>
+      <button class="btn sec-send">Send to terminal</button><button class="btn danger sec-del">✕</button>`;
+    (row.querySelector(".nm") as HTMLElement).textContent = sn.name;
+    (row.querySelector(".cm") as HTMLElement).textContent = sn.command;
+    (row.querySelector(".sec-send") as HTMLElement).addEventListener("click", () => {
+      const target = [...tabs].reverse().find((t) => t.kind === "session" && t.termId !== null);
+      if (!target || target.termId === null) { toast("没有活动会话可发送"); return; }
+      bridge.write(target.termId, sn.command.endsWith("\n") ? sn.command.slice(0, -1) + "\r" : sn.command + "\r");
+      toast(`已发送到 ${target.label}`);
+    });
+    (row.querySelector(".sec-del") as HTMLElement).addEventListener("click", () => {
+      void bridge.snippets.remove(sn.id).then(() => renderSnippetsSection());
+    });
+    return row;
+  }));
+}
+
+function openKeychainTab(): void {
+  openSection("keychain", "Keychain", (host) => {
+    host.innerHTML = `<div class="sec-h">Keychain</div><div id="kc-list" class="sec-list"></div>`;
+    void (async () => {
+      const box = document.getElementById("kc-list")!;
+      const hosts = await bridge.hosts.list();
+      const rows = await Promise.all(hosts.map(async (h) => {
+        const has = await bridge.creds.has(h.id);
+        const row = document.createElement("div");
+        row.className = "sec-row";
+        row.innerHTML = `<span class="nm"></span><span class="cm"></span><span class="pill"></span>`;
+        (row.querySelector(".nm") as HTMLElement).textContent = h.name;
+        (row.querySelector(".cm") as HTMLElement).textContent = `${h.username}@${h.host}`;
+        const pill = row.querySelector(".pill") as HTMLElement;
+        pill.textContent = has ? "saved credential" : "no saved credential";
+        pill.className = `pill ${has ? "on" : ""}`;
+        return row;
+      }));
+      box.replaceChildren(...rows);
+    })();
+  });
+}
+
+function renderLogsSection(): void {
+  const box = document.getElementById("logs-list");
+  if (!box) return;
+  if (!LOGS.length) { box.innerHTML = `<div class="sec-empty">No events yet</div>`; return; }
+  box.replaceChildren(...[...LOGS].reverse().map((l) => {
+    const row = document.createElement("div");
+    row.className = `sec-row log ${l.level}`;
+    row.innerHTML = `<span class="at"></span><span class="tx"></span>`;
+    (row.querySelector(".at") as HTMLElement).textContent = fmtTime(l.at);
+    (row.querySelector(".tx") as HTMLElement).textContent = l.text;
+    return row;
+  }));
+}
+
+function openLogsTab(): void {
+  openSection("logs", "Logs", (host) => {
+    host.innerHTML = `<div class="sec-h">Logs</div><div id="logs-list" class="sec-list"></div>`;
+    renderLogsSection();
+  });
+}
+
+const NAV_OF_KIND: Record<string, string> = {
+  vault: "hosts", fwd: "forwarding", kh: "knownhosts", snippets: "snippets",
+  keychain: "keychain", logs: "logs",
+};
+
+/** 导航栏高亮跟随当前 tab(原版:Vaults tab 活动时左栏 Hosts 高亮) */
+function syncRail(kind: string): void {
+  const nav = NAV_OF_KIND[kind];
+  if (!nav) return;
+  for (const b of document.querySelectorAll<HTMLElement>("#rail .rail-item")) {
+    b.classList.toggle("on", b.dataset.nav === nav);
+  }
+}
+
+/** 会话头(状态点/标题/侧栏与 SFTP 按钮)只在会话类 tab 上出现;分区视图有自己的标题。 */
+function updateTermHead(kind: string): void {
+  const head = document.getElementById("term-head");
+  if (head) head.style.display = kind === "session" || kind === "sftp" ? "" : "none";
 }
 
 function makePane(): HTMLDivElement {
@@ -1340,6 +1518,21 @@ new ResizeObserver(() => {
 
 void (async () => {
   initHostPanel((host) => void openSession(host ? "ssh" : "local", host ?? undefined));
+  /* 新建:左导航栏(184px,6 项)。原版这 6 项是一级导航,点击后主区切到对应分区
+     (Hosts 分区就是原版的 `Vaults` tab;转发/Known Hosts 等各自成为主区视图)。 */
+  document.querySelectorAll<HTMLElement>("#rail .rail-item").forEach((b) => {
+    b.addEventListener("click", () => {
+      switch (b.dataset.nav) {
+        case "hosts": openVaultTab(); break;
+        case "forwarding": openFwdTab(); break;
+        case "knownhosts": openKnownHostsTab(); break;
+        case "snippets": openSnippetsTab(); break;
+        case "keychain": openKeychainTab(); break;
+        case "logs": openLogsTab(); break;
+      }
+    });
+  });
+
   document.querySelectorAll<HTMLButtonElement>("#nav .nav-item").forEach((b) => {
     b.addEventListener("click", () => {
       document.querySelectorAll("#nav .nav-item").forEach((x) => x.classList.remove("on"));
@@ -1357,5 +1550,5 @@ void (async () => {
   applyPanel();     // T4:恢复终端侧栏开关
   installHostKeyDialog();
   installAllShortcuts();
-  newTabPage(); // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
+  openVaultTab();   // 原版首屏是 `Vaults`(主机列表),不是空白页 // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
 })();

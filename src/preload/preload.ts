@@ -37,6 +37,7 @@ const api = {
 
   /* secrets — write-only (read always throws by design) */
   creds: {
+    has: (id: string) => ipcRenderer.invoke("creds:has", id) as Promise<boolean>,
     put: (id: string, secrets: { password?: string; passphrase?: string }): Promise<void> =>
       ipcRenderer.invoke("creds:put", id, secrets),
   },

@@ -23,6 +23,7 @@ interface SshkitBridge {
     remove(id: string): Promise<void>;
   };
   creds: {
+    has(hostId: string): Promise<boolean>;
     put(id: string, secrets: { password?: string; passphrase?: string }): Promise<void>;
   };
   ssh: {
@@ -296,10 +297,12 @@ const SORT_LABEL: Record<SortMode, string> = {
     el.className = "host-item";
     el.dataset.id = host ? host.id : "local";
     const name = host ? host.name : "Local shell";
-    const small = host ? `${host.username}@${host.host}` : "⌂ zsh";
+    /* 原版副标题格式是「类型, 用户名」(如 `ssh, root`),不是 user@host */
+    const small = host ? `ssh, ${host.username}` : "local, zsh";
     el.innerHTML = `
-      <span class="name">${escapeHtml(name)}</span>
-      <span class="small">${escapeHtml(small)}</span>
+      <span class="hico"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none"/><circle cx="7.5" cy="16.5" r="1" fill="currentColor" stroke="none"/></svg></span>
+      <span class="hcol"><span class="name">${escapeHtml(name)}</span>
+      <span class="small">${escapeHtml(small)}</span></span>
       ${host ? `<button class="btn" data-act="edit" title="edit">✎</button><button class="btn danger" data-act="del" title="delete">✕</button>` : ""}`;
     if (host?.tags?.length) {
       const chips = document.createElement("div");

@@ -47,12 +47,15 @@ function benchBounds(): { x?: number; y?: number; width?: number; height?: numbe
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1080,
-    height: 700,
+    width: 1280,          // 与原版对照窗口同尺寸,便于逐像素比对
+    height: 800,
     minWidth: 720,
     minHeight: 460,
-    backgroundColor: "#101418",
+    backgroundColor: "#1d2033",
     title: "sshkit",
+    /* 原版没有原生标题栏:红绿灯直接浮在内容上,整条顶栏都是 tab 区。
+       hiddenInset 保留红绿灯、去掉标题栏;顶栏左端预留出红绿灯的位置(见 index.html 的 --tl-inset)。 */
+    ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
     ...benchBounds(),
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
@@ -144,6 +147,13 @@ ipcMain.on("knownhost:answer", (_e, reqId: string, action: "continue" | "add" | 
 });
 ipcMain.handle("knownhost:list", () => listKnownHosts());
 const snippetStore = new SnippetStore();
+ipcMain.handle("creds:has", async (_e, id: string) => {
+  try {
+    const c = await getCreds(id);
+    return Boolean(c && (c.password || c.passphrase));
+  } catch { return false; }
+});
+
 ipcMain.handle("window:new", () => { createWindow(); return true; });
 
 ipcMain.handle("snippets:list", () => snippetStore.list());
