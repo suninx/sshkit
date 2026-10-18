@@ -681,10 +681,10 @@
     body[data-chrome="session"] #topbar { background: var(--term-bg); }
     #term-head { display: none !important; }
     /* 会话 tab:连接中为绿调(原版实测 #1d3536 ≈ 终端底 + 14% 绿),图标与关闭键同绿 */
-    .tab-btn.session.on { box-shadow: inset 0 0 0 1px rgba(53,211,154,.45); }
-    .tab-btn.session.off { box-shadow: inset 0 0 0 1px rgba(255,115,117,.45); }
-    .tab-btn.session.on .tico, .tab-btn.session.on .tab-close { color: #35d39a; }
-    .tab-btn.session.on.active .tab-close { opacity: .95; }
+    /* 连接态本身不染色:绿色是"当前活动会话"的标志(原版非活动会话 pill 就是普通深色)。
+       断开的会话保留一圈很淡的红,作为我方提示(原版未见对应状态)。 */
+    .tab-btn.session.off:not(.active) { box-shadow: inset 0 0 0 1px rgba(255,115,117,.35); }
+    .tab-btn.session.on.active .tico, .tab-btn.session.on.active .tab-close { color: #42b16e; }
 
     /* 原版"放弃修改"确认框(几何实测:498 宽、垂直居中、头 36px 深色、白底、按钮右下) */
     .discard-dlg { position: fixed; inset: 0; background: rgba(20,23,40,.45); display: flex;
