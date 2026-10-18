@@ -685,6 +685,7 @@
        断开的会话保留一圈很淡的红,作为我方提示(原版未见对应状态)。 */
     .tab-btn.session.off:not(.active) { box-shadow: inset 0 0 0 1px rgba(255,115,117,.35); }
     .tab-btn.session.on.active .tico, .tab-btn.session.on.active .tab-close { color: #42b16e; }
+    .tab-btn.session.on.active .tab-close:hover { color: #6fd3a4; }
 
     /* 原版"放弃修改"确认框(几何实测:498 宽、垂直居中、头 36px 深色、白底、按钮右下) */
     .discard-dlg { position: fixed; inset: 0; background: rgba(20,23,40,.45); display: flex;
@@ -799,7 +800,12 @@
        非活动 pill = [主机头像][标签]。✕ 在左槽:静止显头像,悬停或活动换成 ✕;徽标只在活动时出现。
        常驻 tab(Vaults/SFTP)没有 ✕。 */
     .tab-btn.session { min-width: 150px; padding-left: 10px; padding-right: 10px; }
-    .tab-btn.session .tab-close { display: none; opacity: 1; color: #42b16e; }
+    /* ✕ 的绿色只属于"当前活动会话":非活动 tab 上应该是跟随文字的浅色。
+       实测原版 ✕ 约 19px 宽、笔画较粗;我这边原来只有 10px 且无条件绿,看起来又小又别扭。 */
+    .tab-btn.session .tab-close { display: none; opacity: 1; color: inherit; font-size: 15px;
+      font-weight: 500; width: 22px; height: 22px; padding: 0; align-items: center;
+      justify-content: center; border-radius: 6px; }
+    .tab-btn.session .tab-close:hover { background: transparent; color: var(--fg); }
     .tab-btn.session:hover .tab-close, .tab-btn.session.active .tab-close { display: flex; }
     .tab-btn.session:hover .tico, .tab-btn.session.active .tico { display: none; }
     .tab-btn.session .tbadge { display: none; }
