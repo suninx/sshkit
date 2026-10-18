@@ -234,9 +234,6 @@
       border-radius: 4px; padding: 1px 5px; }
     .tag-menu-item { display: flex; align-items: center; gap: 7px; }
     .tag-menu-item input { margin: 0; }
-    #host-list.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-content: start; }
-    #host-list.grid .group-label { grid-column: 1 / -1; }
-    #host-list.grid .host-item { flex-direction: column; align-items: flex-start; gap: 2px; }
 
     /* T7 复刻 —— 主机簿搜索与排序(占位符与排序项取自原版实测,见 F20) */
     #host-tools { display: flex; gap: 6px; padding: 0 10px 8px; }
@@ -616,10 +613,13 @@
     .sec-h { color: var(--fg); font-size: 13.5px; font-weight: 500; margin: 20px 0 12px; }
     #host-list { overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; display: flex;
       flex-direction: column; gap: 8px; padding-bottom: 12px; }
-    #host-list.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 350px));
-      gap: 8px; align-content: start; }
-    #host-list.grid .host-item { width: auto; }
+    /* 网格布局 = **同一张卡片**按自适应列数排布,卡片内部一律沿用列表态的样式。
+       (此前这里是两条互相打架的规则:一条把卡片内部改成竖排堆叠、另一条只改列宽,
+        于是图标/名称/操作/标签全竖着挤在一列里、标签还溢出卡片 —— 用户截图里的"坏了"。) */
+    #host-list.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 10px 12px; align-content: start; }
     #host-list.grid .group-label { grid-column: 1 / -1; }
+    #host-list.grid .host-item { width: auto; min-width: 0; }
     /* 主机卡片:350×60,图标块 40×40 青绿(#35d39a 实测),主名白色、副标题 #8d92a5 */
     #host-list .host-item { min-width: 350px; max-width: 460px; width: fit-content; min-height: 60px;
       border-radius: 10px; background: var(--bg2); padding: 10px 12px;
@@ -776,6 +776,18 @@
     *::-webkit-scrollbar-thumb { background: transparent; border-radius: 5px; }
     *:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); }
     .sftp *:hover::-webkit-scrollbar-thumb { background: rgba(20,23,40,.28); }
+
+    /* ===== 卡片内宽度分配(修"名字被标签挤掉")=====
+       卡片是 nowrap flex:图标 40 + 名称列(flex:1) + 编辑/删除 58 + 标签芯片(实占宽) + 间隙/内边距。
+       标签多的主机(如 node-1 有 prod+db)芯片可占 141px,把名称列压到 29px →
+       `no…` 截断、副标题 `ssh, root` 折成两行(用户截图里就是这个)。
+       修法:给名称列留最小宽度,芯片限宽并允许换行(超出裁掉),互不侵占。 */
+    /* 预算(网格列 341、内边距 24 → 317 可用):图标 40 + 名称 ≥96 + 按钮 58 + 芯片 ≤88 + 间隙 4×8
+       = 314 ≤ 317 ✓。之前芯片给 118 且间隙 12,总和 360 —— 芯片被挤出卡片右缘 31px(实测)。 */
+    #host-list .host-item { gap: 8px; }
+    #host-list .host-item .hcol { min-width: 96px; flex: 1 1 auto; }
+    #host-list .host-item .tag-chips { flex: 0 1 auto; min-width: 0; max-width: 88px;
+      max-height: 34px; overflow: hidden; }
 </style>
 </head>
 <body>
