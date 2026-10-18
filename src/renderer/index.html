@@ -766,6 +766,16 @@
     .term-host .xterm, .split-body .xterm { background-color: transparent; }
     /* 还有一层:.xterm-viewport 占满整宽且自带黑底,位于画布之后,内缩处露的就是它。 */
     .term-host .xterm-viewport, .split-body .xterm-viewport { background-color: transparent !important; }
+
+    /* ===== 滚动条(原版终端右侧静止时看不到 —— 它是叠加式)=====
+       我这边原来吃的是 Chromium 默认浅色滚动条,在深色终端右侧是一条白边(#fafafa,10px)。
+       改法:轨道永远透明、滑块静止时透明,悬停该区域时才显一根细的;浅色的 SFTP 里用深一点的滑块。 */
+    *::-webkit-scrollbar { width: 10px; height: 10px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-corner { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: transparent; border-radius: 5px; }
+    *:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); }
+    .sftp *:hover::-webkit-scrollbar-thumb { background: rgba(20,23,40,.28); }
 </style>
 </head>
 <body>

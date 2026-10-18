@@ -77,6 +77,13 @@ if (evalExpr) {
 if (out) {
   /* 窗口在后台时合成器会被节流,captureScreenshot 可能返回上一帧(实测:截图比状态慢一帧)。
      先把目标页提到前台,并连抓两次取第二张。 */
+  /* --mouse x,y:把鼠标移到该点(验证 :hover 这类状态) */
+  const mouseArg = process.argv.find((a) => a.startsWith("--mouse="));
+  if (mouseArg) {
+    const [mx, my] = mouseArg.split("=")[1].split(",").map(Number);
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: mx, y: my, buttons: 0 });
+    await new Promise((r) => setTimeout(r, 200));
+  }
   try { await send("Page.bringToFront", {}); } catch { /* 老版本可能不支持 */ }
   await new Promise((r) => setTimeout(r, 150));
   await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
