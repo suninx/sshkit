@@ -431,7 +431,11 @@ function splitTab(tab: Tab): void {
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
-  try { term.loadAddon(new CanvasAddon()); } catch { /* 见 T1 说明 */ }
+  /* 渲染器可选:canvas 更快,但它不支持 xterm 的 lineHeight(实测格高恒为 16,
+     而原版是 18)。localStorage["sshkit.renderer"]==="dom" 时退回 DOM 渲染器。 */
+  if (localStorage.getItem("sshkit.renderer") !== "dom") {
+    try { term.loadAddon(new CanvasAddon()); } catch { /* 见 T1 说明 */ }
+  }
   const body = pane.querySelector(".split-body")! as HTMLElement;
   term.open(body);
   try { fit.fit(); } catch { /* 布局未稳 */ }
@@ -973,7 +977,10 @@ function fontAvailable(family: string): boolean {
 }
 let TERM_FONT = FONT_CHOICES[0].id;
 let TERM_FONT_SIZE = 14; // 原版 defaultFontSize=14,实机同;可选范围 4–40
-const TERM_LINE_HEIGHT = 1.05; // 目标格高 18px(原版光标墨迹盒实测 8×18;1.1→19、1.05→18)
+/* 目标格高 18px(原版实测格 8×18)。注意 xterm 会对"字体量出高 × lineHeight"取整,
+   14px MesloLGS 的自然高约 15.5-16,所以 1.05 推不上一行(实测仍 16)。可用
+   localStorage["sshkit.lineHeight"] 覆盖以便对照测量。 */
+const TERM_LINE_HEIGHT = Number(localStorage.getItem("sshkit.lineHeight") || 1.15);
 let TERM_THEME: Record<string, string> = {
   background: "#141729",
   foreground: "#21b568",

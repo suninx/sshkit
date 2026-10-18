@@ -754,6 +754,18 @@
     /* 工具条带按原版实测高度收口:Vaults 两行 = 100px(10 + 搜索 36 + 20 + 工具条 30 + 4) */
     .sec.vault .sec-band { padding: 10px 10px 4px; }
     .group-label { margin: 19px 0 13px; }
+
+    /* 原版:终端**底色铺满**,但文字有水平内缩(实测首字符左起 x=12,纵向不缩:两边首行文字顶都是 y=52)。
+       内缩必须加在 .xterm 上 —— FitAddon 会把 .xterm 的 padding 计入可用宽高,
+       加在 .term-host 上则不会(它只看 .xterm 的 padding)。 */
+    .term-host .xterm { padding: 0 12px; }
+    .split-body .xterm { padding: 0 12px; }
+
+    /* .xterm 自带黑色背景(xterm 默认样式),平时被画布盖住;加了内缩后会在内缩处露出黑边,
+       必须让它透明,由 .term-host 的终端底色铺满。 */
+    .term-host .xterm, .split-body .xterm { background-color: transparent; }
+    /* 还有一层:.xterm-viewport 占满整宽且自带黑底,位于画布之后,内缩处露的就是它。 */
+    .term-host .xterm-viewport, .split-body .xterm-viewport { background-color: transparent !important; }
 </style>
 </head>
 <body>
