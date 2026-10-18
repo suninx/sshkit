@@ -713,11 +713,13 @@ function openVaultTab(): void {
   const band = document.createElement("div");
   band.className = "sec-band";
   const src = document.getElementById("vault-src");
-  if (src) band.append(...Array.from(src.children));
   const body = document.createElement("div");
   body.className = "sec-body";
-  /* #vault-src 里同时含工具栏与列表,列表要挪到带下面,不能留在带里(否则带高会被撑开) */
+  /* 关键顺序:必须**先在文档里**取到列表引用,再把 #vault-src 的子节点挪进 band。
+     因为 band 此刻是游离节点,一旦把子节点移进去,它们就脱离文档树,
+     之后再 document.getElementById("host-list") 会返回 null(踩过:列表留在带里、带高被撑到 556)。 */
   const list = document.getElementById("host-list");
+  if (src) band.append(...Array.from(src.children));
   if (list) body.append(list);
   sec.append(band, body);
   pane.append(sec);
