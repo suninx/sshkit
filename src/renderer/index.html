@@ -834,6 +834,20 @@
     #host-list .host-item .btn:hover { background: var(--h12); }
     #host-list .host-item .btn.danger { color: var(--fg); }   /* 字形也是浅色(原版如此),红只在悬停时 */
     #host-list .host-item .btn.danger:hover { color: var(--danger); }
+
+    /* SFTP 两栏头部:原版是 24×24 的实心圆角徽标(白字形)+ 深色标题,两者中心对齐。
+       我这边原来是 15px 细线图标、且标题行高 19.6 导致文字比图标高 3px(用户指出"不整齐")。 */
+    .sftp .sp-head { align-items: center; }
+    .sftp .sp-pico { width: 24px; height: 24px; border-radius: 6px; background: #084976; color: #fff;
+      display: flex; align-items: center; justify-content: center; flex: none; }
+    .sftp .sp-pico svg { width: 14px; height: 14px; }
+    .sftp .sp-pico svg [stroke] { stroke: currentColor; }
+    /* 标题行高与徽标同高 → 中心必然一致,不再出现"图标与文字错半格" */
+    /* margin 必须清零:某处给 .sp-title 留了 6px 下外边距,居中对齐的 flex 行里
+       这会把它整体上推 3px —— 就是"图标与文字不整齐"的真因。 */
+    .sftp .sp-title { line-height: 24px; font-size: 14px; margin: 0; font-weight: 500;
+      color: #141728; }   /* 颜色也要显式给:某处的 .sp-title{color:var(--fg-dim)} 会漏进来,文字发灰 */
+    .sftp .sp-head { padding: 7px 10px; }
 </style>
 </head>
 <body>
