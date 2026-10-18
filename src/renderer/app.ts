@@ -624,55 +624,138 @@ function fmtTime(t: number): string {
 
 /** 分区视图的通用外壳 */
 type TabKind = Tab["kind"];
-function openSection(kind: TabKind, label: string, build: (host: HTMLElement) => void): void {
+
+/* ===== 分区屏外壳(对齐原版实测)=====
+   原版各分区屏顶部都有一条工具条带(底色 #282b3d):单行区高 56px(19+30+7),
+   Hosts/Vaults 是两行(搜索 36 + 工具条 30)共 100px;右侧固定 3 个图标(筛选/布局/侧栏)。
+   空态:60×60 描边圆角块(不是实底)+ 15px 白标题 + 13px 灰说明,整体居中。 */
+const ICON_FILTER = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M7 12h10M10 18h4"/></svg>';
+const ICON_LAYOUT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2.2"/><rect x="13" y="3" width="8" height="8" rx="2.2"/><rect x="3" y="13" width="8" height="8" rx="2.2"/><rect x="13" y="13" width="8" height="8" rx="2.2"/></svg>';
+const ICON_PANEL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 9h18"/></svg>';
+const ICON_CARET = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>';
+
+function secToolbar(host: HTMLElement, buttons: Array<{ label: string; icon?: string; caret?: boolean; chip?: boolean; onClick: () => void }>): void {
+  for (const b of buttons) {
+    const el = document.createElement("button");
+    el.className = b.chip ? "sec-chip" : "tb-btn";
+    el.innerHTML = (b.icon ?? "") + `<span>${b.label}</span>`;
+    if (b.caret) {
+      const c = document.createElement("span");
+      c.className = "tb-caret";
+      c.innerHTML = ICON_CARET;
+      el.append(c);
+    }
+    el.addEventListener("click", b.onClick);
+    host.append(el);
+  }
+  const sp = document.createElement("span");
+  sp.style.flex = "1";
+  host.append(sp);
+  const ic = (svg: string, title: string, fn: () => void): void => {
+    const b = document.createElement("button");
+    b.className = "tb-icon";
+    b.title = title;
+    b.innerHTML = svg;
+    b.addEventListener("click", fn);
+    host.append(b);
+  };
+  ic(ICON_FILTER, "Filter", () => document.getElementById("host-search")?.focus());
+  ic(ICON_LAYOUT, "Change layout", () => document.getElementById("host-layout")?.click());
+  ic(ICON_PANEL, "Terminal side-panel", () => togglePanel());
+}
+
+function secEmpty(title: string, desc: string, icon: string): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "sec-empty-wrap";
+  wrap.innerHTML = `<div class="sec-empty-ico">${icon}</div>
+    <div class="sec-empty-title">${title}</div>
+    <div class="sec-empty-desc">${desc}</div>`;
+  return wrap;
+}
+
+const SEC_ICONS = {
+  snippet: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg>',
+  key: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8M16.5 16.5l2-2M14 14l2-2"/></svg>',
+  clock: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  fwd: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8h13l-3-3M21 16H8l3 3"/></svg>',
+};
+
+/** 打开一个分区屏(单行工具条带版) */
+function openSection(kind: TabKind, label: string, build: (body: HTMLElement) => void,
+                     buttons: Array<{ label: string; icon?: string; caret?: boolean; chip?: boolean; onClick: () => void }> = []): void {
   const existing = tabs.find((t) => t.kind === kind);
   if (existing) { activateTab(existing.id); return; }
   const pane = makePane();
-  const vault = document.createElement("div");
-  vault.className = "vault";
-  pane.append(vault);
-  build(vault);
+  const sec = document.createElement("div");
+  sec.className = "sec";
+  const band = document.createElement("div");
+  band.className = "sec-band";
+  secToolbar(band, buttons);
+  const body = document.createElement("div");
+  body.className = "sec-body";
+  /* 必须先挂进文档再 build:build 里的 getElementById 需要元素已在文档中(踩过) */
+  sec.append(band, body);
+  pane.append(sec);
+  build(body);
   const t: Tab = { id: `t${++seq}`, kind, label, state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null };
   tabs.push(t);
   activateTab(t.id);
 }
 
-/** Hosts / Vaults:把 #vault-src 里的节点**移动**进来(id 不变,主机面板原有绑定继续有效) */
+/** Hosts / Vaults:把 #vault-src 里的节点移动进"工具条带"(id 不变,原绑定继续有效) */
 function openVaultTab(): void {
-  openSection("vault", "Vaults", (host) => {
-    const src = document.getElementById("vault-src");
-    if (src) host.append(...Array.from(src.children));
-    else host.innerHTML = `<div class="sec-h">Hosts</div><div id="host-list"></div>`;
-  });
+  const existing = tabs.find((t) => t.kind === "vault");
+  if (existing) { activateTab(existing.id); return; }
+  const pane = makePane();
+  const sec = document.createElement("div");
+  sec.className = "sec vault";
+  const band = document.createElement("div");
+  band.className = "sec-band";
+  const src = document.getElementById("vault-src");
+  if (src) band.append(...Array.from(src.children));
+  const body = document.createElement("div");
+  body.className = "sec-body";
+  /* #vault-src 里同时含工具栏与列表,列表要挪到带下面,不能留在带里(否则带高会被撑开) */
+  const list = document.getElementById("host-list");
+  if (list) body.append(list);
+  sec.append(band, body);
+  pane.append(sec);
+  const t: Tab = { id: `t${++seq}`, kind: "vault", label: "Vaults", state: "idle", pane,
+    term: null, fit: null, termId: null, disposers: [], sftp: null };
+  tabs.push(t);
+  activateTab(t.id);
 }
 
 function openSnippetsTab(): void {
-  openSection("snippets", "Snippets", (host) => {
-    host.innerHTML = `<div class="sec-h">Snippets</div><div id="snip-sec-list" class="sec-list"></div>
-      <div class="snip-add" style="margin-top:10px">
-        <input class="snip-name" placeholder="Name" spellcheck="false">
-        <input class="snip-cmd" placeholder="Command" spellcheck="false">
-        <button class="btn snip-save-sec">Save</button></div>`;
-    host.querySelector(".snip-save-sec")!.addEventListener("click", () => {
-      const name = (host.querySelector(".snip-name") as HTMLInputElement).value.trim();
-      const command = (host.querySelector(".snip-cmd") as HTMLInputElement).value;
-      if (!name && !command) return;
-      void bridge.snippets.save({ name: name || command, command }).then(() => {
-        (host.querySelector(".snip-name") as HTMLInputElement).value = "";
-        (host.querySelector(".snip-cmd") as HTMLInputElement).value = "";
-        renderSnippetsSection();
-      });
-    });
-    void renderSnippetsSection();
-  });
+  openSection("snippets", "Snippets", (body) => {
+    body.innerHTML = `<div id="snip-sec-list" class="sec-list"></div>`;
+    void renderSnippetsSection("snip-sec-list");
+  }, [
+    { label: "New snippet", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
+      onClick: () => openSnippetEditor() },
+    { label: "Shell History", icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+      onClick: () => toast("Shell History:需要按会话记录的历史,暂未支持") },
+  ]);
 }
 
-async function renderSnippetsSection(): Promise<void> {
-  const box = document.getElementById("snip-sec-list");
+/** 新建 snippet 的极简表单(原版是 "New snippet" 按钮打开编辑面板) */
+function openSnippetEditor(): void {
+  /* Electron 渲染进程不支持 window.prompt,改走侧栏已有的 Snippets 编辑区 */
+  showPanelSection("Snippets");
+  setTimeout(() => (document.querySelector(".snip-name") as HTMLInputElement | null)?.focus(), 60);
+}
+
+async function renderSnippetsSection(boxId: string): Promise<void> {
+  const box = document.getElementById(boxId);
   if (!box) return;
   const items = await bridge.snippets.list();
-  if (!items.length) { box.innerHTML = `<div class="sec-empty">No snippets yet</div>`; return; }
+  if (!items.length) {
+    box.replaceChildren(secEmpty("Create snippet", "Save your most used commands as snippets to reuse them in one click.", SEC_ICONS.snippet));
+    box.classList.add("is-empty");
+    return;
+  }
+  box.classList.remove("is-empty");
   box.replaceChildren(...items.map((sn) => {
     const row = document.createElement("div");
     row.className = "sec-row";
@@ -687,39 +770,56 @@ async function renderSnippetsSection(): Promise<void> {
       toast(`已发送到 ${target.label}`);
     });
     (row.querySelector(".sec-del") as HTMLElement).addEventListener("click", () => {
-      void bridge.snippets.remove(sn.id).then(() => renderSnippetsSection());
+      void bridge.snippets.remove(sn.id).then(() => renderSnippetsSection(boxId));
     });
     return row;
   }));
 }
 
 function openKeychainTab(): void {
-  openSection("keychain", "Keychain", (host) => {
-    host.innerHTML = `<div class="sec-h">Keychain</div><div id="kc-list" class="sec-list"></div>`;
+  openSection("keychain", "Keychain", (body) => {
+    body.innerHTML = `<div id="kc-list" class="sec-list"></div>`;
     void (async () => {
       const box = document.getElementById("kc-list")!;
       const hosts = await bridge.hosts.list();
-      const rows = await Promise.all(hosts.map(async (h) => {
-        const has = await bridge.creds.has(h.id);
+      const withCreds: Array<{ name: string; host: string; username: string }> = [];
+      for (const h of hosts) if (await bridge.creds.has(h.id)) withCreds.push({ name: h.name, host: h.host, username: h.username });
+      if (!withCreds.length) {
+        box.replaceChildren(secEmpty("Add credentials", "Store your credentials to quick and securely access your servers.", SEC_ICONS.key));
+        box.classList.add("is-empty");
+        return;
+      }
+      box.classList.remove("is-empty");
+      box.replaceChildren(...withCreds.map((h) => {
         const row = document.createElement("div");
         row.className = "sec-row";
-        row.innerHTML = `<span class="nm"></span><span class="cm"></span><span class="pill"></span>`;
+        row.innerHTML = `<span class="hico blue"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8"/></svg></span>
+          <span class="nm"></span><span class="cm"></span><span class="pill on">saved</span>`;
         (row.querySelector(".nm") as HTMLElement).textContent = h.name;
         (row.querySelector(".cm") as HTMLElement).textContent = `${h.username}@${h.host}`;
-        const pill = row.querySelector(".pill") as HTMLElement;
-        pill.textContent = has ? "saved credential" : "no saved credential";
-        pill.className = `pill ${has ? "on" : ""}`;
         return row;
       }));
-      box.replaceChildren(...rows);
     })();
-  });
+  }, [
+    { label: "New key", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
+      onClick: () => toast("New key:支持导入私钥即可,暂未接入") },
+    { label: "Certificate", icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+      onClick: () => toast("Certificate:暂未支持") },
+    { label: "Touch ID", chip: true, onClick: () => toast("Touch ID:需要系统生物识别授权,暂未接入") },
+    { label: "FIDO2", chip: true, onClick: () => toast("FIDO2:需要硬件密钥,暂未接入") },
+  ]);
 }
 
 function renderLogsSection(): void {
   const box = document.getElementById("logs-list");
   if (!box) return;
-  if (!LOGS.length) { box.innerHTML = `<div class="sec-empty">No events yet</div>`; return; }
+  if (!LOGS.length) {
+    /* 原版这一屏是"套餐门控"提示;我方日志是本地免费功能,保留同样的空态版式、用诚实文案。 */
+    box.replaceChildren(secEmpty("No logs yet", "Connection and disconnect events will appear here.", SEC_ICONS.clock));
+    box.classList.add("is-empty");
+    return;
+  }
+  box.classList.remove("is-empty");
   box.replaceChildren(...[...LOGS].reverse().map((l) => {
     const row = document.createElement("div");
     row.className = `sec-row log ${l.level}`;
@@ -731,8 +831,8 @@ function renderLogsSection(): void {
 }
 
 function openLogsTab(): void {
-  openSection("logs", "Logs", (host) => {
-    host.innerHTML = `<div class="sec-h">Logs</div><div id="logs-list" class="sec-list"></div>`;
+  openSection("logs", "Logs", (body) => {
+    body.innerHTML = '<div id="logs-list" class="sec-list"></div>';
     renderLogsSection();
   });
 }
@@ -754,7 +854,7 @@ function syncRail(kind: string): void {
 /** 外层 chrome 随 tab 类型切换:
  *  会话/SFTP → 隐藏左栏、顶栏跟随终端底色(原版实测);
  *  分区屏(Vaults / Port Forwarding / …)→ 显示左栏、顶栏为 #313443。
- *  同时原来的会话头整行不再出现 —— 原版会话屏里没有这一行。 */
+ *  原来的会话头整行不再出现 —— 原版会话屏里没有这一行。 */
 function applyChrome(kind: string): void {
   document.body.dataset.chrome = kind === "session" || kind === "sftp" ? kind : "section";
   const head = document.getElementById("term-head");
@@ -915,7 +1015,21 @@ function openFwdTab(): void {
   if (existing) { activateTab(existing.id); return; }
   const pane = makePane();
   const view = createFwdView();
-  pane.append(view.el);
+  const sec = document.createElement("div");
+  sec.className = "sec";
+  const band = document.createElement("div");
+  band.className = "sec-band";
+  secToolbar(band, [
+    { label: "New forwarding", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
+      onClick: () => (view.el.querySelector(".fwd-new-main") as HTMLElement | null)?.click() },
+  ]);
+  const body = document.createElement("div");
+  body.className = "sec-body";
+  body.append(view.el);
+  sec.append(band, body);
+  pane.append(sec);
+  /* 视图自带的头部(fwd-bar)被工具条带取代 —— 原版这些分区屏的按钮就在顶部那条带上 */
+  (view.el.querySelector(".fwd-bar") as HTMLElement | null)?.style.setProperty("display", "none");
   const t: Tab = { id: `t${++seq}`, kind: "fwd", label: "Port Forwarding", state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null, view: view as unknown as SftpView };
   tabs.push(t);
@@ -928,7 +1042,47 @@ function openKnownHostsTab(): void {
   if (existing) { activateTab(existing.id); return; }
   const pane = makePane();
   const view = createKnownHostsView();
-  pane.append(view.el);
+  const sec = document.createElement("div");
+  sec.className = "sec";
+  const band = document.createElement("div");
+  band.className = "sec-band";
+  secToolbar(band, [
+    { label: "Import", onClick: () => (view.el.querySelector(".kh-import") as HTMLElement | null)?.click() },
+  ]);
+  const body = document.createElement("div");
+  body.className = "sec-body";
+  const group = document.createElement("div");
+  group.className = "group-label";
+  group.textContent = "Known Hosts";
+  body.append(group, view.el);
+  sec.append(band, body);
+  pane.append(sec);
+  (view.el.querySelector(".kh-bar") as HTMLElement | null)?.style.setProperty("display", "none");
+  /* 行改成原版的卡片形态:蓝色图标块 + 名称(指纹收进 title,悬停可见) */
+  const paint = (): void => {
+    for (const row of view.el.querySelectorAll<HTMLElement>(".kh-row")) {
+      const ico = row.querySelector<HTMLElement>(".kh-ico");
+      if (ico && !ico.dataset.painted) {
+        ico.dataset.painted = "1";
+        ico.textContent = "";
+        ico.innerHTML = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8"/></svg>';
+      }
+      /* 原版卡片一行只显示主机名;指纹与类型收进 title(悬停可见),信息不丢 */
+      const main = row.querySelector<HTMLElement>(".kh-main");
+      if (main) {
+        const parts = [...main.children] as HTMLElement[];
+        if (parts.length > 1) {
+          if (!row.title) row.title = parts.map((p) => p.textContent?.trim() ?? "").filter(Boolean).join("  ");
+          for (const p of parts.slice(1)) p.style.display = "none";
+        }
+      }
+      const type = row.querySelector<HTMLElement>(".kh-type");
+      if (type) type.style.display = "none";
+    }
+  };
+  paint();
+  const mo = new MutationObserver(paint);
+  mo.observe(view.el, { childList: true, subtree: true });
   const t: Tab = { id: `t${++seq}`, kind: "kh", label: "Known Hosts", state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null, view: view as unknown as SftpView };
   tabs.push(t);

@@ -1033,3 +1033,49 @@ xterm 靠一个**隐藏 textarea**(`.xterm-helper-textarea`)收键盘 —— 它
 2. 主机分组数不同(我的测试数据有 bench/hosts/prod 三组,原版只有一台主机);
 3. `Snippets` / `Keychain` / `Logs` 三屏的布局仍是自设计 —— 原版那三屏形态**未测**;
 4. 原版卡片上是否永远不显示标签,我只有一台无标签主机的证据,不足以断言(暂按"默认隐藏、悬停显示"处理)。
+
+### F45 第三轮:会话屏结构 / SFTP 恒浅色 / 分区屏外壳 / 放弃修改弹窗      [2026-10-18 20:55]
+## 测量方式(这次是**驱动原版**) 
+原版这次没开调试端口。先试"复制 profile 起第二个实例"——被单实例锁挡住(Termius 自己
+`setPath("userData")`,忽略 `--user-data-dir`),于是**优雅退出原版再用调试端口重启**,
+之后逐屏点它左栏 6 项并截图 + 取 DOM 文案(只切视图,不改它的数据、不保存任何表单)。
+它有三个窗口:主窗(primary)/ 偏好窗(preferences)/ 另一个 —— 后两个还没测。
+## 会话屏(证据:原版会话态截图 y=400 处 x=0..1279 全是终端底色)
+- **会话/SFTP 时左栏是隐藏的**,终端占满全宽;**没有"会话头"那一行**;
+- **顶栏底色在会话态 = 该会话终端底色**(#141728),分区屏才是 #313443。
+  ⚠️ 这条我上一轮"更正"错了:我当时看 Vaults 截图的顶栏是 #313443,就断言"顶栏不跟随终端底色",
+  把早先正确的结论推翻了。**同一现象在两个不同状态下取值不同,不能拿一个状态否定另一个状态。**
+- 会话 tab 的"已连接"是**整颗 pill 变绿**(底色 = 该会话终端底 + 约 14% 绿,实测 #1d3536),
+  图标与关闭键同绿;断开是红描边。我此前只把状态类挂在内层小圆点上,所以绿样式从未生效。
+## SFTP 屏(证据:原版 SFTP 截图直方图)
+- **恒为浅色**,即使 chrome 是深色:列表底 `#edf1f2`、头部带 `#f7f9fa`、分隔 `#d6dde0`、
+  主文字 `#141728`、次文字 `#7b8c94`、夹图标 `#7acef8`、按钮 `#d6dddf`、空态图标块 `#141728`;
+  实现用**作用域变量覆盖**(在 `.sftp` 上重定义 --bg/--fg/--wire 等)一次性翻转;
+- `SFTP` 是**常驻 tab**(原版未连接时它也在,显示 `Connect to host` 空态);
+- 栏头是 `Local`/`Remote`(不是全大写);空态面板不显示列表头;行高 44(我原 47)。
+## 分区屏(证据:逐屏驱动原版测得)
+- 每屏顶部都有一条**工具条带** `#282b3d`:单行区 **56px**(19+30+7),Vaults 是**两行 100px**
+  (搜索 36 + 工具条 30);右侧固定 **3 个图标**;
+- 空态:60×60 **描边**(不是实底)圆角块(#4e5264)+ 15px 白标题 + 13px 灰说明,整体居中;
+- 各屏按钮与空态文案(取自原版自身):
+  Keychain `New key ⌄ / Certificate / Touch ID / FIDO2` + `Add credentials` /
+  `Store your credentials to quick and securely access your servers.`(原文如此);
+  Port Forwarding `New forwarding ⌄` + `Set up port forwarding` / `Save port forwarding to access databases, web apps, and other services.`;
+  Snippets `New snippet ⌄ / Shell History` + `Create snippet` / `Save your most used commands as snippets to reuse them in one click.`;
+  Known Hosts `Import` + 分组头 `Known Hosts` + 卡片(350×60、**深蓝** #08639f 图标块、单行名称、无副标题);
+  Logs 无按钮,内容是**套餐门控**(`Logs are not available on your current plan` / `Upgrade to enable logs.`)
+  —— 这条我方**故意不复刻**:本地日志是免费功能,保留同样版式、用诚实文案。
+- Port Forwarding 的空态文案原来就已经是原版那句(第一轮 F-记录时抄的),本轮只是把它挪进工具条带。
+## 放弃修改弹窗(证据:原版 Hosts 屏那张带遮罩的截图)
+`Do you want to discard changes?` / `Not all required fields are filled. Do you want to finish editing and discard all changes?` /
+按钮 `Discard changes`;几何实测 **498×228 居中 @(391,286)**,头 36px 深色、白底、右下红按钮、右上 ✕。
+实现后用 CDP 量回:498×228 @(391,286) —— 完全一致。
+## 自己踩的坑(都在本轮)
+1. `openSection` 先 build 后挂载 → build 里的 `getElementById` 全是 null(Snippets 列表整屏空白);
+2. 同一批改动里我把 `#host-list` 也挪进了工具条带(它本来就在 `#vault-src` 里)→ 带高被撑到 556;
+3. Electron 渲染进程**不支持 window.prompt**,我拿它写"新建 snippet"必然报错 → 改走侧栏已有编辑区;
+4. 替换代码区间时按"函数名到下个函数名"切,结果**连中间的辅助函数一起删掉**了(syncRail/applyChrome),
+   还差点删掉 openTagMenu —— 断言救回来了。**改区间前后都要数一遍被删掉了什么。**
+5. 核对"隐藏元素"时用 textContent 会连 display:none 的文字一起算,造成假报警。
+## 状态
+`tsc` / `build` 通过,渲染错误 0;各分区带高 56、按钮与图标数、卡片 350×56、弹窗 498×228 均与原版一致。
