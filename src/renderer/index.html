@@ -177,7 +177,10 @@
     .sp-body.drop-hot { outline: 2px dashed var(--accent); outline-offset: -3px; background: rgba(32,145,246,.06); }
 
     /* T2 复刻 —— 水平分屏(原版 `Split horizontally`)与广播(原版 `Broadcast`) */
-    .tab-pane { display: flex; flex-direction: column; }
+    /* 这条原本写成 `.tab-pane`(0-1-0),把上面那条 `.tab-pane{display:none}` 覆盖掉了 ——
+       结果**所有** pane 都显示,非活动视图一直叠在下面:会话屏底部漏出 SFTP 浅色、
+       截图看着"慢一帧",都是它引起的。必须只作用于活动 pane。 */
+    .tab-pane.active { display: flex; flex-direction: column; }
     .split-pane { flex: 1 1 50%; min-height: 0; display: flex; flex-direction: column;
       border-top: 1px solid var(--wire); }
     .split-head { display: flex; align-items: center; gap: 8px; padding: 3px 8px; background: var(--bg2);

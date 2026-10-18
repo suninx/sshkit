@@ -1079,3 +1079,25 @@ xterm 靠一个**隐藏 textarea**(`.xterm-helper-textarea`)收键盘 —— 它
 5. 核对"隐藏元素"时用 textContent 会连 display:none 的文字一起算,造成假报警。
 ## 状态
 `tsc` / `build` 通过,渲染错误 0;各分区带高 56、按钮与图标数、卡片 350×56、弹窗 498×228 均与原版一致。
+
+### F46 一个藏了很久的显示 bug:所有 tab pane 都没被隐藏                    [2026-10-18 21:10]
+## 现象与真因
+本轮多次出现"截图看着比状态慢一帧/内容区画的是别的视图/会话屏底部漏出一条浅色"。
+真因不是截图,而是 CSS:我加"分屏布局"时写了一条
+`    .tab-pane { display: flex; flex-direction: column; }`(0-1-0),
+它出现在 `.tab-pane{display:none}` 之后 → **把隐藏规则整个覆盖掉**,于是所有 pane 同时显示,
+只有 z 序在决定谁被看见。
+修成 `.tab-pane.active { ... }` 后:非活动 pane `display:none` ✓,六张截图的取样点全部与状态一致。
+## 教训
+1. **"看起来像采集问题"的怪现象,先把 DOM 状态查清**(`getComputedStyle` 每个 pane 的 display),
+   别急着怀疑工具链 —— 我一度去改抓图脚本(加了 bringToFront + 双抓),那是对的方向但不是根因。
+2. 追加覆盖式 CSS 时,凡是"同名选择器、不同权重"的组合都要当成地雷:
+   这次是 `display:none`(0-1-0)被后来的 `display:flex`(0-1-0)按顺序覆盖,
+   而 `.tab-pane.active`(0-2-0)那条只解释了活动 pane 为什么正常,掩盖了问题。
+3. 同一类错误的第三次变体:对**游离节点**用 `document.getElementById` 会返回 null
+   (`openSection` 先 build 后挂载、`#vault-src` 子节点先移进游离 band)—— 见上一轮记录。
+## 顺带修正的两处基准
+- `#banner` 空着仍占高(现已 `:empty{display:none}`);
+- `.sec.vault` 同时带 `sec`/`vault` 两类,早期 `.vault{padding:10px}` 又把整屏压低 10px;
+- `#host-list .group-label` 的 23px 因权重高于后加的 `.group-label{19px}` 而生效。
+三处叠加使基准点整体偏下 8~18px,现回到 59 / 115 / 170 / 206(原版 59 / 114 / 168 / 205)。
