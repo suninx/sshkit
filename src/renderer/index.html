@@ -422,9 +422,15 @@
     .sp-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .sp-rows { flex: 1; overflow-y: auto; }
     .sp-row { display: flex; align-items: center; height: 44px; padding: 0 8px 0 20px; cursor: default; }
+    /* 列表标题行:原版是"无底色、只有列间细竖线 + 底部一条线",Name 左对齐、其余居中、字重 600。
+       我这边 .sp-col 是 <button>,只改了颜色没清掉 UA 默认的底色/边框,于是成了一排灰底方框(用户截图)。 */
     .sp-cols { border-bottom: 1px solid #d6dde0; }
-    .sp-col { border-right: 1px solid #d6dde0; color: #141728; }
+    .sp-col { background: transparent; border: 0; border-right: 1px solid #d6dde0;
+      color: #141728; font-size: 13.5px; font-weight: 600; height: 100%;
+      padding: 0 12px; text-align: center; }
+    .sp-col.sp-cname { text-align: left; padding-left: 20px; }
     .sp-col:last-child { border-right: 0; }
+    .sp-col:hover { background: rgba(20,23,40,.035); }
     .sp-row:hover { background: var(--h05); }
     .sp-row.sel { background: rgba(32,145,246,.18); }
     .sp-row.up { cursor: pointer; }
