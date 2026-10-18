@@ -548,7 +548,9 @@
     .rail-item { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px;
       border: 0; border-radius: 9px; background: transparent; color: var(--fg);
       font-size: 13.5px; text-align: left; cursor: pointer; flex: none; }
-    .rail-item .ri { display: flex; color: var(--icon-dim); }
+    /* 更正:原版导航图标是**白色**(与文字同色),不是灰的 ——
+       之前记的 #6E7281 是原版调色数组里的三级文字色,被我误当成图标色。 */
+    .rail-item .ri { display: flex; color: var(--fg); }
     .rail-item:hover { background: rgba(255,255,255,.05); }
     .rail-item.on { background: var(--panel); }
     .rail-item.on .ri { color: var(--fg); }
