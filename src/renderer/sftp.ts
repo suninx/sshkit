@@ -114,9 +114,12 @@ export function createSftpView(
     const host = root.querySelector(`.sftp-pane[data-which="${which}"]`)! as HTMLElement;
     host.innerHTML = `
       <div class="sp-head">
+        <span class="sp-pico">${which === "local"
+          ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="M8 10.5l2.2 2L8 14.5M12.5 14.5H16"/></svg>'
+          : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg>'}</span>
         <span class="sp-title">${title}</span>
         <span style="flex:1"></span>
-        <button class="sp-btn" data-act="filter">🔍 Filter</button>
+        <button class="sp-btn" data-act="filter"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg> Filter</button>
         <button class="sp-btn" data-act="actions">Actions ⌄</button>
       </div>
       <div class="sp-filter" hidden><input placeholder="Filter by name" spellcheck="false"></div>
@@ -212,10 +215,12 @@ export function createSftpView(
 
   function renderEmpty(st: PaneState): void {
     st.crumbsEl.textContent = "";
+    const cols = st.rowsEl.closest(".sftp-pane")?.querySelector(".sp-cols") as HTMLElement | null;
+    if (cols) cols.style.display = "none";   // 原版空态不显示列表头
     const body = st.rowsEl.parentElement!;
     body.innerHTML = `
       <div class="sftp-empty">
-        <div class="sp-empty-ico">🗂</div>
+        <div class="sp-empty-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e3e7e9" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></div>
         <h3>Connect to host</h3>
         <p>Start by connecting to a saved host<br>to manage your files with SFTP.</p>
         <button class="sp-select">Select host</button>

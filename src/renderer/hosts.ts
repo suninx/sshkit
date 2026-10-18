@@ -86,9 +86,24 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
 
   const btnNew = document.getElementById("btn-new-host")! as HTMLButtonElement;
   btnNew.addEventListener("click", () => openForm(null));
-  document.getElementById("btn-cancel")!.addEventListener("click", () => backdrop.classList.remove("visible"));
+  /* 原版在关闭"有改动但必填未填完"的表单时会弹确认框(标题/正文/按钮文案取自原版自身)。 */
+  function formDirty(): boolean {
+    const ids = ["f-name", "f-host", "f-user", "f-port", "f-pass", "f-key"];
+    for (const id of ids) {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      if (el && el.value.trim() !== "") return true;
+    }
+    return false;
+  }
+
+  function closeForm(force = false): void {
+    if (!force && formDirty()) { openDiscardDialog(() => closeForm(true)); return; }
+    backdrop.classList.remove("visible");
+  }
+
+  document.getElementById("btn-cancel")!.addEventListener("click", () => closeForm());
   document.getElementById("form-backdrop")!.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.classList.remove("visible");
+    if (e.target === backdrop) closeForm();
   });
 
   /* T7:搜索与排序。排序项文案取自原版 Sort options 菜单(A-z / Z-a / Newest to oldest / Oldest to newest) */
@@ -243,6 +258,28 @@ const SORT_LABEL: Record<SortMode, string> = {
   const authSel = document.getElementById("f-auth")! as HTMLSelectElement;
   authSel.addEventListener("change", syncAuthVisibility);
   document.getElementById("host-form")!.addEventListener("submit", onSubmit);
+
+  /** 原版"放弃修改"确认框。几何来自实测:对话框 498 宽、垂直居中;头部 36px 深色;正文白底;
+      按钮 `Discard changes` 在正文右下,底色为原版危险色。 */
+  function openDiscardDialog(onConfirm: () => void): void {
+    document.querySelectorAll(".discard-dlg").forEach((e) => e.remove());
+    const wrap = document.createElement("div");
+    wrap.className = "discard-dlg";
+    wrap.innerHTML = `
+      <div class="dd-box" role="dialog" aria-modal="true">
+        <div class="dd-head"><span>Do you want to discard changes?</span>
+          <button class="dd-x" aria-label="Close">✕</button></div>
+        <div class="dd-body">
+          <p>Not all required fields are filled. Do you want to finish editing and discard all changes?</p>
+          <button class="dd-ok">Discard changes</button>
+        </div>
+      </div>`;
+    const close = (): void => wrap.remove();
+    wrap.querySelector(".dd-x")!.addEventListener("click", close);
+    wrap.addEventListener("click", (ev) => { if (ev.target === wrap) close(); });
+    wrap.querySelector(".dd-ok")!.addEventListener("click", () => { close(); onConfirm(); });
+    document.body.append(wrap);
+  }
 
   async function refresh(): Promise<void> {
     const hosts = await bridge.hosts.list();

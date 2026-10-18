@@ -295,7 +295,21 @@ function renderTabs(): void {
   tabsEl.replaceChildren(
     ...tabs.map((t) => {
       const el = document.createElement("div");
-      el.className = `tab-btn${t.kind === "session" ? " session" : ""}${t.id === active ? " active" : ""}`;
+      /* 状态类必须挂在 pill 上:原版会话 tab 的"已连接"是整颗 pill 变绿(底色取自该会话终端底 + 约 14% 绿),
+         之前只把 on 挂在里面的小圆点上,所以绿色样式一直没生效。 */
+      el.className = `tab-btn${t.kind === "session" ? " session" : ""}`
+        + `${t.kind === "session" && t.state === "on" ? " on" : ""}`
+        + `${t.kind === "session" && t.state === "off" ? " off" : ""}`
+        + `${t.id === active ? " active" : ""}`;
+      if (t.kind === "session" && t.state === "on") {
+        const bg = (t.term?.options.theme as { background?: string } | undefined)?.background;
+        const m = /^#?([0-9a-f]{6})$/i.exec(bg ?? "");
+        if (m) {
+          const v = parseInt(m[1], 16);
+          const mix = (c: number, g: number): number => Math.round(c * 0.86 + g * 0.14);
+          el.style.background = `rgb(${mix((v >> 16) & 255, 53)}, ${mix((v >> 8) & 255, 211)}, ${mix(v & 255, 154)})`;
+        }
+      }
       el.title = t.label;
       el.setAttribute("role", "tab");
       el.setAttribute("aria-selected", t.id === active ? "true" : "false");
@@ -560,7 +574,7 @@ function duplicateTab(t: Tab): void {
   if (t.kind === "sftp") { openSftpTab(); return; }
   if (t.kind === "fwd") { openFwdTab(); return; }
   if (t.kind === "kh") { openKnownHostsTab(); return; }
-  openVaultTab();   // 原版首屏是 `Vaults`(主机列表),不是空白页
+  openVaultTab();    // 原版首屏是 `Vaults`(主机列表),不是空白页
 }
 
 function activateTab(id: string): void {
@@ -572,7 +586,7 @@ function activateTab(id: string): void {
   setStatus(t.state);
   setTitle(t.label);
   syncRail(t.kind);
-  updateTermHead(t.kind);
+  applyChrome(t.kind);
   setSftpSession(t.sftp);
   if (t.kind === "session" && t.sftp) lastSession = t.sftp;
   if (t.fit) { try { t.fit.fit(); } catch { /* transient */ } }
@@ -737,10 +751,14 @@ function syncRail(kind: string): void {
   }
 }
 
-/** 会话头(状态点/标题/侧栏与 SFTP 按钮)只在会话类 tab 上出现;分区视图有自己的标题。 */
-function updateTermHead(kind: string): void {
+/** 外层 chrome 随 tab 类型切换:
+ *  会话/SFTP → 隐藏左栏、顶栏跟随终端底色(原版实测);
+ *  分区屏(Vaults / Port Forwarding / …)→ 显示左栏、顶栏为 #313443。
+ *  同时原来的会话头整行不再出现 —— 原版会话屏里没有这一行。 */
+function applyChrome(kind: string): void {
+  document.body.dataset.chrome = kind === "session" || kind === "sftp" ? kind : "section";
   const head = document.getElementById("term-head");
-  if (head) head.style.display = kind === "session" || kind === "sftp" ? "" : "none";
+  if (head) head.style.display = "none";
 }
 
 function makePane(): HTMLDivElement {
@@ -875,9 +893,9 @@ let TERM_THEME: Record<string, string> = {
 };
 
 /** T5:SFTP 是**一个 tab**(原版亦然,Vaults/SFTP 是常驻 tab)。全局单例,重复点击即激活。 */
-function openSftpTab(): void {
+function openSftpTab(activate = true): void {
   const existing = tabs.find((t) => t.kind === "sftp");
-  if (existing) { activateTab(existing.id); return; }
+  if (existing) { if (activate) activateTab(existing.id); return; }
   const pane = makePane();
   const view = createSftpView(
     () => lastSession,
@@ -887,7 +905,8 @@ function openSftpTab(): void {
   const t: Tab = { id: `t${++seq}`, kind: "sftp", label: "SFTP", state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null, view };
   tabs.push(t);
-  activateTab(t.id);
+  if (activate) activateTab(t.id);
+  else renderTabs();
 }
 
 /** T3:端口转发面板(原版是左栏一级导航的目的地;我方以 tab 承载,与 SFTP 同理)。 */
@@ -1520,6 +1539,7 @@ void (async () => {
   initHostPanel((host) => void openSession(host ? "ssh" : "local", host ?? undefined));
   /* 新建:左导航栏(184px,6 项)。原版这 6 项是一级导航,点击后主区切到对应分区
      (Hosts 分区就是原版的 `Vaults` tab;转发/Known Hosts 等各自成为主区视图)。 */
+  document.getElementById("btn-panel-top")?.addEventListener("click", () => togglePanel());
   document.getElementById("btn-quick-term")?.addEventListener("click", () => { void openSession("local"); });
   document.getElementById("btn-quick-serial")?.addEventListener("click", () => {
     toast("Serial 未支持:需要串口原生依赖与真实设备,本项目不引入");
@@ -1560,4 +1580,5 @@ void (async () => {
   installHostKeyDialog();
   installAllShortcuts();
   openVaultTab();   // 原版首屏是 `Vaults`(主机列表),不是空白页 // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
+  openSftpTab(false); // 原版顶栏里 `SFTP` 是常驻 tab(证据:未连接 SFTP 时它也在,且显示 Connect to host 空态)
 })();

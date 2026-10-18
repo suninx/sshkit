@@ -374,10 +374,25 @@
        行两行式(名 + 权限串 10px)、行距 47、列宽 279/151/101/90(相对栏内缩进 20)、
        栏间 1px 分隔;远端未绑会话时显示 "Connect to host" + "Select host" 空态(18px/500)。
        原版那些颜色测自其浅色 UI,我方是深色 UI,故颜色改用本应用主题变量。 */
-    .sftp { position: relative; height: 100%; display: flex; min-height: 0; background: var(--bg); }
+    /* ===== SFTP 恒为浅色(原版实测:即使 chrome 是深色,SFTP 也是浅色)=====
+       色值全部取自原版 SFTP 屏:列表底 #edf1f2、头部带 #f7f9fa、分隔 #d6dde0、
+       主文字 #141728、次文字 #7b8c94、夹图标 #7acef8、按钮 #d6dddf、空态图标块 #141728。 */
+    .sftp { position: relative; height: 100%; display: flex; min-height: 0; background: #edf1f2;
+      --bg: #edf1f2; --bg2: #f7f9fa; --bg3: #141728; --fg: #141728; --fg-dim: #7b8c94;
+      --wire: #d6dde0; --accent: #7acef8; --fg-strong: #141728;
+      --h05: rgba(20,23,40,.045); --h08: rgba(20,23,40,.075); --h12: rgba(20,23,40,.11);
+      color: #141728; }
     .sftp-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--wire); }
     .sftp-pane:last-of-type { border-right: 0; }
-    .sp-head { display: flex; align-items: center; gap: 4px; height: 50px; padding: 0 12px 0 20px; }
+    .sp-head { display: flex; align-items: center; gap: 9px; height: 50px; padding: 0 12px 0 20px;
+      background: #f7f9fa; border-bottom: 0; }
+    /* 原版栏头文字是 Local / Remote(不是全大写) */
+    .sp-head .sp-title { text-transform: none; font-size: 14px; font-weight: 500; }
+    /* 空态按钮:原版是浅灰底 #d6dddf + 深色文字(我覆写 --bg3 后曾变成深底深字,文字看不见) */
+    .sftp .sp-select { background: #d6dddf; color: #141728; border: 0; }
+    .sftp .sp-select:hover { background: #c9d2d5; }
+    .sp-pico { display: flex; color: #141728; }
+    .sp-btn { color: #141728; }
     .sp-head .sp-title { font-size: 14px; font-weight: 450; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sp-btn { border: 0; background: transparent; color: var(--fg); font-size: 14px; font-weight: 450;
       cursor: pointer; padding: 5px 8px; border-radius: 7px; white-space: nowrap; }
@@ -385,7 +400,7 @@
     .sp-filter { padding: 0 20px 8px; }
     .sp-filter input { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
       border-radius: 7px; padding: 5px 9px; font-size: 13px; outline: none; }
-    .sp-crumbs { display: flex; align-items: center; gap: 2px; height: 50px; padding: 0 12px 0 16px; overflow: hidden; }
+    .sp-crumbs { display: flex; align-items: center; gap: 2px; height: 50px; padding: 0 12px 0 16px; overflow: hidden; background: #f7f9fa; }
     .sp-arrow { border: 0; background: transparent; color: var(--fg); font-size: 15px; cursor: pointer;
       border-radius: 6px; padding: 2px 7px; }
     .sp-arrow:hover { background: var(--h08); }
@@ -403,7 +418,10 @@
     .sp-ckind { flex: 0 1 90px; min-width: 44px; }
     .sp-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .sp-rows { flex: 1; overflow-y: auto; }
-    .sp-row { display: flex; align-items: center; height: 47px; padding: 0 8px 0 20px; cursor: default; }
+    .sp-row { display: flex; align-items: center; height: 44px; padding: 0 8px 0 20px; cursor: default; }
+    .sp-cols { border-bottom: 1px solid #d6dde0; }
+    .sp-col { border-right: 1px solid #d6dde0; color: #141728; }
+    .sp-col:last-child { border-right: 0; }
     .sp-row:hover { background: var(--h05); }
     .sp-row.sel { background: rgba(32,145,246,.18); }
     .sp-row.up { cursor: pointer; }
@@ -647,6 +665,33 @@
 
     .menu-sep { height: 1px; background: var(--wire); margin: 6px 0; }
     .menu-cap { font-size: 11px; color: var(--fg-dim); padding: 4px 10px; }
+
+    /* ===== 会话屏结构(按原版实测:终端占满全宽、无左栏、无会话头行)=====
+       证据:原版会话态截图 y=400 处 x=0..1279 全是终端底色 #141728;
+       顶栏底色在会话态是终端底色(我上一轮把这条真结论误"更正"掉了,现恢复)。 */
+    body[data-chrome="session"] #rail, body[data-chrome="sftp"] #rail { display: none; }
+    body[data-chrome="session"] #topbar { background: var(--term-bg); }
+    #term-head { display: none !important; }
+    /* 会话 tab:连接中为绿调(原版实测 #1d3536 ≈ 终端底 + 14% 绿),图标与关闭键同绿 */
+    .tab-btn.session.on { box-shadow: inset 0 0 0 1px rgba(53,211,154,.45); }
+    .tab-btn.session.off { box-shadow: inset 0 0 0 1px rgba(255,115,117,.45); }
+    .tab-btn.session.on .tico, .tab-btn.session.on .tab-close { color: #35d39a; }
+    .tab-btn.session.on.active .tab-close { opacity: .95; }
+
+    /* 原版"放弃修改"确认框(几何实测:498 宽、垂直居中、头 36px 深色、白底、按钮右下) */
+    .discard-dlg { position: fixed; inset: 0; background: rgba(20,23,40,.45); display: flex;
+      align-items: center; justify-content: center; z-index: 60; }
+    .dd-box { width: 498px; border-radius: 6px; overflow: hidden; background: #ffffff;
+      box-shadow: 0 18px 48px rgba(0,0,0,.35); }
+    .dd-head { height: 36px; background: var(--bg2); color: #fff; display: flex; align-items: center;
+      padding: 0 10px 0 24px; font-size: 14px; }
+    .dd-head span { flex: 1; }
+    .dd-x { border: 0; background: transparent; color: #fff; cursor: pointer; font-size: 13px; }
+    .dd-body { padding: 56px 24px 30px; color: #141728; }
+    .dd-body p { margin: 0 0 34px; font-size: 13.5px; line-height: 1.45; }
+    .dd-ok { float: right; height: 32px; border: 0; border-radius: 6px; background: var(--danger);
+      color: #fff; font-size: 13.5px; padding: 0 14px; cursor: pointer; }
+    .dd-ok:hover { filter: brightness(1.06); }
 </style>
 </head>
 <body>
@@ -656,6 +701,10 @@
       <div id="tabs"></div>
       <button id="btn-new-tab" title="New Tab (⌘T)">＋</button>
       <span style="flex:1"></span>
+      <button id="btn-panel-top" class="top-icon" title="Terminal side-panel (⌘.)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg>
+      </button>
       <button id="btn-bell" class="top-icon" title="Notifications">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
           <path d="M18 15v-4a6 6 0 1 0-12 0v4l-1.6 3h15.2L18 15Z"/><path d="M10 18a2 2 0 0 0 4 0"/></svg>
