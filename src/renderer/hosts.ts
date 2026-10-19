@@ -18,6 +18,7 @@ interface SshkitBridge {
     write(text: string): Promise<void>;
   };
   /** 应用级设置(语言):与主进程 settings.json 共用一份 */
+  onOpenPrefs?: (callback: () => void) => () => void;
   settings: {
     getLocale(): Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }>;
     setLocale(pref: "system" | "zh" | "en"): Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }>;

@@ -125,6 +125,13 @@ export const en = {
   "form.save": "Save",
 
   /* ---- 菜单 / 常用动作 ---- */
+  "menu.about": "About",
+  "menu.preferences": "Preferences…",
+  "menu.hide": "Hide",
+  "menu.hideOthers": "Hide Others",
+  "menu.showAll": "Show All",
+  "menu.quit": "Quit",
+  "menu.window": "Window",
   "menu.reconnect": "Reconnect",
   "menu.rename": "Rename",
   "menu.duplicate": "Duplicate",
@@ -283,6 +290,13 @@ export const zh: Record<MsgKey, string> = {
   "form.cancel": "取消",
   "form.save": "保存",
 
+  "menu.about": "关于",
+  "menu.preferences": "偏好设置…",
+  "menu.hide": "隐藏",
+  "menu.hideOthers": "隐藏其他",
+  "menu.showAll": "全部显示",
+  "menu.quit": "退出",
+  "menu.window": "窗口",
   "menu.reconnect": "重新连接",
   "menu.rename": "重命名",
   "menu.duplicate": "复制标签页",

@@ -1360,6 +1360,17 @@ document.querySelector(".snip-save")!.addEventListener("click", () => {
   });
 });
 
+/* 标准入口:⌘, 打开外观/设置面板(macOS 惯例)。会话屏里没有工具条,
+   之前只有 Vaults 屏的图标能开,等于会话中断开了设置入口。 */
+document.addEventListener("keydown", (ev) => {
+  if (ev.metaKey && !ev.ctrlKey && !ev.altKey && !ev.shiftKey && ev.key === ",") {
+    ev.preventDefault();
+    openPrefs();
+  }
+});
+/* macOS 菜单栏 sshkit → 偏好设置(⌘,)也走同一条路 */
+try { bridge.onOpenPrefs?.(() => openPrefs()); } catch { /* 老预加载没有此通道 */ }
+
 document.getElementById("btn-prefs")!.addEventListener("click", (ev) => {
   ev.stopPropagation();
   openPrefs();
