@@ -214,7 +214,10 @@ ipcMain.handle("settings:getLocale", () => ({
   effective: getLocale(),
 }));
 ipcMain.handle("settings:setLocale", (_e, pref: LocalePref) => {
-  setSetting("locale", pref);
+  /* 来自渲染层的值要白名单校验:不合法的偏好一律落回"跟随系统",别写脏数据 */
+  const safe: LocalePref = pref === "zh" || pref === "en" ? pref : "system";
+  setSetting("locale", safe);
+  pref = safe;
   setI18nLocale(resolveLocale(pref, systemLang()));
   installAppMenu();   // 菜单文案跟随语言
   return { pref: getSettings().locale, system: systemLang(), effective: getLocale() };

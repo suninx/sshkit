@@ -1219,6 +1219,9 @@ async function setLanguage(pref: LocalePref): Promise<void> {
     renderTabs();                     // tab 标题也随语言
     const cur = tabs.find((x) => x.id === active);
     cur?.view?.relabel?.();           // SFTP 双栏的表头/列名/空态
+    /* 面板本身也是用 tr() 一次性渲染的:语言变了要重建,否则"界面/语言/字号"仍是旧语言 */
+    const openPanel = document.querySelector(".prefs");
+    if (openPanel) { openPanel.remove(); openPrefs(); }
     const missing = audit();
     if (missing.length) console.warn("[i18n] 缺少文案:", missing.join(", "));
   } catch (err) {
@@ -1262,7 +1265,7 @@ function openPrefs(): void {
       <button class="btn ps-down">A−</button>
       <input type="number" class="ps-size" min="4" max="40" step="1">
       <button class="btn ps-up">A+</button>
-      <button class="btn ps-reset" title="Reset terminal font size to default">${tr("prefs.reset")}</button>
+      <button class="btn ps-reset" title="${tr("prefs.resetFont")}" data-i18n-title="prefs.resetFont">${tr("prefs.reset")}</button>
       <span style="flex:1"></span><span class="ps-val" style="font-size:12px;color:var(--fg-dim)"></span>
     </div></div>
     <div><h4>${tr("prefs.font")}</h4><div class="prefs-row"><select class="ps-font"></select></div></div>`;

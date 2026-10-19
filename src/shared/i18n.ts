@@ -89,6 +89,7 @@ export const en = {
   "prefs.dark": "Dark",
   "prefs.light": "Light",
   "prefs.reset": "Reset",
+  "prefs.resetFont": "Reset terminal font size to default",
 
   /* ---- 提示 / 错误 ---- */
   "toast.oneVault": "Switching vaults: only one local vault for now",
@@ -258,6 +259,7 @@ export const zh: Record<MsgKey, string> = {
   "prefs.dark": "深色",
   "prefs.light": "浅色",
   "prefs.reset": "重置",
+  "prefs.resetFont": "把终端字号恢复为默认值",
 
   "toast.oneVault": "切换保管库:目前只有一个本地保管库",
   "toast.notImplemented": "尚未实现",

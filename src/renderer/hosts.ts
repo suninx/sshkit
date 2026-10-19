@@ -275,7 +275,7 @@ const SORT_LABEL: Record<SortMode, string> = {
     wrap.innerHTML = `
       <div class="dd-box" role="dialog" aria-modal="true">
         <div class="dd-head"><span>${tr("dlg.discardTitle")}</span>
-          <button class="dd-x" aria-label="Close">✕</button></div>
+          <button class="dd-x" aria-label="${tr("menu.close")}">✕</button></div>
         <div class="dd-body">
           <p>${tr("dlg.discardDesc")}</p>
           <button class="dd-ok">${tr("dlg.discard")}</button>
