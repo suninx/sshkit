@@ -167,7 +167,7 @@ async function renderSidePanel(): Promise<void> {
         el.className = "sp-item";
         el.dataset.snippetId = sn.id;
         el.title = sn.command;
-        el.innerHTML = `<span class="sp-nm"></span><button class="sp-del" title="Delete">✕</button>`;
+        el.innerHTML = `<span class="sp-nm"></span><button class="sp-del" title="${tr("menu.delete")}">✕</button>`;
         (el.querySelector(".sp-nm")! as HTMLElement).textContent = sn.name || sn.command;
         el.addEventListener("click", () => { void sendSnippet(sn.command); });
         (el.querySelector(".sp-del")! as HTMLElement).addEventListener("click", async (ev) => {
@@ -277,7 +277,7 @@ function renderWsRail(): void {
       row.className = `ws-row${t.id === active ? " active" : ""}`;
       row.dataset.tabId = t.id;
       row.dataset.kind = t.kind;
-      row.innerHTML = `<span class="ws-ico"></span><span class="ws-lbl"></span><button class="ws-x" title="Close">✕</button>`;
+      row.innerHTML = `<span class="ws-ico"></span><span class="ws-lbl"></span><button class="ws-x" title="${tr("menu.close")}">✕</button>`;
       (row.querySelector(".ws-ico")! as HTMLElement).textContent =
         t.kind === "session" ? (t.disconnected ? "⚠" : "›_") : t.kind === "sftp" ? "⇄" : "＋";
       (row.querySelector(".ws-lbl")! as HTMLElement).textContent = t.customLabel ?? t.label;
@@ -376,7 +376,7 @@ function renderTabs(): void {
         const x = document.createElement("button");
         x.className = "tab-close";
         x.textContent = "✕";
-        x.title = "Close Tab (⌘W)";
+        x.title = tr("menu.closeTab");
         x.setAttribute("aria-label", "close-tab");
         x.addEventListener("click", (ev) => { ev.stopPropagation(); closeTab(t.id); });
         return x;
@@ -433,12 +433,12 @@ function splitTab(tab: Tab): void {
       <span class="split-title">New pane</span>
       <span style="flex:1"></span>
       <label class="split-bc" title="Run in all panes"><input type="checkbox" disabled> Broadcast</label>
-      <button class="btn split-close" title="Close pane">✕</button>
+      <button class="btn split-close" title="${tr("menu.closePane")}">✕</button>
     </div>
     <div class="split-picker">
       <button class="btn primary sp-local">Local shell</button>
       <select class="sp-host"></select>
-      <button class="btn sp-connect" disabled>Connect</button>
+      <button class="btn sp-connect" disabled>${tr("menu.connect")}</button>
     </div>
     <div class="split-body"></div>`;
   tab.pane.append(pane);
@@ -555,12 +555,12 @@ function openTabMenu(t: Tab, x: number, y: number): void {
   };
   /* 菜单项与顺序取自原版自身字面量(F41 实测整段挖出):
      Reconnect / Rename / Duplicate / Duplicate in a new window / Split horizontally / Start multiplayer / Close */
-  item("Reconnect", () => { void reconnectTab(t); });
-  item("Rename", () => startRenameTab(t));
-  item("Duplicate", () => duplicateTab(t));
-  item("Duplicate in a new window", () => { void bridge.window.create(); });
-  if (t.kind === "session" && !t.split) item("Split horizontally", () => splitTab(t));
-  item("Close", () => closeTab(t.id));
+  item(tr("menu.reconnect"), () => { void reconnectTab(t); });
+  item(tr("menu.rename"), () => startRenameTab(t));
+  item(tr("menu.duplicate"), () => duplicateTab(t));
+  item(tr("menu.duplicateWindow"), () => { void bridge.window.create(); });
+  if (t.kind === "session" && !t.split) item(tr("menu.splitH"), () => splitTab(t));
+  item(tr("menu.close"), () => closeTab(t.id));
   document.body.append(menu);
   setTimeout(() => document.addEventListener("click", function once(ev) {
     if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener("click", once); }
@@ -762,9 +762,9 @@ function openSnippetsTab(): void {
     body.innerHTML = `<div id="snip-sec-list" class="sec-list"></div>`;
     void renderSnippetsSection("snip-sec-list");
   }, [
-    { label: "New snippet", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
+    { label: tr("sec.newSnippet"), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
       onClick: () => openSnippetEditor() },
-    { label: "Shell History", icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    { label: tr("sec.shellHistory"), icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
       onClick: () => toast(tr("toast.shellHistory")) },
   ]);
 }
@@ -781,7 +781,7 @@ async function renderSnippetsSection(boxId: string): Promise<void> {
   if (!box) return;
   const items = await bridge.snippets.list();
   if (!items.length) {
-    box.replaceChildren(secEmpty("Create snippet", "Save your most used commands as snippets to reuse them in one click.", SEC_ICONS.snippet));
+    box.replaceChildren(secEmpty(tr("empty.snippetTitle"), tr("empty.snippetDesc"), SEC_ICONS.snippet));
     box.classList.add("is-empty");
     return;
   }
@@ -815,7 +815,7 @@ function openKeychainTab(): void {
       const withCreds: Array<{ name: string; host: string; username: string }> = [];
       for (const h of hosts) if (await bridge.creds.has(h.id)) withCreds.push({ name: h.name, host: h.host, username: h.username });
       if (!withCreds.length) {
-        box.replaceChildren(secEmpty("Add credentials", "Store your credentials to quick and securely access your servers.", SEC_ICONS.key));
+        box.replaceChildren(secEmpty(tr("empty.keyTitle"), tr("empty.keyDesc"), SEC_ICONS.key));
         box.classList.add("is-empty");
         return;
       }
@@ -831,12 +831,12 @@ function openKeychainTab(): void {
       }));
     })();
   }, [
-    { label: "New key", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
+    { label: tr("chip.newKey"), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
       onClick: () => toast(tr("toast.keyNew")) },
-    { label: "Certificate", icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+    { label: tr("chip.certificate"), icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
       onClick: () => toast(tr("toast.certUnsupported")) },
-    { label: "Touch ID", chip: true, onClick: () => toast(tr("toast.touchId")) },
-    { label: "FIDO2", chip: true, onClick: () => toast(tr("toast.fido2")) },
+    { label: tr("chip.touchId"), chip: true, onClick: () => toast(tr("toast.touchId")) },
+    { label: tr("chip.fido2"), chip: true, onClick: () => toast(tr("toast.fido2")) },
   ]);
 }
 
@@ -845,7 +845,7 @@ function renderLogsSection(): void {
   if (!box) return;
   if (!LOGS.length) {
     /* 原版这一屏是"套餐门控"提示;我方日志是本地免费功能,保留同样的空态版式、用诚实文案。 */
-    box.replaceChildren(secEmpty("No logs yet", "Connection and disconnect events will appear here.", SEC_ICONS.clock));
+    box.replaceChildren(secEmpty(tr("empty.logsTitle"), tr("empty.logsDesc"), SEC_ICONS.clock));
     box.classList.add("is-empty");
     return;
   }
@@ -1083,7 +1083,7 @@ function openKnownHostsTab(): void {
   const band = document.createElement("div");
   band.className = "sec-band";
   secToolbar(band, [
-    { label: "Import", onClick: () => (view.el.querySelector(".kh-import") as HTMLElement | null)?.click() },
+    { label: tr("sec.import"), onClick: () => (view.el.querySelector(".kh-import") as HTMLElement | null)?.click() },
   ]);
   const body = document.createElement("div");
   body.className = "sec-body";

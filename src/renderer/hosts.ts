@@ -1,4 +1,5 @@
 import type { HostInput, HostRecord } from "../shared/host";
+import { tr } from "../shared/i18n";
 import type { ForwardRule, ForwardStatus } from "../shared/forward";
 import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
 import type { SftpEntry, TransferProgress } from "../shared/sftp";
@@ -272,11 +273,11 @@ const SORT_LABEL: Record<SortMode, string> = {
     wrap.className = "discard-dlg";
     wrap.innerHTML = `
       <div class="dd-box" role="dialog" aria-modal="true">
-        <div class="dd-head"><span>Do you want to discard changes?</span>
+        <div class="dd-head"><span>${tr("dlg.discardTitle")}</span>
           <button class="dd-x" aria-label="Close">✕</button></div>
         <div class="dd-body">
-          <p>Not all required fields are filled. Do you want to finish editing and discard all changes?</p>
-          <button class="dd-ok">Discard changes</button>
+          <p>${tr("dlg.discardDesc")}</p>
+          <button class="dd-ok">${tr("dlg.discard")}</button>
         </div>
       </div>`;
     const close = (): void => wrap.remove();
@@ -400,7 +401,7 @@ const SORT_LABEL: Record<SortMode, string> = {
 
   function openForm(host: HostRecord | null): void {
     editingHostId = host?.id ?? null;
-    (document.getElementById("form-heading")! as HTMLElement).textContent = host ? `Edit ${host.name}` : "New host";
+    (document.getElementById("form-heading")! as HTMLElement).textContent = host ? tr("form.editHost", { name: host.name }) : tr("form.newHost");
     setVal("f-name", host?.name ?? "");
     setVal("f-group", host?.group ?? "");
     setVal("f-tags", (host?.tags ?? []).join(", "));
@@ -438,7 +439,7 @@ const SORT_LABEL: Record<SortMode, string> = {
     document.getElementById("f-key-row")!.style.display = isKey ? "block" : "none";
     document.getElementById("f-secret-row")!.style.display = isAgent ? "none" : "block";
     (document.getElementById("f-secret-label")! as HTMLElement).textContent =
-      isKey ? "Key passphrase (optional, Keychain)" : "Password (saved in Keychain)";
+      isKey ? tr("form.keyPassphrase") : tr("form.passwordSaved");
   }
 
   async function onSubmit(e: Event): Promise<void> {

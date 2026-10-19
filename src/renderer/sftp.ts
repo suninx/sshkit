@@ -354,7 +354,7 @@ export function createSftpView(
       const sz = document.createElement("span");
       sz.className = "sp-size"; sz.textContent = e.isDir ? "-" : fmtSize(e.size);
       const kd = document.createElement("span");
-      kd.className = "sp-kind"; kd.textContent = e.isDir ? "folder" : "file";
+      kd.className = "sp-kind"; kd.textContent = e.isDir ? tr("sftp.kindFolder") : tr("sftp.kindFile");
       row.append(nm, dt, sz, kd);
       // T5:行可拖到对面栏
       row.draggable = true;

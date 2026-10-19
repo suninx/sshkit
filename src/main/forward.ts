@@ -2,6 +2,7 @@ import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import type { Client } from "ssh2";
+import { tr } from "../shared/i18n";
 
 /* T3 —— 端口转发引擎。
    规格来自原版向导实测(F17):类型 Local / Remote / Dynamic;
@@ -191,7 +192,7 @@ export class ForwardService {
   /** 一条本地连接 → 经 ssh 通道连到远端目标 */
   private forwardOut(l: Live, sock: net.Socket, dstAddr: string, dstPort: number): void {
     const client = this.clientFor(l.rule.hostId);
-    if (!client) { try { sock.destroy(); } catch { /* ignore */ } this.fail(l, new Error("ssh 会话不可用")); return; }
+    if (!client) { try { sock.destroy(); } catch { /* ignore */ } this.fail(l, new Error(tr("err.sshUnavailable"))); return; }
     const src = sock.remoteAddress ?? "127.0.0.1";
     const srcPort = sock.remotePort ?? 0;
     client.forwardOut(src, srcPort, dstAddr, dstPort, (err, stream) => {
@@ -212,7 +213,7 @@ export class ForwardService {
   private startRemoteListener(l: Live): void {
     const { rule } = l;
     const client = this.clientFor(rule.hostId);
-    if (!client) { this.fail(l, new Error("ssh 会话不可用")); return; }
+    if (!client) { this.fail(l, new Error(tr("err.sshUnavailable"))); return; }
     const bindAddr = rule.remoteBindAddress || "0.0.0.0";
 
     client.on("tcp connection", (_info: unknown, accept: () => NodeJS.ReadWriteStream, reject: () => void) => {

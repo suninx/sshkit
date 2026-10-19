@@ -1,4 +1,5 @@
 import { bridge } from "./hosts";
+import { tr } from "../shared/i18n";
 import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
 
 /* T6 复刻 —— 已知主机视图 + 主机密钥询问对话框。
@@ -37,8 +38,8 @@ export function createKnownHostsView(): KhView {
     <div class="kh-bar">
       <span class="kh-bar-title">Known Hosts</span>
       <span style="flex:1"></span>
-      <span class="kh-hint">读取自 ~/.ssh/known_hosts(与系统 ssh 共用)</span>
-      <button class="btn kh-import" title="Import Known Hosts">Import</button>
+      <span class="kh-hint">${tr("kh.note")}</span>
+      <button class="btn kh-import" title="${tr("sec.import")}">${tr("sec.import")}</button>
     </div>
     <div class="kh-body"></div>`;
   const body = root.querySelector(".kh-body")! as HTMLElement;
@@ -187,11 +188,11 @@ function show(req: HostKeyAsk): void {
     `${esc(lead)}<br><br>${esc(req.keyType)} fingerprint is SHA256:<br><span class="hk-fp">${esc(req.fingerprint)}</span>`;
 
   if (changed) {
-    title.textContent = `The fingerprint for ${req.host} has changed`;
-    bodyEl.innerHTML = `${esc("sshkit notices a potential security breach.")}<br><br>New ${esc(req.keyType)} fingerprint is SHA256:<br><span class="hk-fp">${esc(req.fingerprint)}</span>`;
+    title.textContent = tr("dlg.hostKeyChanged", { host: req.host });
+    bodyEl.innerHTML = `${esc(tr("dlg.hostKeyBreach"))}<br><br>New ${esc(req.keyType)} fingerprint is SHA256:<br><span class="hk-fp">${esc(req.fingerprint)}</span>`;
   } else {
-    title.textContent = "Are you sure you want to connect?";
-    bodyEl.innerHTML = `${fpLine(`The authenticity of ${req.host} can not be established.`)}<br><br>Do you want to add it to the list of known hosts?`;
+    title.textContent = tr("dlg.hostKeyTitle");
+    bodyEl.innerHTML = `${fpLine(tr("dlg.hostKeyDesc", { host: req.host }))}<br><br>${esc(tr("dlg.hostKeyAsk"))}`;
   }
 
   const answer = (action: "continue" | "add" | "replace" | "cancel"): void => {
@@ -207,13 +208,13 @@ function show(req: HostKeyAsk): void {
   };
 
   if (changed) {
-    btn("Replace", "primary", "replace");
-    btn("Add as new", "", "add");
-    btn("Cancel", "danger", "cancel");
+    btn(tr("dlg.replace"), "primary", "replace");
+    btn(tr("dlg.addAsNew"), "", "add");
+    btn(tr("form.cancel"), "danger", "cancel");
   } else {
-    btn("Close", "", "cancel");
-    btn("Continue", "", "continue");
-    btn("Add and continue", "primary", "add");
+    btn(tr("dlg.closeOnly"), "", "cancel");
+    btn(tr("dlg.continue"), "", "continue");
+    btn(tr("dlg.addContinue"), "primary", "add");
   }
 
   document.body.append(back);

@@ -935,35 +935,35 @@
   <div id="host-list"></div>
 </div>
 <div id="form-backdrop">
-    <form id="host-form" autocomplete="off">      <h2 id="form-heading">New host</h2>
+    <form id="host-form" autocomplete="off">      <h2 id="form-heading" data-i18n="form.newHost">New host</h2>
       <div class="row">
-        <div><label>Name</label><input id="f-name" placeholder="prod-1"></div>
-        <div><label>Group</label><input id="f-group" placeholder="work"></div>
+        <div><label data-i18n="form.name">Name</label><input id="f-name" placeholder="prod-1"></div>
+        <div><label data-i18n="form.group">Group</label><input id="f-group" placeholder="work"></div>
       </div>
       <div class="row">
-        <div style="flex:1"><label>Tags</label><input id="f-tags" placeholder="prod, db (逗号分隔)"></div>
+        <div style="flex:1"><label data-i18n="form.tags">Tags</label><input id="f-tags" placeholder="prod, db (comma separated)" data-i18n-placeholder="form.tagsHint"></div>
       </div>
       <div class="row">
-        <div><label>Host</label><input id="f-host" placeholder="10.0.0.5" required></div>
-        <div style="max-width:90px"><label>Port</label><input id="f-port" type="number" value="22" min="1" max="65535"></div>
+        <div><label data-i18n="form.host">Host</label><input id="f-host" placeholder="10.0.0.5" required></div>
+        <div style="max-width:90px"><label data-i18n="form.port">Port</label><input id="f-port" type="number" value="22" min="1" max="65535"></div>
       </div>
       <div class="row">
-        <div><label>Username</label><input id="f-username" placeholder="root" required></div>
-        <div><label>Auth</label>
+        <div><label data-i18n="form.username">Username</label><input id="f-username" placeholder="root" required></div>
+        <div><label data-i18n="form.auth">Auth</label>
           <select id="f-auth">
-            <option value="password">Password</option>
-            <option value="key">Private key</option>
-            <option value="agent">SSH agent</option>
+            <option value="password" data-i18n="form.password">Password</option>
+            <option value="key" data-i18n="form.privateKey">Private key</option>
+            <option value="agent" data-i18n="form.sshAgent">SSH agent</option>
           </select>
         </div>
       </div>
-      <div id="f-key-row"><label>Key path</label><input id="f-keypath" placeholder="~/.ssh/id_ed25519"></div>
-      <div id="f-secret-row"><label id="f-secret-label">Password (saved in Keychain)</label>
+      <div id="f-key-row"><label data-i18n="form.keyPath">Key path</label><input id="f-keypath" placeholder="~/.ssh/id_ed25519"></div>
+      <div id="f-secret-row"><label id="f-secret-label" data-i18n="form.passwordSaved">Password (saved in Keychain)</label>
         <input id="f-secret" type="password" placeholder="••••••"></div>
       <div id="form-error"></div>
       <div id="form-actions">
-        <button type="button" id="btn-cancel" class="btn">Cancel</button>
-        <button type="submit" id="btn-save" class="btn primary">Save</button>
+        <button type="button" id="btn-cancel" class="btn" data-i18n="form.cancel">Cancel</button>
+        <button type="submit" id="btn-save" class="btn primary" data-i18n="form.save">Save</button>
       </div>
     </form>
   </div>
