@@ -855,13 +855,13 @@
     <!-- 顶栏:通栏 49px。原版没有原生标题栏,红绿灯浮在左端,整条顶栏都是 tab 区。 -->
     <header id="topbar">
       <div id="tabs"></div>
-      <button id="btn-new-tab" title="New Tab (⌘T)">＋</button>
+      <button id="btn-new-tab" title="New Tab (⌘T)" data-i18n-title="top.newTab">＋</button>
       <span style="flex:1"></span>
-      <button id="btn-panel-top" class="top-icon" title="Terminal side-panel (⌘.)">
+      <button id="btn-panel-top" class="top-icon" title="Terminal side-panel (⌘.)" data-i18n-title="top.panel">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
           <rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg>
       </button>
-      <button id="btn-bell" class="top-icon" title="Notifications">
+      <button id="btn-bell" class="top-icon" title="Notifications" data-i18n-title="top.notifications">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
           <path d="M18 15v-4a6 6 0 1 0-12 0v4l-1.6 3h15.2L18 15Z"/><path d="M10 18a2 2 0 0 0 4 0"/></svg>
       </button>
@@ -869,12 +869,12 @@
     <div id="shell">
       <!-- 左侧导航栏:184px,原版 6 项(文案取自原版自身字面量),单色图标 + 活动项药丸 -->
       <nav id="rail">
-        <button class="rail-item on" data-nav="hosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4.5" width="19" height="6.5" rx="2"/><rect x="2.5" y="13" width="19" height="6.5" rx="2"/><rect x="5.8" y="6.9" width="3.4" height="1.8" rx="0.6" fill="currentColor" stroke="none"/><circle cx="17.3" cy="7.8" r="1.05" fill="currentColor" stroke="none"/><rect x="5.8" y="15.4" width="3.4" height="1.8" rx="0.6" fill="currentColor" stroke="none"/><circle cx="17.3" cy="16.3" r="1.05" fill="currentColor" stroke="none"/></svg></span><span class="rl">Hosts</span></button>
-        <button class="rail-item" data-nav="keychain"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="6.8" r="4.2"/><circle cx="12" cy="6.8" r="1.3"/><path d="M12 11v9M12 16.4h3.3M12 18.6h2.4"/></svg></span><span class="rl">Keychain</span></button>
-        <button class="rail-item" data-nav="forwarding"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 15.6h9.6l-3.1-3.1M20 8.4h-9.6l3.1 3.1"/></svg></span><span class="rl">Port Forwarding</span></button>
-        <button class="rail-item" data-nav="snippets"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg></span><span class="rl">Snippets</span></button>
-        <button class="rail-item" data-nav="knownhosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8.3" cy="15.7" r="3.6"/><circle cx="8.3" cy="15.7" r="1.1"/><path d="M11 13L20.2 3.8M15.2 8.6l2.3 2.3M17.7 6.1l2.3 2.3"/></svg></span><span class="rl">Known Hosts</span></button>
-        <button class="rail-item" data-nav="logs"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7.2v5.2l3.4 2" fill="none" stroke="var(--bg2)" stroke-width="2" stroke-linecap="round"/></svg></span><span class="rl">Logs</span></button>
+        <button class="rail-item on" data-nav="hosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4.5" width="19" height="6.5" rx="2"/><rect x="2.5" y="13" width="19" height="6.5" rx="2"/><rect x="5.8" y="6.9" width="3.4" height="1.8" rx="0.6" fill="currentColor" stroke="none"/><circle cx="17.3" cy="7.8" r="1.05" fill="currentColor" stroke="none"/><rect x="5.8" y="15.4" width="3.4" height="1.8" rx="0.6" fill="currentColor" stroke="none"/><circle cx="17.3" cy="16.3" r="1.05" fill="currentColor" stroke="none"/></svg></span><span class="rl" data-i18n="rail.hosts">Hosts</span></button>
+        <button class="rail-item" data-nav="keychain"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="6.8" r="4.2"/><circle cx="12" cy="6.8" r="1.3"/><path d="M12 11v9M12 16.4h3.3M12 18.6h2.4"/></svg></span><span class="rl" data-i18n="rail.keychain">Keychain</span></button>
+        <button class="rail-item" data-nav="forwarding"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 15.6h9.6l-3.1-3.1M20 8.4h-9.6l3.1 3.1"/></svg></span><span class="rl" data-i18n="rail.forwarding">Port Forwarding</span></button>
+        <button class="rail-item" data-nav="snippets"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg></span><span class="rl" data-i18n="rail.snippets">Snippets</span></button>
+        <button class="rail-item" data-nav="knownhosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8.3" cy="15.7" r="3.6"/><circle cx="8.3" cy="15.7" r="1.1"/><path d="M11 13L20.2 3.8M15.2 8.6l2.3 2.3M17.7 6.1l2.3 2.3"/></svg></span><span class="rl" data-i18n="rail.knownhosts">Known Hosts</span></button>
+        <button class="rail-item" data-nav="logs"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7.2v5.2l3.4 2" fill="none" stroke="var(--bg2)" stroke-width="2" stroke-linecap="round"/></svg></span><span class="rl" data-i18n="rail.logs">Logs</span></button>
       </nav>
     <section id="main">
       <div id="banner"></div>
@@ -882,28 +882,28 @@
         <span id="status-dot"></span>
         <span id="term-title">no session</span>
         <span style="flex:1"></span>
-        <button id="btn-panel" class="btn" title="Show terminal side-panel">▤</button>
-        <button id="btn-tabview" class="btn" title="Workspace view">▥</button>
-        <button id="btn-prefs" class="btn" title="Appearance — theme / font">🎨</button>
-        <button id="btn-sftp" class="btn" disabled title="SFTP browser (ssh session required)">⇄ SFTP</button>
+        <button id="btn-panel" class="btn" title="Show terminal side-panel" data-i18n-title="top.panel">▤</button>
+        <button id="btn-tabview" class="btn" title="Workspace view" data-i18n-title="top.workspaceView">▥</button>
+        <button id="btn-prefs" class="btn" title="Preferences (⌘,)" data-i18n-title="top.preferences"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.6a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.97z"/></svg></button>
+        <button id="btn-sftp" class="btn" disabled title="SFTP browser (ssh session required)" data-i18n-title="top.sftp">⇄ SFTP</button>
       </div>
       <div id="main-body">
         <div id="ws-rail"></div>
         <div id="stage"></div>
         <div id="sidepanel">
-          <div class="sp-head"><span>Terminal</span><span style="flex:1"></span>
-            <button class="btn sp-close" title="Hide side-panel">✕</button></div>
+          <div class="sp-head"><span data-i18n="panel.terminal">Terminal</span><span style="flex:1"></span>
+            <button class="btn sp-close" title="Hide side-panel" data-i18n-title="panel.hide">✕</button></div>
           <div class="sp-sec">
-            <div class="sp-title">Jump to</div>
+            <div class="sp-title" data-i18n="panel.jumpTo">Jump to</div>
             <div id="jump-list" class="sp-list"></div>
           </div>
           <div class="sp-sec">
-            <div class="sp-title">Snippets</div>
+            <div class="sp-title" data-i18n="panel.snippets">Snippets</div>
             <div id="snip-list" class="sp-list"></div>
             <div class="snip-add">
-              <input class="snip-name" placeholder="Name" spellcheck="false" autocomplete="off">
-              <input class="snip-cmd" placeholder="Command" spellcheck="false" autocomplete="off">
-              <button class="btn snip-save">Save</button>
+              <input class="snip-name" placeholder="Name" data-i18n-placeholder="panel.snipName" spellcheck="false" autocomplete="off">
+              <input class="snip-cmd" placeholder="Command" data-i18n-placeholder="panel.snipCommand" spellcheck="false" autocomplete="off">
+              <button class="btn snip-save" data-i18n="panel.save">Save</button>
             </div>
           </div>
         </div>
@@ -917,53 +917,53 @@
 <div id="vault-src" hidden>
   <!-- 顺序照原版实测:搜索行在上(y 59..94),工具条在下(y 114..143) -->
   <div id="host-tools">
-    <input id="host-search" type="text" placeholder="Find a host or ssh user@hostname..." spellcheck="false" autocomplete="off">
-    <button id="btn-connect" disabled>Connect</button>
+    <input id="host-search" type="text" placeholder="Find a host or ssh user@hostname..." data-i18n-placeholder="search.placeholder" spellcheck="false" autocomplete="off">
+    <button id="btn-connect" disabled data-i18n="search.connect">Connect</button>
   </div>
   <div id="host-toolbar">
-    <button id="btn-new-host" class="tb-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>New host</button>
-    <button id="btn-new-host-caret" class="tb-btn caret" title="New host options"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
-    <button id="btn-quick-term" class="tb-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7 10l2.5 2L7 14M12.5 14H16"/></svg>Terminal</button>
-    <button id="btn-quick-serial" class="tb-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 3v5M15 3v5M6 8h12v5a6 6 0 0 1-12 0V8ZM12 19v2"/></svg>Serial</button>
+    <button id="btn-new-host" class="tb-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="toolbar.newHost">New host</span></button>
+    <button id="btn-new-host-caret" class="tb-btn caret" title="New host options" data-i18n-title="toolbar.newHostOptions"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
+    <button id="btn-quick-term" class="tb-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7 10l2.5 2L7 14M12.5 14H16"/></svg><span data-i18n="toolbar.terminal">Terminal</span></button>
+    <button id="btn-quick-serial" class="tb-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 3v5M15 3v5M6 8h12v5a6 6 0 0 1-12 0V8ZM12 19v2"/></svg><span data-i18n="toolbar.serial">Serial</span></button>
     <span style="flex:1"></span>
-    <button id="host-tags" class="tb-icon" title="Filter and sort" aria-label="Filter and sort"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.6 2.6H21a.4.4 0 0 1 .4.4v9.4a1 1 0 0 1-.3.7l-8.4 8.4a1 1 0 0 1-1.4 0l-8.1-8.1a1 1 0 0 1 0-1.4l8.4-8.4a1 1 0 0 1 .7-.3Z"/><circle cx="17" cy="7" r="1.6" fill="var(--bg2)"/></svg></button>
-    <button id="host-layout" class="tb-icon" title="Change layout" aria-label="Change layout"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2.2"/><rect x="13" y="3" width="8" height="8" rx="2.2"/><rect x="3" y="13" width="8" height="8" rx="2.2"/><rect x="13" y="13" width="8" height="8" rx="2.2"/></svg></button>
-    <button id="btn-appearance" class="tb-icon" title="Appearance — theme / font" aria-label="Appearance"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4.5 3h15A2.5 2.5 0 0 1 22 5.5v13A2.5 2.5 0 0 1 19.5 21h-15A2.5 2.5 0 0 1 2 18.5v-13A2.5 2.5 0 0 1 4.5 3Zm.4 4.4v1.7h14.2V7.4H4.9Zm3.2 4.1-2.1 2.1 2.1 2.1.9-.9-1.2-1.2 1.2-1.2-.9-.9Zm4 3.4v1.3h4.6v-1.3H12.1Z"/></svg></button>
-    <span class="avatar" title="Account"><svg width="16" height="16" viewBox="0 0 24 24" fill="#3a2f00" stroke="#3a2f00" stroke-width="1.6"><circle cx="12" cy="9" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
-    <button class="avatar-add" title="Add account"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button id="host-tags" class="tb-icon" title="Filter and sort" data-i18n-title="toolbar.tags" aria-label="Filter and sort" data-i18n-aria="toolbar.tags"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.6 2.6H21a.4.4 0 0 1 .4.4v9.4a1 1 0 0 1-.3.7l-8.4 8.4a1 1 0 0 1-1.4 0l-8.1-8.1a1 1 0 0 1 0-1.4l8.4-8.4a1 1 0 0 1 .7-.3Z"/><circle cx="17" cy="7" r="1.6" fill="var(--bg2)"/></svg></button>
+    <button id="host-layout" class="tb-icon" title="Change layout" data-i18n-title="toolbar.layout" aria-label="Change layout" data-i18n-aria="toolbar.layout"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2.2"/><rect x="13" y="3" width="8" height="8" rx="2.2"/><rect x="3" y="13" width="8" height="8" rx="2.2"/><rect x="13" y="13" width="8" height="8" rx="2.2"/></svg></button>
+    <button id="btn-appearance" class="tb-icon" title="Preferences (⌘,)" data-i18n-title="top.preferences" aria-label="Preferences" data-i18n-aria="top.preferences"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.6a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.97z"/></svg></button>
+    <span class="avatar" title="Account" data-i18n-title="toolbar.account"><svg width="16" height="16" viewBox="0 0 24 24" fill="#3a2f00" stroke="#3a2f00" stroke-width="1.6"><circle cx="12" cy="9" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
+    <button class="avatar-add" title="Add account" data-i18n-title="toolbar.addAccount"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></button>
   </div>
   <div id="host-list"></div>
 </div>
 <div id="form-backdrop">
-    <form id="host-form" autocomplete="off">      <h2 id="form-heading">New host</h2>
+    <form id="host-form" autocomplete="off">      <h2 id="form-heading" data-i18n="form.newHost">New host</h2>
       <div class="row">
-        <div><label>Name</label><input id="f-name" placeholder="prod-1"></div>
-        <div><label>Group</label><input id="f-group" placeholder="work"></div>
+        <div><label data-i18n="form.name">Name</label><input id="f-name" placeholder="prod-1"></div>
+        <div><label data-i18n="form.group">Group</label><input id="f-group" placeholder="work"></div>
       </div>
       <div class="row">
-        <div style="flex:1"><label>Tags</label><input id="f-tags" placeholder="prod, db (逗号分隔)"></div>
+        <div style="flex:1"><label data-i18n="form.tags">Tags</label><input id="f-tags" placeholder="prod, db (comma separated)" data-i18n-placeholder="form.tagsHint"></div>
       </div>
       <div class="row">
-        <div><label>Host</label><input id="f-host" placeholder="10.0.0.5" required></div>
-        <div style="max-width:90px"><label>Port</label><input id="f-port" type="number" value="22" min="1" max="65535"></div>
+        <div><label data-i18n="form.host">Host</label><input id="f-host" placeholder="10.0.0.5" required></div>
+        <div style="max-width:90px"><label data-i18n="form.port">Port</label><input id="f-port" type="number" value="22" min="1" max="65535"></div>
       </div>
       <div class="row">
-        <div><label>Username</label><input id="f-username" placeholder="root" required></div>
-        <div><label>Auth</label>
+        <div><label data-i18n="form.username">Username</label><input id="f-username" placeholder="root" required></div>
+        <div><label data-i18n="form.auth">Auth</label>
           <select id="f-auth">
-            <option value="password">Password</option>
-            <option value="key">Private key</option>
-            <option value="agent">SSH agent</option>
+            <option value="password" data-i18n="form.password">Password</option>
+            <option value="key" data-i18n="form.privateKey">Private key</option>
+            <option value="agent" data-i18n="form.sshAgent">SSH agent</option>
           </select>
         </div>
       </div>
-      <div id="f-key-row"><label>Key path</label><input id="f-keypath" placeholder="~/.ssh/id_ed25519"></div>
-      <div id="f-secret-row"><label id="f-secret-label">Password (saved in Keychain)</label>
+      <div id="f-key-row"><label data-i18n="form.keyPath">Key path</label><input id="f-keypath" placeholder="~/.ssh/id_ed25519"></div>
+      <div id="f-secret-row"><label id="f-secret-label" data-i18n="form.passwordSaved">Password (saved in Keychain)</label>
         <input id="f-secret" type="password" placeholder="••••••"></div>
       <div id="form-error"></div>
       <div id="form-actions">
-        <button type="button" id="btn-cancel" class="btn">Cancel</button>
-        <button type="submit" id="btn-save" class="btn primary">Save</button>
+        <button type="button" id="btn-cancel" class="btn" data-i18n="form.cancel">Cancel</button>
+        <button type="submit" id="btn-save" class="btn primary" data-i18n="form.save">Save</button>
       </div>
     </form>
   </div>

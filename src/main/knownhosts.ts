@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
+import { tr } from "../shared/i18n";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -113,7 +114,7 @@ export function addHostKey(host: string, keyData: Buffer, file = KNOWN_HOSTS, re
 export function importKnownHosts(sourcePath: string, file = KNOWN_HOSTS): { added: number; skipped: number } {
   let raw = "";
   try { raw = readFileSync(sourcePath, "utf8"); } catch (e) {
-    throw new Error(`无法读取所选文件: ${String((e as Error).message ?? e)}`);
+    throw new Error(tr("err.readFile", { msg: String((e as Error).message ?? e) }));
   }
   const existing = loadEntries(file);
   const seen = new Set(existing.map((e) => `${e.rawHostField}|${e.keyType}|${e.keyBytes.toString("base64")}`));

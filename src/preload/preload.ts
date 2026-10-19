@@ -8,12 +8,22 @@ const api = {
   resize: (id: number, cols: number, rows: number) => ipcRenderer.send("terminal:resize", id, cols, rows),
   dispose: (id: number) => ipcRenderer.send("terminal:dispose", id),
   info: () => ipcRenderer.invoke("app:info"),
+  settings: {
+    getLocale: (): Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }> => ipcRenderer.invoke("settings:getLocale"),
+    setLocale: (pref: "system" | "zh" | "en"): Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }> => ipcRenderer.invoke("settings:setLocale", pref),
+  },
   disposeAllSessions: (): void => ipcRenderer.send("sessions:disposeAll"),
   clipboard: {
     read: (): Promise<string> => ipcRenderer.invoke("clipboard:read"),
     write: (text: string): Promise<void> => ipcRenderer.invoke("clipboard:write", text),
   },
 
+  /** 主进程菜单「偏好设置(⌘,)」触发:在渲染层打开外观/设置面板 */
+  onOpenPrefs: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("prefs:open", handler);
+    return () => { ipcRenderer.off("prefs:open", handler); };
+  },
   onData: (id: number, callback: (data: string) => void) => {
     const handler = (_e: unknown, terminalId: number, data: string) => { if (terminalId === id) callback(data); };
     ipcRenderer.on("terminal:data", handler);

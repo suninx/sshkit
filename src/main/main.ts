@@ -5,6 +5,8 @@ import { PtyService, type TerminalCreateOptions } from "./pty";
 import { HostStore } from "./store";
 import { SshService } from "./ssh";
 import { SftpController } from "./sftp";
+import { getSettings, setSetting } from "./settings";
+import { getLocale, resolveLocale, setLocale as setI18nLocale, tr, type LocalePref } from "../shared/i18n";
 import { ForwardService, type ForwardRule } from "./forward";
 import { importKnownHosts, listKnownHosts, removeKnownHost } from "./knownhosts";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
@@ -17,9 +19,27 @@ import type { HostInput } from "../shared/host";
    保留最小菜单:应用菜单(关于/退出)、窗口(最小化/缩放/关闭)、编辑里只留 undo/redo 之外的空壳。 */
 function installAppMenu(): void {
   if (process.platform !== "darwin") { Menu.setApplicationMenu(null); return; }
+  /* 显式写应用菜单(而不是 {role:"appMenu"}),为的是加入**偏好设置(⌘,)** ——
+     macOS 上这是最容易被找到的设置入口;语言切换后要重建,所以文案走 tr()。 */
+  const sendPrefs = (): void => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("prefs:open");
+  };
   const menu = Menu.buildFromTemplate([
-    { role: "appMenu" },
-    { role: "windowMenu" },
+    {
+      label: app.getName(),
+      submenu: [
+        { role: "about", label: `${tr("menu.about")} ${app.getName()}` },
+        { type: "separator" },
+        { label: tr("menu.preferences"), accelerator: "Cmd+,", click: sendPrefs },
+        { type: "separator" },
+        { role: "hide", label: tr("menu.hide") },
+        { role: "hideOthers", label: tr("menu.hideOthers") },
+        { role: "unhide", label: tr("menu.showAll") },
+        { type: "separator" },
+        { role: "quit", label: `${tr("menu.quit")} ${app.getName()}` },
+      ],
+    },
+    { role: "windowMenu", label: tr("menu.window") },
   ]);
   Menu.setApplicationMenu(menu);
 }
@@ -182,6 +202,25 @@ ipcMain.on("sessions:disposeAll", () => {
   forwardService.stopAll();
   sshService.disposeAll();
   ptyService.disposeAll();
+});
+
+/* 语言:启动时按 settings.json 决定主进程的文案语言,渲染进程再通过 IPC 取同一份 */
+const systemLang = (): string => (app.getPreferredSystemLanguages?.() ?? [])[0] ?? "en";
+setI18nLocale(resolveLocale(getSettings().locale, systemLang()));
+
+ipcMain.handle("settings:getLocale", () => ({
+  pref: getSettings().locale,
+  system: systemLang(),
+  effective: getLocale(),
+}));
+ipcMain.handle("settings:setLocale", (_e, pref: LocalePref) => {
+  /* 来自渲染层的值要白名单校验:不合法的偏好一律落回"跟随系统",别写脏数据 */
+  const safe: LocalePref = pref === "zh" || pref === "en" ? pref : "system";
+  setSetting("locale", safe);
+  pref = safe;
+  setI18nLocale(resolveLocale(pref, systemLang()));
+  installAppMenu();   // 菜单文案跟随语言
+  return { pref: getSettings().locale, system: systemLang(), effective: getLocale() };
 });
 
 ipcMain.handle("app:info", () => ({
