@@ -8,6 +8,10 @@ const api = {
   resize: (id: number, cols: number, rows: number) => ipcRenderer.send("terminal:resize", id, cols, rows),
   dispose: (id: number) => ipcRenderer.send("terminal:dispose", id),
   info: () => ipcRenderer.invoke("app:info"),
+  settings: {
+    getLocale: (): Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }> => ipcRenderer.invoke("settings:getLocale"),
+    setLocale: (pref: "system" | "zh" | "en"): Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }> => ipcRenderer.invoke("settings:setLocale", pref),
+  },
   disposeAllSessions: (): void => ipcRenderer.send("sessions:disposeAll"),
   clipboard: {
     read: (): Promise<string> => ipcRenderer.invoke("clipboard:read"),

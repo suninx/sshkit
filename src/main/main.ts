@@ -5,6 +5,8 @@ import { PtyService, type TerminalCreateOptions } from "./pty";
 import { HostStore } from "./store";
 import { SshService } from "./ssh";
 import { SftpController } from "./sftp";
+import { getSettings, setSetting } from "./settings";
+import { getLocale, resolveLocale, setLocale as setI18nLocale, type LocalePref } from "../shared/i18n";
 import { ForwardService, type ForwardRule } from "./forward";
 import { importKnownHosts, listKnownHosts, removeKnownHost } from "./knownhosts";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
@@ -182,6 +184,21 @@ ipcMain.on("sessions:disposeAll", () => {
   forwardService.stopAll();
   sshService.disposeAll();
   ptyService.disposeAll();
+});
+
+/* 语言:启动时按 settings.json 决定主进程的文案语言,渲染进程再通过 IPC 取同一份 */
+const systemLang = (): string => (app.getPreferredSystemLanguages?.() ?? [])[0] ?? "en";
+setI18nLocale(resolveLocale(getSettings().locale, systemLang()));
+
+ipcMain.handle("settings:getLocale", () => ({
+  pref: getSettings().locale,
+  system: systemLang(),
+  effective: getLocale(),
+}));
+ipcMain.handle("settings:setLocale", (_e, pref: LocalePref) => {
+  setSetting("locale", pref);
+  setI18nLocale(resolveLocale(pref, systemLang()));
+  return { pref: getSettings().locale, system: systemLang(), effective: getLocale() };
 });
 
 ipcMain.handle("app:info", () => ({

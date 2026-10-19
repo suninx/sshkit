@@ -16,6 +16,11 @@ interface SshkitBridge {
     read(): Promise<string>;
     write(text: string): Promise<void>;
   };
+  /** 应用级设置(语言):与主进程 settings.json 共用一份 */
+  settings: {
+    getLocale(): Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }>;
+    setLocale(pref: "system" | "zh" | "en"): Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }>;
+  };
   hosts: {
     list(): Promise<HostRecord[]>;
     create(input: HostInput): Promise<HostRecord>;

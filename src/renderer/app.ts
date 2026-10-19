@@ -4,6 +4,7 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import { SearchAddon } from "@xterm/addon-search";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
+import { applyDom, audit, getLocale, resolveLocale, setLocale as setI18nLocale, tr, type LocalePref } from "../shared/i18n";
 import { createFwdView } from "./fwd";
 import { createKnownHostsView, installHostKeyDialog } from "./knownhosts";
 import { installShortcuts, MAC_SHORTCUTS, type ShortcutDef } from "./keys";
@@ -234,7 +235,7 @@ async function reconnectTab(tab: Tab): Promise<void> {
     tab.state = "off";
     setTitle(`${host.name} (failed)`);
     renderTabs();
-    t.write(`\r\n\x1b[31m连接失败:${String((e as Error).message ?? e)}\x1b[0m\r\n`);
+    t.write(`\r\n\x1b[31m${tr("term.connectFailed", { msg: String((e as Error).message ?? e) })}\x1b[0m\r\n`);
   }
 }
 
@@ -328,7 +329,7 @@ function renderTabs(): void {
         chevEl.className = "tchev";
         chevEl.title = "Switch vault";
         chevEl.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>';
-        chevEl.addEventListener("click", (ev) => { ev.stopPropagation(); toast("Vault 切换:目前只有一个本地 vault"); });
+        chevEl.addEventListener("click", (ev) => { ev.stopPropagation(); toast(tr("toast.oneVault")); });
         chev = chevEl;
       }
 
@@ -524,7 +525,7 @@ async function connectSplit(tab: Tab, host: HostRecord | null): Promise<void> {
     try { fit.fit(); } catch { /* ignore */ }
     if (active === tab.id) term.focus();
   } catch (e) {
-    term.write(`\r\n\x1b[31m连接失败:${String((e as Error).message ?? e)}\x1b[0m\r\n`);
+    term.write(`\r\n\x1b[31m${tr("term.connectFailed", { msg: String((e as Error).message ?? e) })}\x1b[0m\r\n`);
   }
 }
 
@@ -764,7 +765,7 @@ function openSnippetsTab(): void {
     { label: "New snippet", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
       onClick: () => openSnippetEditor() },
     { label: "Shell History", icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
-      onClick: () => toast("Shell History:需要按会话记录的历史,暂未支持") },
+      onClick: () => toast(tr("toast.shellHistory")) },
   ]);
 }
 
@@ -794,9 +795,9 @@ async function renderSnippetsSection(boxId: string): Promise<void> {
     (row.querySelector(".cm") as HTMLElement).textContent = sn.command;
     (row.querySelector(".sec-send") as HTMLElement).addEventListener("click", () => {
       const target = [...tabs].reverse().find((t) => t.kind === "session" && t.termId !== null);
-      if (!target || target.termId === null) { toast("没有活动会话可发送"); return; }
+      if (!target || target.termId === null) { toast(tr("toast.noActiveSession")); return; }
       bridge.write(target.termId, sn.command.endsWith("\n") ? sn.command.slice(0, -1) + "\r" : sn.command + "\r");
-      toast(`已发送到 ${target.label}`);
+      toast(tr("toast.sentTo", { target: target.label }));
     });
     (row.querySelector(".sec-del") as HTMLElement).addEventListener("click", () => {
       void bridge.snippets.remove(sn.id).then(() => renderSnippetsSection(boxId));
@@ -831,11 +832,11 @@ function openKeychainTab(): void {
     })();
   }, [
     { label: "New key", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
-      onClick: () => toast("New key:支持导入私钥即可,暂未接入") },
+      onClick: () => toast(tr("toast.keyNew")) },
     { label: "Certificate", icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
-      onClick: () => toast("Certificate:暂未支持") },
-    { label: "Touch ID", chip: true, onClick: () => toast("Touch ID:需要系统生物识别授权,暂未接入") },
-    { label: "FIDO2", chip: true, onClick: () => toast("FIDO2:需要硬件密钥,暂未接入") },
+      onClick: () => toast(tr("toast.certUnsupported")) },
+    { label: "Touch ID", chip: true, onClick: () => toast(tr("toast.touchId")) },
+    { label: "FIDO2", chip: true, onClick: () => toast(tr("toast.fido2")) },
   ]);
 }
 
@@ -1205,6 +1206,26 @@ function setFontSize(next: number): void {
   if (v) v.textContent = `${fontSize}px`;
 }
 
+/** 当前语言偏好(与主进程 settings.json 同步;启动时由 boot 填入) */
+let LOCALE_PREF: LocalePref = "system";
+
+/** 切换语言:存盘 → 应用到主/渲染 → 重渲染动态文案。返回是否成功。 */
+async function setLanguage(pref: LocalePref): Promise<void> {
+  try {
+    const r = await bridge.settings.setLocale(pref);
+    LOCALE_PREF = r.pref;
+    setI18nLocale(resolveLocale(r.pref, r.system));
+    applyDom();                       // 静态标记(侧栏/工具条/占位符/提示)
+    renderTabs();                     // tab 标题也随语言
+    const cur = tabs.find((x) => x.id === active);
+    cur?.view?.relabel?.();           // SFTP 双栏的表头/列名/空态
+    const missing = audit();
+    if (missing.length) console.warn("[i18n] 缺少文案:", missing.join(", "));
+  } catch (err) {
+    console.error("[i18n] 切换语言失败:", err);
+  }
+}
+
 /* T5/T1:界面主题(深色 / 浅色)。**注意**:终端配色(scheme)与界面主题是两件事 ——
    原版里终端 scheme 决定终端底色,界面主题决定 chrome;这里保持同样的分工。
    浅色值本身是自设计的(原版界面调色板未取到,见 index.html 注释)。 */
@@ -1226,20 +1247,25 @@ function openPrefs(): void {
   const el = document.createElement("div");
   el.className = "prefs";
   el.innerHTML = `
-    <div><h4>Interface</h4><div class="prefs-row">
-      <button class="btn ui-mode" data-mode="dark">Dark</button>
-      <button class="btn ui-mode" data-mode="light">Light</button>
+    <div><h4>${tr("prefs.interface")}</h4><div class="prefs-row">
+      <button class="btn ui-mode" data-mode="dark">${tr("prefs.dark")}</button>
+      <button class="btn ui-mode" data-mode="light">${tr("prefs.light")}</button>
       <span style="flex:1"></span><span class="ui-theme-val" style="font-size:12px;color:var(--fg-dim)"></span>
     </div></div>
-    <div><h4>Terminal theme</h4><div class="scheme-list"></div></div>
-    <div><h4>Font size</h4><div class="prefs-row">
+    <div><h4>${tr("prefs.language")}</h4><div class="prefs-row prefs-lang">
+      <button class="btn lang-mode${LOCALE_PREF === "system" ? " on" : ""}" data-lang="system">${tr("prefs.langSystem")}</button>
+      <button class="btn lang-mode${LOCALE_PREF === "zh" ? " on" : ""}" data-lang="zh">中文</button>
+      <button class="btn lang-mode${LOCALE_PREF === "en" ? " on" : ""}" data-lang="en">English</button>
+    </div></div>
+    <div><h4>${tr("prefs.theme")}</h4><div class="scheme-list"></div></div>
+    <div><h4>${tr("prefs.fontSize")}</h4><div class="prefs-row">
       <button class="btn ps-down">A−</button>
       <input type="number" class="ps-size" min="4" max="40" step="1">
       <button class="btn ps-up">A+</button>
-      <button class="btn ps-reset" title="Reset terminal font size to default">Reset</button>
+      <button class="btn ps-reset" title="Reset terminal font size to default">${tr("prefs.reset")}</button>
       <span style="flex:1"></span><span class="ps-val" style="font-size:12px;color:var(--fg-dim)"></span>
     </div></div>
-    <div><h4>Font</h4><div class="prefs-row"><select class="ps-font"></select></div></div>`;
+    <div><h4>${tr("prefs.font")}</h4><div class="prefs-row"><select class="ps-font"></select></div></div>`;
 
   for (const b of el.querySelectorAll<HTMLElement>(".ui-mode")) {
     b.addEventListener("click", () => {
@@ -1247,6 +1273,9 @@ function openPrefs(): void {
       localStorage.setItem("sshkit.uiTheme", UI_THEME);
       applyUiTheme();
     });
+  }
+  for (const b of el.querySelectorAll<HTMLElement>(".lang-mode")) {
+    b.addEventListener("click", () => { void setLanguage((b.dataset.lang ?? "system") as LocalePref); });
   }
   applyUiTheme();
   const list = el.querySelector(".scheme-list")! as HTMLElement;
@@ -1641,7 +1670,7 @@ function openPalette(): void {
       ...MAC_SHORTCUTS.map((d) => ({
         label: d.name,
         hint: shortcuts[d.id] ? (d.accel ?? "") : "未实现",
-        run: () => (shortcuts[d.id] ? shortcuts[d.id]() : toast(`「${d.name}」尚未实现`)),
+        run: () => (shortcuts[d.id] ? shortcuts[d.id]() : toast(tr("toast.featureNotImplemented", { name: d.name }))),
       })),
     ];
     const render = (q: string): void => {
@@ -1707,7 +1736,7 @@ function installAllShortcuts(): void {
     toggleSplitViewBroadcastMode: () => {
       const t = activeTab();
       const box = document.querySelector(".split-bc input") as HTMLInputElement | null;
-      if (!t?.split || !box) { toast("先 Split horizontally 再开广播"); return; }
+      if (!t?.split || !box) { toast(tr("toast.splitFirst")); return; }
       box.click();
     },
     /* 注意时序:面板刚打开时 renderSidePanel 还没跑完,必须等它 resolve 再去找分区
@@ -1715,10 +1744,10 @@ function installAllShortcuts(): void {
     snippets: () => showPanelSection("Snippets"),
     jumpTo: () => showPanelSection("Jump to"),
     /* 串口是硬桩(见 PROTOCOL T4):这里给出**说清原因**的提示,而不是笼统的"尚未实现" */
-    serialConnection: () => toast("Serial 未支持:需要串口原生依赖与真实设备,本项目不引入"),
+    serialConnection: () => toast(tr("toast.serialUnsupported")),
   };
   installShortcuts(shortcuts, (def: ShortcutDef) => {
-    toast(`「${def.name}」尚未实现${def.accel ? `(${def.accel})` : "(原版亦未设默认键)"}`);
+    toast(tr("toast.featureNotImplemented", { name: def.name }));
   });
 }
 
@@ -1737,7 +1766,7 @@ void (async () => {
   document.getElementById("btn-panel-top")?.addEventListener("click", () => togglePanel());
   document.getElementById("btn-quick-term")?.addEventListener("click", () => { void openSession("local"); });
   document.getElementById("btn-quick-serial")?.addEventListener("click", () => {
-    toast("Serial 未支持:需要串口原生依赖与真实设备,本项目不引入");
+    toast(tr("toast.serialUnsupported"));
   });
   document.getElementById("btn-appearance")?.addEventListener("click", () => openPrefs());
   document.getElementById("btn-new-host-caret")?.addEventListener("click", () => {
@@ -1768,6 +1797,15 @@ void (async () => {
   });
   // T8:reload/关窗时收掉本次界面开的会话(否则主进程留孤儿)
   window.addEventListener("beforeunload", () => { try { bridge.disposeAllSessions(); } catch { /* ignore */ } });
+  /* 语言:与主进程共用 settings.json,必须先于任何界面渲染决定 */
+  try {
+    const loc = await bridge.settings.getLocale();
+    LOCALE_PREF = loc.pref;
+    setI18nLocale(resolveLocale(loc.pref, loc.system));
+    applyDom();
+    const missing = audit();
+    if (missing.length) console.warn("[i18n] 缺少文案:", missing.join(", "));
+  } catch (err) { console.warn("[i18n] 语言初始化失败:", err); }
   applyAppearance();
   applyUiTheme();   // T5:恢复界面主题(深色 / 浅色)
   applyTabView();   // T2:恢复上次的 tab 视图模式(横排 / 工作区竖排)

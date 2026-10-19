@@ -1,5 +1,6 @@
 import { bridge } from "./hosts";
 import type { SftpEntry, TransferProgress } from "../shared/sftp";
+import { applyDom, tr } from "../shared/i18n";
 
 /* T5 复刻 —— SFTP 作为**一个 tab**,栏内是左右双栏(Local | 远端)。
    原版实测的结构与尺寸(与主题无关的部分照抄):
@@ -18,6 +19,8 @@ export interface SftpView {
   el: HTMLElement;
   /** tab 被激活时调用:按当前会话刷新两侧 */
   onShow: () => void;
+  /** 切换语言后重新应用文案(表头/列名/空态/错误态) */
+  relabel: () => void;
 }
 
 type SortKey = "name" | "date" | "size" | "kind";
@@ -117,18 +120,18 @@ export function createSftpView(
         <span class="sp-pico">${which === "local"
           ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="M8 10.5l2.2 2L8 14.5M12.5 14.5H16"/></svg>'
           : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg>'}</span>
-        <span class="sp-title">${title}</span>
+        <span class="sp-title">${tr(which === "local" ? "sftp.local" : "sftp.remote")}</span>
         <span style="flex:1"></span>
-        <button class="sp-btn" data-act="filter"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg> Filter</button>
-        <button class="sp-btn" data-act="actions">Actions ⌄</button>
+        <button class="sp-btn" data-act="filter"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg><span data-i18n="sftp.filter">${tr("sftp.filter")}</span></button>
+        <button class="sp-btn" data-act="actions"><span data-i18n="sftp.actions">${tr("sftp.actions")}</span> ⌄</button>
       </div>
-      <div class="sp-filter" hidden><input placeholder="Filter by name" spellcheck="false"></div>
+      <div class="sp-filter" hidden><input placeholder="${tr("sftp.filterBy")}" data-i18n-placeholder="sftp.filterBy" spellcheck="false"></div>
       <div class="sp-crumbs"></div>
       <div class="sp-cols">
-        <button class="sp-col sp-cname" data-sort="name">Name</button>
-        <button class="sp-col sp-cdate" data-sort="date">Date Modified</button>
-        <button class="sp-col sp-csize" data-sort="size">Size</button>
-        <button class="sp-col sp-ckind" data-sort="kind">Kind</button>
+        <button class="sp-col sp-cname" data-sort="name" data-i18n="sftp.colName">${tr("sftp.colName")}</button>
+        <button class="sp-col sp-cdate" data-sort="date" data-i18n="sftp.colDate">${tr("sftp.colDate")}</button>
+        <button class="sp-col sp-csize" data-sort="size" data-i18n="sftp.colSize">${tr("sftp.colSize")}</button>
+        <button class="sp-col sp-ckind" data-sort="kind" data-i18n="sftp.colKind">${tr("sftp.colKind")}</button>
       </div>
       <div class="sp-body"><div class="sp-rows"></div></div>`;
     const st: PaneState = {
@@ -198,7 +201,7 @@ export function createSftpView(
       if (st.which === "local") {
         const r = await bridge.local.list(st.dir);
         st.dir = r.path; st.entries = r.entries; st.sel = null;
-        st.titleEl.textContent = "Local";
+        st.titleEl.textContent = tr("sftp.local");
       } else {
         const s = session();
         if (!s) { renderEmpty(st); return; }
@@ -228,18 +231,18 @@ export function createSftpView(
     body.innerHTML = `
       <div class="sftp-empty">
         <div class="sp-empty-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e3e7e9" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></div>
-        <h3>Connect to host</h3>
-        <p>Start by connecting to a saved host<br>to manage your files with SFTP.</p>
-        <button class="sp-select">Select host</button>
+        <h3>${tr("sftp.emptyTitle")}</h3>
+        <p>${tr("sftp.emptyDesc").replace("\n", "<br>")}</p>
+        <button class="sp-select">${tr("sftp.emptySelect")}</button>
       </div>
       <div class="sp-rows"></div>`;
     st.rowsEl = body.querySelector(".sp-rows")! as HTMLElement;
     body.querySelector(".sp-select")?.addEventListener("click", (ev) => {
       const list = listSessions();
-      if (!list.length) { banner("还没有可用会话:先从左侧主机列表连接一台主机"); return; }
+      if (!list.length) { banner(tr("sftp.noSession")); return; }
       const anchor = ev.currentTarget as HTMLElement;
       menuAt(anchor, list.map((x) => [x.label, () => { bound = x; void refresh(st); }] as [string, () => void]),
-        "选择要绑定的会话");
+        tr("sftp.chooseSession"));
     });
   }
 
@@ -253,9 +256,9 @@ export function createSftpView(
     body.innerHTML = `
       <div class="sftp-empty sftp-err">
         <div class="sp-empty-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e08a8a" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.2v.3"/></svg></div>
-        <h3>SFTP unavailable</h3>
+        <h3>${tr("sftp.errTitle")}</h3>
         <p></p>
-        <button class="sp-select sp-retry">Retry</button>
+        <button class="sp-select sp-retry">${tr("sftp.errRetry")}</button>
       </div>
       <div class="sp-rows"></div>`;
     st.rowsEl = body.querySelector(".sp-rows")! as HTMLElement;
@@ -442,7 +445,7 @@ export function createSftpView(
   /** 批量删除:复用单条逻辑,逐个执行 */
   async function opMany(st: PaneState, kind: "remove"): Promise<void> {
     const s = session();
-    if (st.which === "remote" && !s) { banner("远端未绑定会话"); return; }
+    if (st.which === "remote" && !s) { banner(tr("sftp.notBound")); return; }
     const targets = st.entries.filter((e) => st.selSet.has(e.name));
     if (!targets.length) return;
     let done = 0;
@@ -455,7 +458,7 @@ export function createSftpView(
       } catch { /* 单个失败不打断其余 */ }
     }
     st.selSet.clear(); st.sel = null;
-    banner(`已删除 ${done}/${targets.length} 项`);
+    banner(tr("sftp.deleted", { done, total: targets.length }));
     await refresh(st);
   }
 
@@ -480,7 +483,7 @@ export function createSftpView(
 
   async function op(st: PaneState, kind: "mkdir" | "rename" | "remove"): Promise<void> {
     const s = session();
-    if (st.which === "remote" && !s) { banner("远端未绑定会话"); return; }
+    if (st.which === "remote" && !s) { banner(tr("sftp.notBound")); return; }
     try {
       if (kind === "mkdir") {
         const name = prompt("New directory name:");
@@ -509,11 +512,11 @@ export function createSftpView(
 
   async function transfer(dir: "up" | "down"): Promise<void> {
     const s = session();
-    if (!s) { banner("远端未绑定会话"); return; }
+    if (!s) { banner(tr("sftp.notBound")); return; }
     const from = dir === "up" ? local : remote;
     const to = dir === "up" ? remote : local;
     const f = from.sel;
-    if (!f || f.isDir) { banner("先选中一个文件(暂不支持目录传输)"); return; }
+    if (!f || f.isDir) { banner(tr("sftp.pickFirst")); return; }
     const src = joinPath(from.dir, f.name);
     const dst = joinPath(to.dir, f.name);
     try {
@@ -564,5 +567,7 @@ export function createSftpView(
   return {
     el: root,
     onShow: () => { void refresh(local); void refresh(remote); },
+    /* 切换语言:静态标记就地重译,再把两栏重画一遍(行内的 Up/Reload 提示与空态文案都在渲染时生成) */
+    relabel: () => { applyDom(root); void refresh(local); void refresh(remote); },
   };
 }
