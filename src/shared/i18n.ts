@@ -31,6 +31,7 @@ export const en = {
   "top.notifications": "Notifications",
   "top.workspaceView": "Workspace view",
   "top.appearance": "Appearance — theme / font",
+  "top.preferences": "Preferences (⌘,)",
   "top.sftp": "SFTP browser (ssh session required)",
 
   "search.placeholder": "Find a host or ssh user@hostname...",
@@ -202,6 +203,7 @@ export const zh: Record<MsgKey, string> = {
   "top.notifications": "通知",
   "top.workspaceView": "工作区视图",
   "top.appearance": "外观 — 主题 / 字体",
+  "top.preferences": "设置(⌘,)",
   "top.sftp": "SFTP 浏览器(需 ssh 会话)",
 
   "search.placeholder": "查找主机,或输入 ssh 用户@主机名…",
