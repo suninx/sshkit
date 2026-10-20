@@ -26,6 +26,25 @@
 9. **每个修掉的 bug 留一条回归用例**(测试名里写清"回归:"),否则这个 bug 会回来。
 10. **覆盖率是副产品,不是目标**。为了数字好看去写无断言/重复断言的用例,与不写等价。
 
+## 0.2 历史清洗(公开仓库前)铁律
+
+11. **先备份再动手**:`git bundle create <路径>/backup-$(date +%s).bundle --all`,并记下 sha256。
+    改写历史不可逆,没有 bundle 不许开跑。
+12. **替换规则要防子串误伤**。实测事故:为洗掉服务器名 `node1` 写了字面量规则 `node1==>node-a`,
+    结果把 `tsconfig.json` 里的 `"module": "node16"` 改成了 `"node-a6"`,TypeScript 直接编译失败,
+    而且**历史里每个含 tsconfig 的提交都被改坏**。
+    → 用锚定/词边界:`regex:\bnode1\b`,或先 `git grep -oE '<pattern>'` 数清命中再动手。
+13. **清洗后必须三查**,缺一不可:
+    - `git log --all -S'<串>'` 逐条归零(pickaxe 只数"出现次数变化"的提交,不能替代逐条确认);
+    - 跑 `pnpm run typecheck && pnpm test && pnpm run build` —— 证明没改坏代码;
+    - **全新 clone 复核**(陌生人视角):`git clone <远端> /tmp/x` 后重跑上面的检查,
+      再对所有 blob 暴力搜一遍 `git rev-list --all --objects | ... | git cat-file blob`。
+14. **强推后**用未登录身份复核:`git ls-remote`、raw.githubusercontent 拉 `LICENSE`/`README`、
+    API 查 `private`/`visibility`;并记住旧对象可能仍可被直接 SHA 访问,直到 GitHub 侧 GC
+    (真正敏感的数据要联系 GitHub Support 清除)。
+15. **提交信息与作者身份**同样属于历史:`git log --all --format='%an <%ae> %s'` 检查;
+    作者邮箱优先用 GitHub noreply。
+
 ## 1. 仓库地图
 
 ```
