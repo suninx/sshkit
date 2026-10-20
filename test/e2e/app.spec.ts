@@ -64,11 +64,15 @@ test("主机簿:新建 → 出现在列表 → 编辑 → 删除(并落盘到临
   await page.locator("#btn-save").click();
   await expect(page.locator("#host-list .host-item", { hasText: `${name}-renamed` })).toBeVisible();
 
-  // 删除(同样先 hover);删除前有原生 confirm() 询问,测试里接受它
-  page.once("dialog", (d) => { void d.accept(); });
+  // 删除(同样先 hover):会先弹出应用自己的确认框,确认后才消失
   const renamed = page.locator("#host-list .host-item", { hasText: `${name}-renamed` });
   await renamed.hover();
   await renamed.locator("[data-act=del]").first().click();
+
+  const confirmDlg = page.locator(".discard-dlg");
+  await expect(confirmDlg).toBeVisible();
+  await expect(confirmDlg.locator(".dd-body p")).toContainText(`${name}-renamed`);
+  await confirmDlg.locator(".dd-ok").click();
   await expect(page.locator("#host-list .host-item", { hasText: `${name}-renamed` })).toHaveCount(0);
 });
 
@@ -78,14 +82,16 @@ test("设置:⌘, 打开面板;切换语言后侧栏文案随之变化;切回中
   await page.keyboard.press("Meta+,");
   await expect(page.locator(".prefs")).toBeVisible();
 
-  const zhLabel = await page.locator(".rail-item .rl").first().textContent();
+  const initialLabel = await page.locator(".rail-item .rl").first().textContent();
   await page.locator('.prefs .lang-mode[data-lang="en"]').click();
   await expect(page.locator(".rail-item .rl").first()).toHaveText("Hosts");
   // 面板自身也要跟着变(本轮修的 bug)
   await expect(page.locator(".prefs h4").first()).toHaveText("Interface");
 
   await page.locator('.prefs .lang-mode[data-lang="zh"]').click();
-  await expect(page.locator(".rail-item .rl").first()).toHaveText(zhLabel ?? "主机");
+  // 切回中文后必须是中文标签(与初始语言无关:CI 上系统是 en,初始标签为 Hosts)
+  await expect(page.locator(".rail-item .rl").first()).toHaveText("主机");
+  void initialLabel;
 });
 
 test("外观:深浅色切换与字号调节写进 localStorage", async () => {

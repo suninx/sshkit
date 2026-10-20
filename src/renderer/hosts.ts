@@ -268,6 +268,33 @@ const SORT_LABEL: Record<SortMode, string> = {
 
   /** 原版"放弃修改"确认框。几何来自实测:对话框 498 宽、垂直居中;头部 36px 深色;正文白底;
       按钮 `Discard changes` 在正文右下,底色为原版危险色。 */
+  /** 通用确认弹窗(与"放弃修改"同一套样式)。
+      **不用原生 confirm()**:它在 Linux 上会阻塞渲染进程且无法被自动化/键盘一致处理,
+      原版也是自有弹窗 —— 换成 DOM 弹窗后行为跨平台一致,也便于测试走真实用户路径。 */
+  function openConfirmDialog(opts: { title: string; body: string; ok: string }): Promise<boolean> {
+    return new Promise((resolve) => {
+      document.querySelectorAll(".discard-dlg").forEach((e) => e.remove());
+      const wrap = document.createElement("div");
+      wrap.className = "discard-dlg";
+      wrap.innerHTML = `
+        <div class="dd-box" role="dialog" aria-modal="true">
+          <div class="dd-head"><span></span>
+            <button class="dd-x" aria-label="${tr("menu.close")}">✕</button></div>
+          <div class="dd-body"><p></p><button class="dd-ok danger"></button></div>
+        </div>`;
+      /* 用 textContent 写入文案:标题/正文里可能含用户输入(主机名),不能拼 HTML。 */
+      wrap.querySelector(".dd-head span")!.textContent = opts.title;
+      wrap.querySelector(".dd-body p")!.textContent = opts.body;
+      wrap.querySelector(".dd-ok")!.textContent = opts.ok;
+      const finish = (v: boolean): void => { wrap.remove(); resolve(v); };
+      wrap.querySelector(".dd-x")!.addEventListener("click", () => finish(false));
+      wrap.addEventListener("click", (ev) => { if (ev.target === wrap) finish(false); });
+      wrap.querySelector(".dd-ok")!.addEventListener("click", () => finish(true));
+      document.body.append(wrap);
+      (wrap.querySelector(".dd-ok") as HTMLButtonElement | null)?.focus();
+    });
+  }
+
   function openDiscardDialog(onConfirm: () => void): void {
     document.querySelectorAll(".discard-dlg").forEach((e) => e.remove());
     const wrap = document.createElement("div");
@@ -395,7 +422,12 @@ const SORT_LABEL: Record<SortMode, string> = {
   }
 
   async function removeHost(host: HostRecord): Promise<void> {
-    if (!confirm(`Delete host "${host.name}"? Saved credentials will also be removed.`)) return;
+    const ok = await openConfirmDialog({
+      title: tr("dlg.deleteHostTitle"),
+      body: tr("dlg.deleteHostDesc", { name: host.name }),
+      ok: tr("dlg.delete"),
+    });
+    if (!ok) return;
     await bridge.hosts.remove(host.id);
     await refresh();
   }
