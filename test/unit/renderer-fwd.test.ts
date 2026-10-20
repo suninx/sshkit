@@ -563,7 +563,7 @@ describe("编辑转发规则", () => {
   });
 });
 
-describe("回归:Remote 的 Bind address(曾经被引擎忽略)", () => {
+describe("Remote 绑定地址与浏览器回归", () => {
   it("Remote 类型的 Bind address 落到 remoteBindAddress,本地侧 bindAddress 不参与", async () => {
     /*
      * 证据链:
@@ -591,5 +591,22 @@ describe("回归:Remote 的 Bind address(曾经被引擎忽略)", () => {
     const savedRule = saved.at(-1)!;
     expect(savedRule.remoteBindAddress).toBe("127.0.0.1");
     expect(savedRule.bindAddress).toBe("0.0.0.0");
+  });
+
+  it("Remote 类型清空 Bind address 时回落到 0.0.0.0(不留空串)", async () => {
+    await mount();
+    (document.querySelector(".fwd-new-main") as HTMLButtonElement).click();
+    choseKind("Remote");
+    typeField("port", "2222");
+    typeField("bind", "");
+    next().click(); // step3
+    pickHost("node-1");
+    next().click(); // step4
+    typeField("dest", "127.0.0.1");
+    typeField("destport", "19090");
+    next().click();
+    await waitFor(() => wiz() === null, "wizard closed");
+
+    expect(saved.at(-1)!.remoteBindAddress).toBe("0.0.0.0");
   });
 });

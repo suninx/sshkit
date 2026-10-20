@@ -61,14 +61,17 @@ function fakeBridge(): unknown {
 
 async function mountView(
   session: { sid: number; label: string } | null,
-  sessions: Array<{ sid: number; label: string }> = session ? [session] : [],
+  sessions?: Array<{ sid: number; label: string }>,
 ) {
   vi.resetModules();
   (window as unknown as { sshkit: unknown }).sshkit = fakeBridge();
   const { createSftpView } = await import("../../src/renderer/sftp");
   const { setLocale } = await import("../../src/shared/i18n");
   setLocale("en");
-  const view = createSftpView(() => session, () => sessions);
+  /* sessions 省略时走 createSftpView 的默认参数(默认无候选会话) */
+  const view = sessions
+    ? createSftpView(() => session, () => sessions)
+    : createSftpView(() => session);
   document.body.append(view.el);
   return view;
 }
@@ -914,5 +917,36 @@ describe("SFTP 视图 · 拖拽与远端操作", () => {
     const text = lastBanner();
     expect(text.length).toBeGreaterThan(0);
     expect(text).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(text).toBe("Select an item in the pane first");
+  });
+
+  it("Actions → Go up:回上级目录并刷新", async () => {
+    listRemote.mockResolvedValue({ path: "/root/a", entries: [] });
+    const view = await mountView({ sid: 1, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(rows("remote")).toBe(1));
+    actionsMenu("remote");
+    click(menuItem("Go up"));
+    await vi.waitFor(() => expect(listRemote).toHaveBeenLastCalledWith(1, "/root"));
+  });
+
+  it("远端多选删除:Delete 2 items 逐条带 sid 走 sftp.remove", async () => {
+    listRemote.mockResolvedValue({
+      path: "/root",
+      entries: [FILE("x.bin", 10), FILE("y.bin", 20)],
+    });
+    const view = await mountView({ sid: 9, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote").length).toBe(2));
+    clickRow("remote", "x.bin");
+    clickRow("remote", "y.bin", { ctrlKey: true });
+    await flushView();
+    actionsMenu("remote");
+    expect(menuLabels()).toContain("Delete 2 items");
+    click(menuItem("Delete 2 items"));
+    await vi.waitFor(() => expect(rmRemote).toHaveBeenCalledTimes(2));
+    expect(rmRemote).toHaveBeenNthCalledWith(1, 9, "/root/x.bin");
+    expect(rmRemote).toHaveBeenNthCalledWith(2, 9, "/root/y.bin");
+    expect(lastBanner()).toBe("Deleted 2/2 items");
   });
 });

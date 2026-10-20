@@ -330,6 +330,26 @@ describe("主机列表", () => {
     await waitFor(() => itemByName("alpha").querySelector(".tag-chips") === null, "chips gone");
   });
 
+  it("主机名里的 HTML 被转义成文本(不注入标记)", async () => {
+    const hostile = `<img src=x onerror="globalThis.__hostPwned=1">&"'`;
+    hosts = [HOST({ id: "h_xss", name: hostile })];
+    await mount();
+
+    const nameEl = itemByName(hostile).querySelector(".name") as HTMLElement;
+    expect(nameEl.querySelector("img")).toBeNull();
+    expect(nameEl.textContent).toBe(hostile);
+    expect((globalThis as Record<string, unknown>).__hostPwned).toBeUndefined();
+  });
+
+  it("localStorage 里的标签配色损坏时降级为无色(不崩、不影响列表)", async () => {
+    hosts = [HOST({ id: "h1", name: "alpha", tags: ["prod"] })];
+    await mount({ storage: { "sshkit.tagColors": "{not-json" } });
+
+    expect(names()).toEqual(["alpha"]);
+    expect(itemByName("alpha").querySelectorAll(".tag-chip")).toHaveLength(1);
+    expect(itemByName("alpha").querySelector(".tag-chip")!.getAttribute("style") ?? "").not.toContain("#");
+  });
+
   it("标签配色:色点打开调色板,选色写入 localStorage 并作用到芯片;可清除", async () => {
     hosts = [HOST({ id: "h1", name: "alpha", tags: ["prod"] })];
     await mount();

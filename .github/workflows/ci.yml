@@ -1,5 +1,8 @@
 name: CI
 
+# 一个 workflow 覆盖三个平台:test / e2e 在 ubuntu + macOS + Windows 上跑;
+# 打包**只在本平台的原生 runner 上做**(mac 包必须在 macOS 上打、win 包必须在 Windows 上打,
+# 交叉打包要么不支持、要么产物不可信)。
 on:
   push:
     branches: [main]
@@ -10,99 +13,134 @@ permissions:
   contents: read
 
 concurrency:
-  # 平台前缀:GitHub 的 concurrency group 是仓库级共享的,加前缀避免与 ci-windows 互取消
-  group: ci-linux-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # 类型关 + 单元/集成测试 + 构建(纯 Node,最快)
+  # ---------- 类型 + 单元/集成测试 + 构建(三平台矩阵)----------
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false          # 一个平台红了不要掩盖其它平台的结论
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        # 版本由 package.json 的 packageManager 决定;这里不再写 version,
-        # 否则 action 会报 "Multiple versions of pnpm specified"。
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        # 版本由 package.json 的 packageManager 决定;写 version 会报
+        # "Multiple versions of pnpm specified"。
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
-      # 跑覆盖率而不是纯 test:阈值(只升不降)在 vitest.config.ts 里,CI 必须执行才有意义
+      # 跑覆盖率而不是纯 test:阈值(只升不降)在 vitest.config.ts 里,CI 必须执行它
       - run: pnpm run test:coverage
       - run: pnpm run build
 
-  # 端到端:直接驱动 Electron,无头环境用 xvfb
+  # ---------- 端到端:直接驱动真实 Electron(三平台矩阵)----------
   e2e:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: e2e (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        # 版本由 package.json 的 packageManager 决定;这里不再写 version,
-        # 否则 action 会报 "Multiple versions of pnpm specified"。
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Electron 运行库
+      # Linux 无头:Electron 需要的运行库 + xvfb
+      # keytar 在 Linux 上链接 libsecret,缺了主进程 require 阶段就会退出(零输出的"无窗口")
+      - name: 安装 Linux 运行库
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get install -y \
             xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
             libgtk-3-0 libgbm1 libasound2t64 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
             libsecret-1-0
+      - run: pnpm install --frozen-lockfile
+      # Electron 44 不再在 install 阶段下载二进制;e2e 需要真实 Electron
       - name: 确保 Electron 二进制就位
-        # 干净安装时 electron 的下载步骤可能没落地(CI 实测:dist 缺失 → e2e 启动超时、
-        # electron-builder 报 "electronDist does not exist")。显式补齐,幂等。
+        shell: bash
         run: |
-          if [ ! -d node_modules/electron/dist ]; then
-            node node_modules/electron/install.js
-          fi
-          ls node_modules/electron/dist >/dev/null && echo "electron dist ok"
-      # node-pty 必须按 Electron 的 ABI 重编,否则 Electron 主进程 require 它会直接崩,
-      # 表现就是 Playwright 等不到窗口(firstWindow 超时)。
+          if [ ! -d node_modules/electron/dist ]; then node node_modules/electron/install.js; fi
+      # node-pty 必须按 Electron 的 ABI 编译,否则主进程 require 它会直接崩(表现为窗口起不来)
       - run: pnpm run rebuild:pty
       - run: pnpm run build
-      - name: 冒烟:主进程能否加载(诊断用,失败不阻塞后续)
-        continue-on-error: true
+      - name: 跑 e2e(Linux 走 xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm run test:e2e
         env:
           ELECTRON_ENABLE_LOGGING: "1"
-        run: |
-          timeout 25 xvfb-run -a ./node_modules/.bin/electron . --no-sandbox 2>&1 | head -60 || true
-      - run: xvfb-run -a pnpm run test:e2e
+      - name: 跑 e2e(macOS / Windows)
+        if: runner.os != 'Linux'
+        run: pnpm run test:e2e
         env:
           ELECTRON_ENABLE_LOGGING: "1"
+      - name: 失败时保留 Playwright 产物
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-${{ matrix.os }}-test-results
+          path: |
+            test-results/**
+            playwright-report/**
+          if-no-files-found: ignore
+          retention-days: 7
 
-  # 打包产物(仅 main;未签名,供本机自用/后续接入签名与公证)
+  # ---------- 打包:各平台在自己原生 runner 上打(仅 main 分支)----------
   package:
+    name: package (${{ matrix.name }})
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: macos-14
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS 包(mac-arm64 zip):必须跑在 macOS runner 上
+          - name: mac-arm64
+            os: macos-latest
+            args: --mac --arm64 --publish never
+            artifact: sshkit-mac-arm64
+            paths: |
+              release/*.zip
+              release/*.dmg
+          # Windows 包(NSIS 安装包 + 免安装 zip):必须跑在 Windows runner 上
+          - name: win-x64
+            os: windows-latest
+            args: --win --x64 --publish never
+            artifact: sshkit-win-x64
+            paths: |
+              release/*.exe
+              release/*.zip
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        # 版本由 package.json 的 packageManager 决定;这里不再写 version,
-        # 否则 action 会报 "Multiple versions of pnpm specified"。
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: 确保 Electron 二进制就位
-        # 干净安装时 electron 的下载步骤可能没落地(CI 实测:dist 缺失 → e2e 启动超时、
-        # electron-builder 报 "electronDist does not exist")。显式补齐,幂等。
+        shell: bash
         run: |
-          if [ ! -d node_modules/electron/dist ]; then
-            node node_modules/electron/install.js
-          fi
-          ls node_modules/electron/dist >/dev/null && echo "electron dist ok"
+          if [ ! -d node_modules/electron/dist ]; then node node_modules/electron/install.js; fi
       - run: pnpm run build
-      - run: pnpm exec electron-builder --mac --arm64 --publish never
-      - uses: actions/upload-artifact@v4
+      - name: 打包
+        run: pnpm exec electron-builder ${{ matrix.args }}
+      - uses: actions/upload-artifact@v7
         with:
-          name: sshkit-mac-arm64
-          path: release/*.zip
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.paths }}
           if-no-files-found: error
+          retention-days: 14

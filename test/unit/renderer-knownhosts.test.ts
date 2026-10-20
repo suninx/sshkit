@@ -259,6 +259,23 @@ describe("多选", () => {
     expect(selectedHosts().sort()).toEqual(["a.example.com", "b.example.com", "c.example.com"]);
   });
 
+  it("锚点行被外部删除后 Shift+点:不崩溃、不清空已有选择(防御分支)", async () => {
+    /* 场景:选中 a 后列表被外部刷新,锚点 a 不再存在于 DOM;此时 Shift+点 c。
+       期望:范围选择条件不成立时不改选择,也不抛错。 */
+    rows = [ROW({ host: "a.example.com" }), ROW({ host: "b.example.com" }), ROW({ host: "c.example.com" })];
+    await mountView();
+    clickRow("a.example.com");
+    await waitFor(() => selCount() === "1 selected");
+
+    rows = [ROW({ host: "b.example.com" }), ROW({ host: "c.example.com" })];
+    (document.querySelector(".kh-sel-all") as HTMLButtonElement).click(); // 触发一次刷新,锚点仍是 a
+    await waitFor(() => selCount() === "3 selected");
+    clickRow("c.example.com", { shiftKey: true });
+    await flush(6);
+    expect(selectedHosts().sort()).toEqual(["b.example.com", "c.example.com"]);
+    expect(selCount()).toBe("3 selected");
+  });
+
   it("哈希化条目不参与多选(无法按主机名定位)", async () => {
     rows = [ROW({ host: "hashed-row", hashed: true }), ROW({ host: "b.example.com" })];
     await mountView();

@@ -25,6 +25,17 @@ vi.mock("@xterm/addon-canvas", () => ({
     constructor() { throw new Error("canvas addon unavailable under jsdom"); }
   },
 }));
+/* 搜索插件用真实实现对 jsdom 无害;但产品对"插件加载失败"有容错分支需要可注入失败 */
+vi.mock("@xterm/addon-search", () => ({
+  SearchAddon: class {
+    constructor() {
+      if ((globalThis as { __failSearchAddon?: boolean }).__failSearchAddon) throw new Error("search addon unavailable");
+    }
+    findNext(): void { /* noop */ }
+    findPrevious(): void { /* noop */ }
+    clearDecorations(): void { /* noop */ }
+  },
+}));
 
 
 interface HostRecord {
@@ -588,18 +599,22 @@ describe("会话与分屏", () => {
     expect(tabByKind("session").classList.contains("off")).toBe(true);
   });
 
-  it("Disable reconnecting:断线层改为已停止,并隐藏该按钮", async () => {
+  it("Disable reconnecting:停止自动重连,不再发起新连接", async () => {
     const { calls, emit } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
     await openSsh();
     const sid = (lastCall(calls, "onExit") as unknown[])[0] as number;
+    vi.useFakeTimers();
     emit.exit(sid, { exitCode: 1, reason: "dropped" });
-    await waitFor(() => !!document.querySelector(".disc"));
+    await vi.advanceTimersByTimeAsync(1);
     click(document.querySelector(".disc-stop"));
-    await waitFor(() => document.querySelector(".disc-reason")!.textContent === "Reconnecting disabled");
+    /* 后台重连循环到点后会看到 autoRetryOff 并停下,不再 connect */
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(document.querySelector(".disc-reason")!.textContent).toBe("Reconnecting disabled");
     expect((document.querySelector(".disc-stop") as HTMLElement).hidden).toBe(true);
-    /* 关掉 tab 收尾:让后台那次 1s 定时器醒来时看到 tab 已不在 */
+    expect(count(calls, "ssh.connect")).toBe(1);
     click(document.querySelector(".disc-close"));
-    await waitFor(() => !tabKinds().includes("session"));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(tabKinds()).not.toContain("session");
   });
 
   it("自动重连成功:1s 后重新 connect,断线层消失、状态回到 on", async () => {
@@ -639,8 +654,15 @@ describe("会话与分屏", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(count(calls, "ssh.connect")).toBe(4); // 首次 + 3 次重试
     expect(document.querySelector(".disc-reason")!.textContent).toBe("No connection available to reconnect");
+
+    /* 手动 Try again:重新允许尝试并再发起连接 */
+    click(document.querySelector(".disc-retry"));
+    expect(document.querySelector(".disc-reason")!.textContent).toBe("Initiating reconnection...");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(count(calls, "ssh.connect")).toBe(5);
+
     click(document.querySelector(".db-closeall"));
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(5000); // 让后台重试循环看到 tab 已关而退出
     expect(tabKinds()).not.toContain("session");
     expect(document.querySelector("#disc-bar")).toBeNull();
   });
@@ -663,7 +685,7 @@ describe("会话与分屏", () => {
     bc.checked = true;
     bc.dispatchEvent(new Event("change"));
 
-    const bench = (window as unknown as { __bench: { tabs: () => Array<Record<string, unknown>>; input: (d: string) => boolean } }).__bench;
+    const bench = (window as unknown as { __bench: { tabs: () => Array<Record<string, unknown>>; input: (d: string, pane?: number) => boolean } }).__bench;
     const sessionTab = bench.tabs().find((t) => t.kind === "session")!;
     expect(sessionTab.broadcast).toBe(true);
     expect(sessionTab.splitTermId).not.toBeNull();
@@ -671,6 +693,12 @@ describe("会话与分屏", () => {
     const writes = (calls["write"] ?? []).filter((a) => a[1] === "ls\r");
     expect(writes.length).toBe(2);
     expect(new Set(writes.map((a) => a[0])).size).toBe(2);
+
+    /* 反向:在分屏格里输入也要按广播扇出回主终端 */
+    expect(bench.input("xyz", 1)).toBe(true);
+    const fromSplit = (calls["write"] ?? []).filter((a) => a[1] === "xyz");
+    expect(fromSplit.length).toBe(2);
+    expect(new Set(fromSplit.map((a) => a[0])).size).toBe(2);
 
     click(document.querySelector(".split-close"));
     await waitFor(() => !document.querySelector(".split-pane"));
@@ -872,7 +900,10 @@ describe("终端侧栏与提示条", () => {
     const { calls } = await boot({
       overrides: {
         "hosts.list": async () => [HOST],
-        "snippets.list": async () => [{ id: "s1", name: "Deploy", command: "make deploy" }],
+        "snippets.list": async () => [
+          { id: "s1", name: "Deploy", command: "make deploy" },
+          { id: "s2", name: "Newline", command: "echo hi\n" },
+        ],
       },
     });
     key(document, { code: "Period", key: ".", metaKey: true });
@@ -892,6 +923,10 @@ describe("终端侧栏与提示条", () => {
     click(document.querySelector("#snip-list .sp-item"));
     await flush(2);
     expect((lastCall(calls, "write") as unknown[])[1]).toBe("make deploy\r");
+    /* 片段自带换行时只换成回车,避免多发一次空行 */
+    click(document.querySelectorAll("#snip-list .sp-item")[1]);
+    await flush(2);
+    expect((lastCall(calls, "write") as unknown[])[1]).toBe("echo hi\r");
 
     /* 片段行内 ✕ 删除后重拉列表 */
     click(document.querySelector("#snip-list .sp-del"));
@@ -1372,7 +1407,18 @@ describe("快捷键矩阵与边界路径", () => {
 
   it("两路断线:全局断开条用复数文案,Close all disconnected terminals 一次清掉", async () => {
     const HOST2 = { ...HOST, id: "h_bob", name: "bob", host: "192.0.2.11" };
-    const { calls, emit } = await boot({ overrides: { "hosts.list": async () => [HOST, HOST2] } });
+    let connects = 0;
+    const { calls, emit } = await boot({
+      overrides: {
+        "hosts.list": async () => [HOST, HOST2],
+        /* 前两次是正常建连;之后重连一律失败,断线条才会保留 */
+        "ssh.connect": async () => {
+          connects++;
+          if (connects <= 2) return { id: connects };
+          throw new Error("still down");
+        },
+      },
+    });
     await waitFor(() => document.querySelectorAll(".host-item").length === 2);
     click(document.querySelector(".host-item[data-id='h_alice']"));
     await waitFor(() => title() === "alice");
@@ -1384,8 +1430,12 @@ describe("快捷键矩阵与边界路径", () => {
     emit.exit(exits[0], { exitCode: 0, reason: "dropped" });
     emit.exit(exits[1], { exitCode: 0, reason: "dropped" });
     expect(document.querySelector("#disc-bar")!.textContent).toContain("2 sessions are disconnected");
+    const beforeForce = count(calls, "ssh.connect");
+    click(document.querySelector(".db-force"));
+    await vi.advanceTimersByTimeAsync(1000); // 强制重连会对每个断线 tab 再发起一次 connect
+    expect(count(calls, "ssh.connect")).toBeGreaterThan(beforeForce);
     click(document.querySelector(".db-closeall"));
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(tabKinds()).not.toContain("session");
     expect(document.querySelector("#disc-bar")).toBeNull();
   });
@@ -1586,5 +1636,56 @@ describe("Logs 分区", () => {
     await flush(4);
     const texts = [...document.querySelectorAll(".tab-pane.active .sec-row.log .tx")].map((n) => n.textContent ?? "");
     expect(texts.join("\n")).toContain("connected");
+  });
+});
+
+/* ================= 容错与集成边界 ================= */
+
+describe("容错与集成边界", () => {
+  it("字体可用性探测:按 canvas 量宽判断缺失字体并禁用/标注选项", async () => {
+    HTMLCanvasElement.prototype.getContext = (() => ({
+      font: "",
+      measureText: (text: string) => ({ width: text === "mmmmmmmmmmlliWW" ? 100 : 50 }),
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+    await boot();
+    await openPrefs();
+    const options = [...document.querySelectorAll<HTMLOptionElement>(".prefs .ps-font option")];
+    /* 量宽相同 ⇒ 判定本机没装:禁用并标注 (not installed);bundled / generic 两族不受影响 */
+    expect(options.some((o) => o.disabled && (o.textContent ?? "").includes("(not installed)"))).toBe(true);
+    expect(options.filter((o) => !o.disabled).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("搜索插件加载失败时会话仍能建立,只记录 warn", async () => {
+    (globalThis as { __failSearchAddon?: boolean }).__failSearchAddon = true;
+    try {
+      await boot();
+      await openLocal();
+      const warns = vi.mocked(console.warn).mock.calls.map((a) => String(a[0]));
+      expect(warns.some((w) => w.includes("[term] 搜索插件不可用"))).toBe(true);
+      expect(tabByKind("session").classList.contains("on")).toBe(true);
+    } finally {
+      (globalThis as { __failSearchAddon?: boolean }).__failSearchAddon = false;
+    }
+  });
+
+  it("Vaults 工具条的 New host 下拉箭头等价于点 New host", async () => {
+    await boot();
+    click(document.querySelector("#btn-new-host-caret"));
+    await waitFor(() => document.querySelector("#form-backdrop")!.classList.contains("visible"));
+    expect(document.querySelector("#form-heading")!.textContent).toBe("New host");
+    click(document.querySelector("#btn-cancel")); // 空白表单直接关
+    await waitFor(() => !document.querySelector("#form-backdrop")!.classList.contains("visible"));
+  });
+
+  it("SFTP tab 空态的 Select host(app 集成):没有会话时给出原因", async () => {
+    await boot();
+    /* 无会话时 #btn-sftp 是禁用态(禁用按钮不触发 click),直接点常驻 SFTP tab */
+    click(tabByKind("sftp"));
+    await waitFor(() => activeTab()!.dataset.kind === "sftp");
+    await waitFor(() => !!document.querySelector('.sftp-pane[data-which="remote"] .sp-select'));
+    click(document.querySelector('.sftp-pane[data-which="remote"] .sp-select'));
+    await flush(2);
+    const banners = [...document.querySelectorAll(".sftp-queue .jname")].map((n) => n.textContent);
+    expect(banners.at(-1)).toBe("No session available yet — connect a host from the host list first");
   });
 });
