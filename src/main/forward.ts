@@ -123,7 +123,10 @@ export class ForwardService {
   /* ---------- 起停 ---------- */
 
   start(rule: ForwardRule): ForwardStatus {
-    if (this.live.has(rule.id)) return this.statusOf(rule.id);
+    const cur = this.live.get(rule.id);
+    /* 已在运行/启动中 → 幂等返回;处于 error 时允许**重试**(失败后用户点 Start 应该能再试一次) */
+    if (cur && cur.status.state !== "error") return this.statusOf(rule.id);
+    if (cur) this.cleanup(cur);
     const l: Live = { rule, status: { id: rule.id, state: "starting", active: 0, total: 0 }, sockets: new Set() };
     this.live.set(rule.id, l);
 
@@ -156,11 +159,20 @@ export class ForwardService {
     return this.channelFor(hostId);
   }
 
+  /** 关掉监听与所有连接,但**保留条目** —— 失败原因必须能被 statusOf 读到,
+      否则界面重绘一次就只剩 "stopped",用户完全看不到为什么失败。 */
+  private cleanup(l: Live): void {
+    for (const sock of l.sockets) { try { sock.destroy(); } catch { /* ignore */ } }
+    l.sockets.clear();
+    if (l.server) { try { l.server.close(); } catch { /* ignore */ } l.server = undefined; }
+    l.status.active = 0;
+  }
+
   private fail(l: Live, e: unknown): void {
     l.status.state = "error";
     l.status.error = String((e as Error)?.message ?? e);
+    this.cleanup(l);
     this.emit(l);
-    this.live.delete(l.rule.id);
   }
 
   /** local(-L)与 dynamic(-D,内建 SOCKS5)都在本机监听 */

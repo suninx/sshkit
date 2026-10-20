@@ -93,6 +93,9 @@ export function addHostKey(host: string, keyData: Buffer, file = KNOWN_HOSTS, re
   try {
     mkdirSync(path.dirname(file), { recursive: true });
     if (replace) removeKnownHost(host, file);
+    /* 幂等:同一个 (host,key) 已经在文件里就不再追加 —— 用户在询问框里重复点
+       "Add and continue" 不应把 known_hosts 越写越乱。 */
+    if (!replace && loadEntries(file).some((e) => hostMatches(e, host) && e.keyBytes.equals(keyData))) return;
     // 追加前确保文件以换行结尾(防御:任何外部工具写出的"无尾换行"文件都不会被我们拼坏)
     try {
       const cur = readFileSync(file, "utf8");
@@ -195,7 +198,8 @@ export function keyTypeFromBlob(blob: Buffer): string {
       if (/^[a-z0-9-]+$/i.test(name)) return name;
     }
   }
-  return "ssh";
+  /* 解析不出算法名时返回 unknown,而不是谎报成 "ssh" —— 类型会参与 known_hosts 比对。 */
+  return "unknown";
 }
 
 export function verifyAndLearn(host: string, keyData: Buffer, file = KNOWN_HOSTS): HostKeyVerdict {
