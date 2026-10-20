@@ -14,6 +14,7 @@ export interface ElectronMock {
   onHandlers: Map<string, (...args: unknown[]) => void>;
   webContents: { sent: Array<[string, ...unknown[]]> };
   dialog: { openResult: string[] | null; messages: string[] };
+  menu: { built: unknown[]; applied: unknown[] };
   clipboard: { text: string };
   windows: Array<Record<string, unknown>>;
   userData: string;
@@ -30,6 +31,7 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
   const dialogState = { openResult: null as string[] | null, messages: [] as string[] };
   const clipboardState = { text: "" };
   const windows: Array<Record<string, unknown>> = [];
+  const menuState = { built: [] as unknown[], applied: [] as unknown[] };
 
   const notStubbed = (name: string) => (): never => {
     throw new Error(`not stubbed in electron mock: ${name}`);
@@ -74,7 +76,10 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
       handle: (ch: string, fn: (...a: unknown[]) => unknown) => { handlers.set(ch, fn); },
       on: (ch: string, fn: (...a: unknown[]) => void) => { onHandlers.set(ch, fn); },
     },
-    Menu: { buildFromTemplate: (t: unknown) => ({ template: t }), setApplicationMenu: () => undefined },
+    Menu: {
+      buildFromTemplate: (t: unknown) => { menuState.built.push(t); return { template: t }; },
+      setApplicationMenu: (m: unknown) => { menuState.applied.push(m); },
+    },
     clipboard: {
       readText: () => clipboardState.text,
       writeText: (t: string) => { clipboardState.text = t; },
@@ -92,6 +97,7 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
     module, handlers, onHandlers,
     webContents: { sent },
     dialog: dialogState,
+    menu: menuState,
     clipboard: clipboardState,
     windows,
     userData,

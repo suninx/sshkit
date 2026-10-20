@@ -1,4 +1,22 @@
 import os from "node:os";
+
+/**
+ * 按平台决定默认 shell。
+ * **纯函数**:平台与 env 都由调用方传入 —— 这样"win32 分支"在任何 OS 上都能被测试覆盖,
+ * 否则 CI 在 macOS/Linux 跑覆盖率时必然漏掉 win32 那半边,100% 阈值就不可能跨平台成立。
+ */
+export function resolveShell(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string {
+  return platform === "win32" ? env.COMSPEC || "powershell.exe" : env.SHELL || "/bin/zsh";
+}
+
+/** 终端工作目录:显式 cwd → HOME → USERPROFILE(Windows 没有 HOME) → 用户主目录 */
+export function resolveCwd(
+  explicit: string | undefined,
+  env: NodeJS.ProcessEnv,
+  homedir: () => string,
+): string {
+  return explicit || env.HOME || env.USERPROFILE || homedir();
+}
 import * as PTY from "node-pty";
 import type { WebContents } from "electron";
 
@@ -20,20 +38,13 @@ export class PtyService {
 
   create(sender: WebContents, opts: TerminalCreateOptions): number {
     const id = this.nextId++;
-    /* 按平台选默认 shell:macOS/Linux 用登录 shell,Windows 没有 $SHELL 也没有 /bin/zsh,
-       退回 COMSPEC(cmd.exe)/PowerShell —— 否则本地终端在 Windows 上直接起不来。 */
-    /* 平台优先:SHELL 是 POSIX 语义,Windows 上若从 Git Bash 继承了 POSIX 的 $SHELL,
-       会去 spawn 一个 Windows 上不存在的路径。Windows 一律用 COMSPEC(cmd.exe)。 */
-    const shell =
-      process.platform === "win32"
-        ? process.env.COMSPEC || "powershell.exe"
-        : process.env.SHELL || "/bin/zsh";
+    const shell = resolveShell(process.platform, process.env);
     const pty = PTY.spawn(shell, [], {
       name: "xterm-256color",
       cols: Math.max(2, Math.min(opts.cols, 500)),
       rows: Math.max(2, Math.min(opts.rows, 200)),
       /* Windows 一般没有 HOME,用 USERPROFILE;os.homedir() 兜底跨平台一致 */
-      cwd: opts.cwd || process.env.HOME || process.env.USERPROFILE || os.homedir(),
+      cwd: resolveCwd(opts.cwd, process.env, os.homedir),
       env: {
         ...cleanEnv(),
         LANG: process.env.LANG || "en_US.UTF-8",

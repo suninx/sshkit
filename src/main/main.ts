@@ -13,12 +13,19 @@ import { deleteCreds, getCreds, putCreds } from "./keystore";
 import { SnippetStore } from "./snippets";
 import type { HostInput } from "../shared/host";
 
+/** macOS 专属窗口 chrome:原版没有原生标题栏,红绿灯浮在内容上。
+ *  **纯函数**(平台由调用方传入),便于在任意平台覆盖两个分支。 */
+export function windowChrome(platform: NodeJS.Platform): { titleBarStyle?: "hiddenInset" } {
+  return platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {};
+}
+
 /* 应用菜单。默认菜单里 Edit 的 copy/paste/selectAll 角色会**在 OS 层吃掉 Cmd+C/V/A**,
    渲染层就永远收不到这几个键 —— 而我们的终端是 canvas 渲染,系统级"复制"从画布上**复制不到任何文本**,
    必须由渲染层自己处理(读 xterm 的选区写剪贴板)。所以这里去掉这些角色,把按键让给渲染层。
    保留最小菜单:应用菜单(关于/退出)、窗口(最小化/缩放/关闭)、编辑里只留 undo/redo 之外的空壳。 */
-function installAppMenu(): void {
-  if (process.platform !== "darwin") { Menu.setApplicationMenu(null); return; }
+/* platform 作为参数传入(默认取真实平台):非 darwin 分支才能在 macOS 上被测到。 */
+export function installAppMenu(platform: NodeJS.Platform = process.platform): void {
+  if (platform !== "darwin") { Menu.setApplicationMenu(null); return; }
   /* 显式写应用菜单(而不是 {role:"appMenu"}),为的是加入**偏好设置(⌘,)** ——
      macOS 上这是最容易被找到的设置入口;语言切换后要重建,所以文案走 tr()。 */
   const sendPrefs = (): void => {
@@ -75,7 +82,7 @@ function createWindow(): void {
     title: "sshkit",
     /* 原版没有原生标题栏:红绿灯直接浮在内容上,整条顶栏都是 tab 区。
        hiddenInset 保留红绿灯、去掉标题栏;顶栏左端预留出红绿灯的位置(见 index.html 的 --tl-inset)。 */
-    ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
+    ...windowChrome(process.platform),
     ...benchBounds(),
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),

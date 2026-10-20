@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
    不追求 UI 的语句覆盖 —— UI 由 test/e2e 的 Playwright 覆盖。 */
 export default defineConfig({
   test: {
-    include: ["test/unit/**/*.test.ts"],
+    include: ["test/unit/**/*.test.ts", "test/integration/**/*.test.ts"],
     environment: "node",
     globals: false,
     coverage: {
