@@ -15,7 +15,8 @@
     "test:e2e": "playwright test",
     "test:all": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e",
     "dist": "pnpm run build && electron-builder --mac --arm64",
-    "dist:dir": "pnpm run build && electron-builder --mac --arm64 --dir"
+    "dist:dir": "pnpm run build && electron-builder --mac --arm64 --dir",
+    "dist:dmg": "bash scripts/make-dmg.sh"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.1",

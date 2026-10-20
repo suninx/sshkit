@@ -9,3 +9,9 @@ bench/sessions/
 bench/.run/
 bench/profile/
 .idea/
+
+# 测试与打包产物
+release/
+test-results/
+playwright-report/
+test/.coverage/

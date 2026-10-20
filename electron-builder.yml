@@ -1,0 +1,35 @@
+appId: dev.sshkit.app
+productName: sshkit
+copyright: sshkit — original implementation
+
+# 直接用本机 node_modules 里已装好的 Electron 分发,不联网下载。
+# (electron-builder 26.15 解析 Electron 44 的下载缓存时会内部报错
+#  resolveCacheMode → undefined.ReadWrite;本地分发可绕开该路径。)
+electronDist: node_modules/electron/dist
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+  - "!**/*.map"
+
+# 原生模块必须落在 asar 之外(node-pty / keytar 的 .node)
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+  - "**/node_modules/keytar/**"
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  # 只出 zip:electron-builder 26.15.3 的 dmg 目标在 Electron 44 上会踩同一个内部
+  # 缓存 bug(customizeDmg → undefined.ReadWrite)。DMG 改用系统 hdiutil 生成,
+  # 见 scripts/make-dmg.sh(无第三方依赖、可复现)。
+  target:
+    - target: zip
+      arch: [arm64]
+  # 未做代码签名:本地自用可跑;对外分发需 Developer ID + 公证
+  identity: null
+  hardenedRuntime: false

@@ -55,6 +55,15 @@ nohup env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS ./node_modules/.bin/electron .
   --remote-debugging-port=9223 --user-data-dir="$HOME/Library/Application Support/sshkit" \
   > bench/.run/sshkit-live.log 2>&1 &
 
+# 测试与打包(工程化)
+pnpm test                         # 单元/集成(vitest,59+ 用例)
+pnpm run test:coverage            # 覆盖率(阈值是实测棘轮,只升不降)
+pnpm run test:e2e                 # 端到端(Playwright 驱动真实 Electron,临时 user-data-dir)
+pnpm run test:all                 # typecheck + unit + build + e2e
+pnpm dist                         # 打包 → release/(zip)
+pnpm run dist:dir                 # 只出 .app(调试打包问题用)
+pnpm run dist:dmg                 # 用系统 hdiutil 生成 DMG
+
 # 对照台(见 bench/PROTOCOL.md)
 bash bench/up.sh / bash bench/down.sh --keep-termius
 node bench/grab.mjs --port 9223 --out /tmp/a.png          # 截图
