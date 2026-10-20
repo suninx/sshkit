@@ -103,6 +103,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # Windows 打包受上游 bug 阻塞(见矩阵注释),标为 best-effort:不阻断 CI 但会在页面上显形。
+    continue-on-error: ${{ matrix.best_effort == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -110,16 +112,23 @@ jobs:
           # macOS 包(mac-arm64 zip):必须跑在 macOS runner 上
           - name: mac-arm64
             os: macos-latest
+            best_effort: false
             args: --mac --arm64 --publish never
             artifact: sshkit-mac-arm64
             paths: |
               release/*.zip
               release/*.dmg
           # Windows 包(NSIS 安装包 + 免安装 zip):必须跑在 Windows runner 上
+          # ⚠ best-effort:electron-builder 26.15.3 在 Windows 上下载 builder toolset(7zip)时
+          # 会崩在 resolveCacheMode(app-builder-lib/src/util/electronGet.ts:131
+          # "Cannot read properties of undefined (reading 'ReadWrite')")。这是上游 bug,
+          # macOS 侧用 electronDist 绕开了,Windows 的 7zip 工具集没有替代路径。
+          # 待办:升级 electron-builder 到修复该问题的版本后去掉 continue-on-error。
           - name: win-x64
             os: windows-latest
             args: --win --x64 --publish never
             artifact: sshkit-win-x64
+            best_effort: true
             paths: |
               release/*.exe
               release/*.zip
