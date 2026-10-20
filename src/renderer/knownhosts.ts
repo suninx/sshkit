@@ -124,9 +124,14 @@ export function createKnownHostsView(): KhView {
     if (r.hashed) del.title = "哈希化条目无法按主机名删除";
     del.addEventListener("click", async (ev) => {
       ev.stopPropagation();
-      await bridge.knownhost.remove(r.host);
-      sel.delete(r.host);
-      await refresh();
+      /* 失败要说话:以前这里没有 catch,失败只剩 unhandled rejection —— 行还在,用户不知道为什么。 */
+      try {
+        await bridge.knownhost.remove(r.host);
+        sel.delete(r.host);
+        await refresh();
+      } catch (err) {
+        toast(`Failed to remove ${r.host}: ${String((err as Error).message ?? err)}`);
+      }
     });
     el.addEventListener("click", (ev) => {
       if (r.hashed) return;                       // 哈希化条目无法按主机名定位,不参与多选
