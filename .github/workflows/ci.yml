@@ -43,7 +43,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-            libgtk-3-0 libgbm1 libasound2t64 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2
+            libgtk-3-0 libgbm1 libasound2t64 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
+            libsecret-1-0
       - name: 确保 Electron 二进制就位
         # 干净安装时 electron 的下载步骤可能没落地(CI 实测:dist 缺失 → e2e 启动超时、
         # electron-builder 报 "electronDist does not exist")。显式补齐,幂等。
@@ -56,7 +57,15 @@ jobs:
       # 表现就是 Playwright 等不到窗口(firstWindow 超时)。
       - run: pnpm run rebuild:pty
       - run: pnpm run build
+      - name: 冒烟:主进程能否加载(诊断用,失败不阻塞后续)
+        continue-on-error: true
+        env:
+          ELECTRON_ENABLE_LOGGING: "1"
+        run: |
+          timeout 25 xvfb-run -a ./node_modules/.bin/electron . --no-sandbox 2>&1 | head -60 || true
       - run: xvfb-run -a pnpm run test:e2e
+        env:
+          ELECTRON_ENABLE_LOGGING: "1"
 
   # 打包产物(仅 main;未签名,供本机自用/后续接入签名与公证)
   package:
