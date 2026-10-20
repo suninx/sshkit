@@ -56,7 +56,10 @@ describe("pty:本地终端", () => {
 
     expect(typeof id).toBe("number");
     expect(spawned).toHaveLength(1);
-    expect(spawned[0].file).toBe(process.env.SHELL || "/bin/zsh");
+    const expectedShell = process.platform === "win32"
+      ? process.env.COMSPEC || "powershell.exe"
+      : process.env.SHELL || "/bin/zsh";
+    expect(spawned[0].file).toBe(expectedShell);
     expect(spawned[0].args).toEqual([]);                    // 直接起交互 shell,不额外加参数
     expect(spawned[0].opts).toMatchObject({ name: "xterm-256color", cols: 100, rows: 30 });
     expect(spawned[0].opts.env).toMatchObject({ TERM: "xterm-256color", COLORTERM: "truecolor" });

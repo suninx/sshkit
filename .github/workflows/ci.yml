@@ -5,14 +5,20 @@ on:
     branches: [main]
   pull_request:
 
+# 最小权限:CI 只读仓库内容
+permissions:
+  contents: read
+
 concurrency:
-  group: ci-${{ github.ref }}
+  # 平台前缀:GitHub 的 concurrency group 是仓库级共享的,加前缀避免与 ci-windows 互取消
+  group: ci-linux-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   # 类型关 + 单元/集成测试 + 构建(纯 Node,最快)
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,12 +30,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
-      - run: pnpm test
+      # 跑覆盖率而不是纯 test:阈值(只升不降)在 vitest.config.ts 里,CI 必须执行才有意义
+      - run: pnpm run test:coverage
       - run: pnpm run build
 
   # 端到端:直接驱动 Electron,无头环境用 xvfb
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

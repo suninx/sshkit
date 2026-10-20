@@ -170,7 +170,9 @@ ipcMain.on("knownhost:answer", (_e, reqId: string, action: "continue" | "add" | 
   sshService.answerHostKey(reqId, action);
 });
 ipcMain.handle("knownhost:list", () => listKnownHosts());
-const snippetStore = new SnippetStore();
+/* 片段文件放到 Electron 的 userData 下:跨平台正确(Windows 是 %APPDATA%\sshkit),
+   也避免与用户手写的其它文件混在一起。 */
+const snippetStore = new SnippetStore(path.join(app.getPath("userData"), "snippets.json"));
 ipcMain.handle("creds:has", async (_e, id: string) => {
   try {
     const c = await getCreds(id);

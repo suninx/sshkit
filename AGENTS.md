@@ -58,6 +58,11 @@
 18. 覆盖率数字必须来自 `pnpm run test:coverage` 的真实输出;报告里不许只写百分比而
     不给命令与适用范围。
 
+**当前实测**(2026-10-20,`pnpm run test:coverage`,326 个用例):
+statements **89.95%** / branches **78.76%** / functions **88.4%** / lines **94.06%**;
+阈值已上调为 lines 93 / statements 89 / functions 87 / branches 78,CI 的 test job 直接跑
+`test:coverage`(阈值不达标就红)。
+
 ## 1. 仓库地图
 
 ```

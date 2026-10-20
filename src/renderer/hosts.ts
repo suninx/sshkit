@@ -94,13 +94,21 @@ export function initHostPanel(onConnect: (host: HostRecord | null) => void): voi
   const btnNew = document.getElementById("btn-new-host")! as HTMLButtonElement;
   btnNew.addEventListener("click", () => openForm(null));
   /* 原版在关闭"有改动但必填未填完"的表单时会弹确认框(标题/正文/按钮文案取自原版自身)。 */
+  /* "有没有改动"必须对照**打开表单时的快照**:新建表单预填了端口 22 等默认值,
+     若按"有内容就算脏",用户什么都没输入点取消也会被问"放弃修改"(实测踩到)。 */
+  /* id 必须与 index.html 一致:f-username / f-secret / f-keypath —— 之前写成 f-user/f-pass/f-key,
+     导致只改用户名/密码/私钥路径时快照不变,取消时静默丢弃输入。 */
+  const FORM_FIELDS = ["f-name", "f-group", "f-tags", "f-host", "f-username", "f-port", "f-secret", "f-keypath"];
+  let formBaseline = "";
+
+  function formSnapshot(): string {
+    return FORM_FIELDS
+      .map((id) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "")
+      .join("\u0000");
+  }
+
   function formDirty(): boolean {
-    const ids = ["f-name", "f-host", "f-user", "f-port", "f-pass", "f-key"];
-    for (const id of ids) {
-      const el = document.getElementById(id) as HTMLInputElement | null;
-      if (el && el.value.trim() !== "") return true;
-    }
-    return false;
+    return formSnapshot() !== formBaseline;
   }
 
   function closeForm(force = false): void {
@@ -463,6 +471,7 @@ const SORT_LABEL: Record<SortMode, string> = {
     setVal("f-secret", "");
     document.getElementById("form-error")!.textContent = "";
     syncAuthVisibility();
+    formBaseline = formSnapshot();   // 以"刚打开"的状态为基线,之后才谈得上改动
     backdrop.classList.add("visible");
   }
 

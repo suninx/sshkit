@@ -563,7 +563,10 @@ function openTabMenu(t: Tab, x: number, y: number): void {
   item(tr("menu.close"), () => closeTab(t.id));
   document.body.append(menu);
   setTimeout(() => document.addEventListener("click", function once(ev) {
-    if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener("click", once); }
+    const t = ev.target instanceof Node ? ev.target : null;
+    /* 目标已被重绘移除时不算"点外部"(同 .prefs 的守卫) */
+    if (t && (t as Node & { isConnected?: boolean }).isConnected === false) return;
+    if (!t || !menu.contains(t)) { menu.remove(); document.removeEventListener("click", once); }
   }), 0);
 }
 
@@ -1366,7 +1369,8 @@ document.querySelector(".snip-save")!.addEventListener("click", () => {
 /* 标准入口:⌘, 打开外观/设置面板(macOS 惯例)。会话屏里没有工具条,
    之前只有 Vaults 屏的图标能开,等于会话中断开了设置入口。 */
 document.addEventListener("keydown", (ev) => {
-  if (ev.metaKey && !ev.ctrlKey && !ev.altKey && !ev.shiftKey && ev.key === ",") {
+  /* macOS 用 ⌘,;Windows/Linux 惯例是 Ctrl+,(两者都接受,Ctrl 在 macOS 不影响) */
+  if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && !ev.shiftKey && ev.key === ",") {
     ev.preventDefault();
     openPrefs();
   }
@@ -1381,7 +1385,11 @@ document.getElementById("btn-prefs")!.addEventListener("click", (ev) => {
 document.addEventListener("click", (ev) => {
   const el = document.querySelector(".prefs");
   if (!el) return;
-  const t = ev.target as HTMLElement;
+  const t = ev.target instanceof Element ? ev.target : null;
+  /* 点击目标已被"重绘"掉(例如点配色方案时 drawList() 会 replaceChildren 重建列表,
+     被点的按钮已经脱离文档)时,el.contains(t) 必然是 false —— 若不加这个守卫,用户每选
+     一个主题/字号,整个设置面板就会被当成"点了外部"关掉,没法连续调整。 */
+  if (!t || !t.isConnected) return;
   /* 白名单必须包含**所有**开启者。之前只写了 #btn-prefs,而 Vaults 工具条上的开启者是
      #btn-appearance —— 于是点它时:自己的监听先开、紧接着这个"点外部关闭"又把它关掉,
      表现为"按钮点了没反应"(踩过)。 */
@@ -1414,6 +1422,8 @@ function wireSession(tab: Tab, t: Terminal, id: number, kind: "local" | "ssh", h
     renderTabs();
     const detail = info.error ?? `exit code ${info.exitCode}`;
     t.write(`\r\n\x1b[90m[session closed — ${detail}]\x1b[0m\r\n`);
+    /* Logs 分区此前是"永远空态":pushLog 定义了却没人调用。会话的结束就是最该记录的事件。 */
+    pushLog(info.reason === "closed" ? "info" : "error", tr("log.exit", { host: tab.label, detail }));
     // T8:由主进程给出的 reason 判定,不再靠退出码猜。
     // "dropped"(连接断了)才给重连入口;auth 失败重试也没用,只报错。
     const dropped = kind === "ssh" && (info.reason === "dropped" || info.reason === "error");
@@ -1496,6 +1506,7 @@ async function autoReconnect(tab: Tab, t: Terminal, manual = false): Promise<voi
     }
     try {
       const { id } = await bridge.ssh.connect(tab.host.id, { cols: t.cols, rows: t.rows });
+      pushLog("info", tr("log.connected", { host: tab.label }));
       clearDisconnected(tab);
       tab.recLog = [];   // 连上了就清掉旧的尝试记录
       tab.retries = 0;
@@ -1623,6 +1634,10 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
 
     wireSession(tab, t, id, kind, host);
 
+    /* Logs 分区要真的记录"连接"事件:此前只有自动重连成功才写,首次连接永远是空白,
+       与空态文案 "Connection and disconnect events will appear here." 不符。 */
+    if (kind === "ssh") pushLog("info", tr("log.connected", { host: label }));
+
     tab.state = "on";
     tab.sftp = kind === "ssh" ? { sid: id, label: `${host!.name} (${host!.host})` } : null;
     if (tab.sftp) lastSession = tab.sftp;
@@ -1683,7 +1698,7 @@ function openPalette(): void {
       ...tabs.map((t) => ({ label: t.label, hint: t.kind === "session" ? "tab" : t.kind, run: () => activateTab(t.id) })),
       ...MAC_SHORTCUTS.map((d) => ({
         label: d.name,
-        hint: shortcuts[d.id] ? (d.accel ?? "") : "未实现",
+        hint: shortcuts[d.id] ? (d.accel ?? "") : tr("toast.notImplemented"),
         run: () => (shortcuts[d.id] ? shortcuts[d.id]() : toast(tr("toast.featureNotImplemented", { name: d.name }))),
       })),
     ];

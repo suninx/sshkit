@@ -33,3 +33,10 @@ mac:
   # 未做代码签名:本地自用可跑;对外分发需 Developer ID + 公证
   identity: null
   hardenedRuntime: false
+
+# Windows:NSIS 安装包 + zip 免安装包(CI 的 windows job 会构建并上传这两种)
+win:
+  icon: build/icon.png
+  target:
+    - nsis
+    - zip

@@ -134,7 +134,7 @@ export function createFwdView(): FwdView {
     const draft = {
       kind: (edit?.kind ?? "local") as ForwardKind,
       port: edit?.port ?? 0,
-      bindAddress: edit?.bindAddress ?? "0.0.0.0",
+      bindAddress: (edit?.kind === "remote" ? (edit?.remoteBindAddress ?? edit?.bindAddress) : edit?.bindAddress) ?? "0.0.0.0",
       hostId: edit?.hostId ?? "",
       destinationAddress: edit?.destinationAddress ?? "",
       destinationPort: edit?.destinationPort ?? 0,
@@ -278,7 +278,10 @@ export function createFwdView(): FwdView {
           id: edit?.id ?? `f_${Date.now().toString(36)}`,
           hostId: draft.hostId,
           kind: draft.kind,
-          bindAddress: draft.bindAddress || "0.0.0.0",
+          /* 引擎对 remote(-R)只认 remoteBindAddress;bindAddress 是本地监听用的字段。
+             之前两者写反,导致用户填的"远端绑定地址"被静默忽略(一直是 0.0.0.0)。 */
+          bindAddress: draft.kind === "remote" ? "0.0.0.0" : (draft.bindAddress || "0.0.0.0"),
+          remoteBindAddress: draft.kind === "remote" ? (draft.bindAddress || "0.0.0.0") : undefined,
           port: draft.port,
           destinationAddress: draft.destinationAddress,
           destinationPort: draft.destinationPort,

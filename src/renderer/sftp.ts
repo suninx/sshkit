@@ -486,21 +486,21 @@ export function createSftpView(
     if (st.which === "remote" && !s) { banner(tr("sftp.notBound")); return; }
     try {
       if (kind === "mkdir") {
-        const name = prompt("New directory name:");
+        const name = await dialogs().prompt(tr("sftp.newDirTitle"));
         if (name) {
           if (st.which === "local") await bridge.local.mkdir(joinPath(st.dir, name));
           else await bridge.sftp.mkdir(s!.sid, joinPath(st.dir, name));
         }
       } else {
         const p = st.sel;
-        if (!p) { banner(`先在${st.which === "local" ? "左" : "右"}栏选中一项`); return; }
+        if (!p) { banner(tr("sftp.selectItemFirst")); return; }
         const rel = joinPath(st.dir, p.name);
         if (kind === "remove") {
-          if (!confirm(`Delete ${st.which} ${p.name}?`)) return;
+          if (!(await dialogs().confirm(tr("sftp.deleteTitle"), `${p.name}`))) return;
           if (st.which === "local") await bridge.local.remove(rel);
           else await bridge.sftp.remove(s!.sid, rel);
         } else {
-          const next = prompt("Rename to:", p.name);
+          const next = await dialogs().prompt(tr("sftp.renameTitle"), p.name);
           if (!next) return;
           if (st.which === "local") await bridge.local.rename(rel, joinPath(st.dir, next));
           else await bridge.sftp.rename(s!.sid, rel, joinPath(st.dir, next));
@@ -527,6 +527,77 @@ export function createSftpView(
   }
 
   /* ---------- 传输进度 ---------- */
+
+
+  /* ---- 应用内弹窗:Electron 渲染进程**不支持** window.prompt(返回 null),
+          原生 confirm 在 Linux 上还会阻塞渲染进程 —— 统一换成 DOM 弹窗。 ---- */
+  function dialogs(): {
+    prompt: (title: string, initial?: string) => Promise<string | null>;
+    confirm: (title: string, body: string) => Promise<boolean>;
+  } {
+    const mount = (html: string): HTMLElement => {
+      document.querySelectorAll(".prompt-dlg").forEach((n) => n.remove());
+      const wrap = document.createElement("div");
+      wrap.className = "discard-dlg prompt-dlg";
+      wrap.innerHTML = html;
+      document.body.append(wrap);
+      return wrap;
+    };
+    return {
+      prompt(title, initial = "") {
+        return new Promise((resolve) => {
+          const wrap = mount(`
+            <div class="dd-box" role="dialog" aria-modal="true">
+              <div class="dd-head"><span></span><button class="dd-x" aria-label="close">✕</button></div>
+              <div class="dd-body">
+                <p></p>
+                <input class="pd-input" type="text" />
+                <div class="pd-actions">
+                  <button class="dd-cancel"></button><button class="dd-ok"></button>
+                </div>
+              </div>
+            </div>`);
+          wrap.querySelector(".dd-head span")!.textContent = title;
+          wrap.querySelector(".dd-body p")!.textContent = title;
+          const input = wrap.querySelector(".pd-input") as HTMLInputElement;
+          input.value = initial;
+          (wrap.querySelector(".dd-cancel") as HTMLButtonElement).textContent = tr("form.cancel");
+          (wrap.querySelector(".dd-ok") as HTMLButtonElement).textContent = "OK";
+          const done = (v: string | null): void => { wrap.remove(); resolve(v); };
+          wrap.querySelector(".dd-x")!.addEventListener("click", () => done(null));
+          wrap.querySelector(".dd-cancel")!.addEventListener("click", () => done(null));
+          wrap.addEventListener("click", (ev) => { if (ev.target === wrap) done(null); });
+          wrap.querySelector(".dd-ok")!.addEventListener("click", () => done(input.value.trim() || null));
+          input.addEventListener("keydown", (ev) => {
+            if ((ev as KeyboardEvent).key === "Enter") done(input.value.trim() || null);
+            if ((ev as KeyboardEvent).key === "Escape") done(null);
+          });
+          input.focus();
+          input.select();
+        });
+      },
+      confirm(title, body) {
+        return new Promise((resolve) => {
+          const wrap = mount(`
+            <div class="dd-box" role="dialog" aria-modal="true">
+              <div class="dd-head"><span></span><button class="dd-x" aria-label="close">✕</button></div>
+              <div class="dd-body"><p></p>
+                <div class="pd-actions"><button class="dd-cancel"></button><button class="dd-ok danger"></button></div>
+              </div>
+            </div>`);
+          wrap.querySelector(".dd-head span")!.textContent = title;
+          wrap.querySelector(".dd-body p")!.textContent = body;
+          (wrap.querySelector(".dd-cancel") as HTMLButtonElement).textContent = tr("form.cancel");
+          (wrap.querySelector(".dd-ok") as HTMLButtonElement).textContent = tr("dlg.delete");
+          const done = (v: boolean): void => { wrap.remove(); resolve(v); };
+          wrap.querySelector(".dd-x")!.addEventListener("click", () => done(false));
+          wrap.querySelector(".dd-cancel")!.addEventListener("click", () => done(false));
+          wrap.addEventListener("click", (ev) => { if (ev.target === wrap) done(false); });
+          wrap.querySelector(".dd-ok")!.addEventListener("click", () => done(true));
+        });
+      },
+    };
+  }
 
   const jobEls = new Map<number, HTMLElement>();
   bridge.sftp.onProgress((p: TransferProgress) => {
