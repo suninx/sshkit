@@ -4,6 +4,10 @@ Lean local-first SSH terminal client. Original implementation, informed by a
 feature study of a commercial terminal (see sibling repo `termius-rea` for the
 research archive); no code or assets from that study are reused here.
 
+> Working with an AI agent? Read **[`AGENTS.md`](./AGENTS.md)** first (red lines,
+> commands, verification discipline, i18n and commit conventions).
+> Human handover / project history: **[`HANDOVER.md`](./HANDOVER.md)**.
+
 ## Status: M0 — local terminal shell
 
 - Electron 44 thin shell, esbuild bundling, TypeScript.
