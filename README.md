@@ -43,6 +43,19 @@ pnpm run dist:dmg        # → release/*.dmg (via system hdiutil)
 pnpm run dist:dir        # unpacked .app, handy when debugging packaging
 ```
 
+### Packaged artifacts
+
+`pnpm dist` (local) and CI both produce per-platform packages:
+
+| Platform | Runner | Artifacts |
+|---|---|---|
+| macOS (arm64) | `macos-latest` | `.zip`, `.dmg` |
+| Windows (x64) | `windows-latest` | NSIS `.exe` installer, `.zip` |
+| Linux (x64) | `ubuntu-latest` | `.AppImage`, `.tar.gz` |
+
+Each package is built on its own native runner — cross-building native modules
+(`node-pty`, `keytar`) is not reliable, so CI never cross-compiles.
+
 ## Development
 
 ```sh

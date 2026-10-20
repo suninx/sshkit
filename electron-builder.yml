@@ -42,3 +42,13 @@ win:
   target:
     - nsis
     - zip
+
+# Linux:AppImage(免安装单文件)+ tar.gz;图标用 build/icons 下的多尺寸 PNG 集
+# (Electron 应用在 Linux 上必须提供 16..512 的图标集,desktop 文件才能在各桌面环境正确显示)
+linux:
+  icon: build/icons
+  category: Network
+  synopsis: Local-first SSH client
+  target:
+    - AppImage
+    - tar.gz

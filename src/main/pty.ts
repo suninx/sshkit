@@ -79,9 +79,9 @@ export class PtyService {
 
 function cleanEnv(): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (typeof v === "string") out[k] = v;
-  }
+  /* Node 保证 process.env 枚举出的值都是字符串(赋 undefined 会被转成 "undefined"),
+     原来的 typeof 判断是不可达分支。 */
+  for (const [k, v] of Object.entries(process.env)) out[k] = v as string;
   delete out.ELECTRON_RUN_AS_NODE;
   return out;
 }

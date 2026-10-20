@@ -51,7 +51,8 @@ interface Live {
   sockets: Set<net.Socket>;
 }
 
-const isSocks5 = (buf: Buffer): boolean => buf.length >= 3 && buf[0] === 0x05;
+/* 调用点(stage 0)已保证 buf.length >= 3,长度判断在这里是死分支,删掉。 */
+const isSocks5 = (buf: Buffer): boolean => buf[0] === 0x05;
 
 export class ForwardService {
   private live = new Map<string, Live>();
@@ -193,10 +194,12 @@ export class ForwardService {
 
     server.on("error", (e) => this.fail(l, e));
     server.listen(rule.port, rule.bindAddress || "0.0.0.0", () => {
-      const addr = server.address();
+      /* TCP server 的 listen 回调只会在 listening 后触发,此时 address() 必为 AddressInfo
+         (本项目从不监听 unix socket),原来的 typeof/null 兜底是不可达分支。 */
+      const addr = server.address() as net.AddressInfo;
       l.server = server;
       l.status.state = "running";
-      l.status.boundPort = typeof addr === "object" && addr ? addr.port : rule.port;
+      l.status.boundPort = addr.port;
       this.emit(l);
     });
   }
@@ -264,44 +267,43 @@ export class ForwardService {
         if (buf.length < 3) return;
         if (!isSocks5(buf)) { sock.destroy(); return; }
         sock.write(Buffer.from([0x05, 0x00])); // 无需认证
-        buf = buf.subarray(buf.length); // 余量留着解析请求
         buf = Buffer.alloc(0);
         stage = 1;
         return;
       }
-      if (stage === 1) {
-        if (buf.length < 5) return;
-        const atyp = buf[3];
-        let host = "";
-        let port = 0;
-        let need = 0;
-        if (atyp === 0x01) { need = 4 + 4 + 2; if (buf.length < need) return; host = `${buf[4]}.${buf[5]}.${buf[6]}.${buf[7]}`; port = buf.readUInt16BE(8); }
-        else if (atyp === 0x03) { const len = buf[4]; need = 4 + 1 + len + 2; if (buf.length < need) return; host = buf.subarray(5, 5 + len).toString("utf8"); port = buf.readUInt16BE(5 + len); }
-        else if (atyp === 0x04) { need = 4 + 16 + 2; if (buf.length < need) return; host = Array.from(buf.subarray(4, 20)).map((b, i) => (i % 2 === 0 ? b.toString(16) : b.toString(16))).join("").replace(/(.{4})(?=.)/g, "$1:"); port = buf.readUInt16BE(20); }
-        else { sock.destroy(); return; }
+      /* stage 只有 0/1 两种取值,且 0 在上面已经 return —— 走到这里必然是阶段 1,
+         原来的 if (stage === 1) 是不可达分支,已删除。 */
+      if (buf.length < 5) return;
+      const atyp = buf[3];
+      let host = "";
+      let port = 0;
+      let need = 0;
+      if (atyp === 0x01) { need = 4 + 4 + 2; if (buf.length < need) return; host = `${buf[4]}.${buf[5]}.${buf[6]}.${buf[7]}`; port = buf.readUInt16BE(8); }
+      else if (atyp === 0x03) { const len = buf[4]; need = 4 + 1 + len + 2; if (buf.length < need) return; host = buf.subarray(5, 5 + len).toString("utf8"); port = buf.readUInt16BE(5 + len); }
+      else if (atyp === 0x04) { need = 4 + 16 + 2; if (buf.length < need) return; host = Array.from(buf.subarray(4, 20)).map((b, i) => (i % 2 === 0 ? b.toString(16) : b.toString(16))).join("").replace(/(.{4})(?=.)/g, "$1:"); port = buf.readUInt16BE(20); }
+      else { sock.destroy(); return; }
 
-        sock.removeListener("data", onData);
-        const client = this.clientFor(l.rule.hostId);
-        if (!client) { sock.destroy(); return; }
-        client.forwardOut(sock.remoteAddress ?? "127.0.0.1", sock.remotePort ?? 0, host, port, (err, stream) => {
-          if (err) {
-            sock.write(Buffer.from([0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0])); // 一般性失败
-            sock.destroy();
-            this.bump(l, -1);
-            return;
-          }
-          sock.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]));
-          sock.pipe(stream).pipe(sock);
-          const done = (): void => {
-            try { stream.destroy(); } catch { /* ignore */ }
-            try { sock.destroy(); } catch { /* ignore */ }
-            this.bump(l, -1);
-          };
-          stream.on("close", done);
-          stream.on("error", done);
-          sock.on("close", done);
-        });
-      }
+      sock.removeListener("data", onData);
+      const client = this.clientFor(l.rule.hostId);
+      if (!client) { sock.destroy(); return; }
+      client.forwardOut(sock.remoteAddress ?? "127.0.0.1", sock.remotePort ?? 0, host, port, (err, stream) => {
+        if (err) {
+          sock.write(Buffer.from([0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0])); // 一般性失败
+          sock.destroy();
+          this.bump(l, -1);
+          return;
+        }
+        sock.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]));
+        sock.pipe(stream).pipe(sock);
+        const done = (): void => {
+          try { stream.destroy(); } catch { /* ignore */ }
+          try { sock.destroy(); } catch { /* ignore */ }
+          this.bump(l, -1);
+        };
+        stream.on("close", done);
+        stream.on("error", done);
+        sock.on("close", done);
+      });
     };
     sock.on("data", onData);
   }

@@ -115,6 +115,15 @@ jobs:
             paths: |
               release/*.zip
               release/*.dmg
+          # Linux 包(AppImage + tar.gz):在 ubuntu runner 原生构建
+          # (AppImage 的打包工具链只在 Linux 上可用,不能跨平台交叉构建)
+          - name: linux-x64
+            os: ubuntu-latest
+            args: --linux --x64 --publish never
+            artifact: sshkit-linux-x64
+            paths: |
+              release/*.AppImage
+              release/*.tar.gz
           # Windows 包(NSIS 安装包 + 免安装 zip):必须跑在 Windows runner 上
           # 注:app-builder-lib 26.x 的代码用的是 @electron/get@5 的 ElectronDownloadCacheMode,
           # 但依赖声明写成 ^3.0.0 —— 已用 pnpm-workspace.yaml 的 override 定向修到 ^5.1.0

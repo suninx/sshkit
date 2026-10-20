@@ -94,8 +94,6 @@ function parentOf(dir: string): string {
 }
 
 const pick = (msg: string): string => msg.replace(/^Error invoking remote method '[^']+',\s*/, "");
-const byDirsThenName = (a: SftpEntry, b: SftpEntry): number =>
-  (a.isDir === b.isDir ? 0 : a.isDir ? -1 : 1) || a.name.localeCompare(b.name);
 
 export function createSftpView(
   getSession: () => CurrentSession | null,
@@ -610,8 +608,8 @@ export function createSftpView(
       queueEl.prepend(row);
       jobEls.set(p.jobId, row);
       while (jobEls.size > 8) {
-        const oldest = [...jobEls.entries()].sort((a, b) => Number(b[0]) - Number(a[0])).pop();
-        if (!oldest) break;
+        /* size > 8 保证 entries 非空,pop() 必有值(原 `if (!oldest) break` 是不可达兜底) */
+        const oldest = [...jobEls.entries()].sort((a, b) => Number(b[0]) - Number(a[0])).pop()!;
         oldest[1].remove(); jobEls.delete(oldest[0]);
       }
     }

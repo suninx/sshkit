@@ -163,7 +163,8 @@ export function createFwdView(): FwdView {
     btnSkip.addEventListener("click", () => { close(); finish(); });
     const finish = (): void => { void refresh(); };
 
-    function field(label: string, placeholder: string, required: boolean, get: () => string, set: (v: string) => void, slug = ""): HTMLElement {
+    /* slug 必填:向导里每个输入框都要能用 [data-f] 定位(对照台/测试都依赖它) */
+    function field(label: string, placeholder: string, required: boolean, get: () => string, set: (v: string) => void, slug: string): HTMLElement {
       const wrap = document.createElement("label");
       wrap.className = "fwd-field";
       const cap = document.createElement("span");
@@ -171,7 +172,7 @@ export function createFwdView(): FwdView {
       cap.textContent = required ? `${label} *` : label;
       const input = document.createElement("input");
       input.placeholder = placeholder;
-      if (slug) input.dataset.f = slug; // 便于对照台确定性地驱动向导
+      input.dataset.f = slug; // 便于对照台确定性地驱动向导
       input.value = get();
       input.spellcheck = false;
       input.addEventListener("input", () => set(input.value));

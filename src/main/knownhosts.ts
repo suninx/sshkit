@@ -33,9 +33,8 @@ function loadEntries(file = KNOWN_HOSTS): Entry[] {
       ? (() => { const f = hostField.split("|"); return { salt: f[2], digest: f[3] }; })()
       : undefined;
     if (hashed) hostField = "|1|";
-    try {
-      out.push({ rawHostField: hostField, hashed, keyType: parts[1], keyBytes: Buffer.from(parts[2], "base64") });
-    } catch { continue; }
+    /* Buffer.from(str, "base64") 对任意字符串都不会抛(非法字符被忽略),原来的 try/catch 是死分支。 */
+    out.push({ rawHostField: hostField, hashed, keyType: parts[1], keyBytes: Buffer.from(parts[2], "base64") });
   }
   return out;
 }
@@ -129,8 +128,8 @@ export function importKnownHosts(sourcePath: string, file = KNOWN_HOSTS): { adde
     const parts = t.split(" ");
     if (parts.length < 3) { skipped++; continue; }
     const [hostField, keyType, b64] = parts;
-    let keyBytes: Buffer;
-    try { keyBytes = Buffer.from(b64, "base64"); } catch { skipped++; continue; }
+    /* 同上:base64 解码不会抛,只有"解出来是空"才算坏行。 */
+    const keyBytes = Buffer.from(b64, "base64");
     if (!keyBytes.length) { skipped++; continue; }
     const id = `${hostField}|${keyType}|${keyBytes.toString("base64")}`;
     if (seen.has(id)) { skipped++; continue; }

@@ -15,8 +15,6 @@ interface SshSession {
   hostId?: string;
   /** T8:远端 shell 是否已正常结束(用于区分"正常退出"与"掉线") */
   exited?: boolean;
-  /** T8:是不是我方主动收掉的会话(主动收掉不该报断线) */
-  intentional?: boolean;
 }
 
 interface PendingHostKey {
@@ -102,11 +100,12 @@ export class SshService {
         /authentication|permission denied|all configured authentication methods failed|no saved password/i.test(msg);
 
       client.on("error", (err) => {
-        const s = this.sessions.get(id);
+        /* 主动 dispose 会先删会话再 end();所以这里拿到的 session 不可能带
+           "我方主动关闭"标记 —— 原 if (s?.intentional) return 是死分支,已删除。
+           主动关闭后的 close 由下面 !s 守卫吞掉,不会报断线。 */
         this.sessions.delete(id);
         this.cancelHostKeyAsks(id, sender);
         settleErr(err.message);
-        if (s?.intentional) return;
         if (sawBadKey) {
           safeSend("terminal:exit", id, { exitCode: -1, reason: "hostkey" });
         } else {
@@ -120,7 +119,7 @@ export class SshService {
         this.sessions.delete(id);
         this.cancelHostKeyAsks(id, sender);
         settleErr("connection closed before ready");
-        if (!s || s.intentional || s.exited) return;
+        if (!s || s.exited) return;
         safeSend("terminal:exit", id, { exitCode: -1, error: "connection lost", reason: "dropped" });
       });
 
@@ -259,7 +258,7 @@ export class SshService {
   dispose(id: number): void {
     const s = this.sessions.get(id);
     if (!s) return;
-    s.intentional = true; // T8:主动关闭不报断线
+    /* T8:先删会话再 end():后续 client 的 error/close 拿不到 session,不会报断线。 */
     this.sessions.delete(id);
     try { s.stream?.end(); } catch { /* ignore */ }
     try { s.client.end(); } catch { /* ignore */ }

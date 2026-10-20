@@ -87,7 +87,7 @@ export type { SshkitBridge };
 
 let editingHostId: string | null = null;
 
-export function initHostPanel(onConnect: (host: HostRecord | null) => void): void {
+export function initHostPanel(onConnect: (host: HostRecord) => void): void {
   const listEl = document.getElementById("host-list")!;
   const backdrop = document.getElementById("form-backdrop")!;
 
@@ -363,24 +363,27 @@ const SORT_LABEL: Record<SortMode, string> = {
     }
   }
 
-  function renderItem(host: HostRecord | null): HTMLElement {
+  /* 主机列表只渲染真实的 HostRecord(没有 "Local shell" 伪条目,本地终端从工具条打开),
+     所以不带 null 分支。 */
+  function renderItem(host: HostRecord): HTMLElement {
     const el = document.createElement("div");
     el.className = "host-item";
-    el.dataset.id = host ? host.id : "local";
-    const name = host ? host.name : "Local shell";
+    el.dataset.id = host.id;
+    const name = host.name;
     /* 原版副标题格式是「类型, 用户名」(如 `ssh, root`),不是 user@host */
-    const small = host ? `ssh, ${host.username}` : "local, zsh";
+    const small = `ssh, ${host.username}`;
     el.innerHTML = `
       <span class="hico"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none"/><circle cx="7.5" cy="16.5" r="1" fill="currentColor" stroke="none"/></svg></span>
       <span class="hcol"><span class="name">${escapeHtml(name)}</span>
       <span class="small">${escapeHtml(small)}</span></span>
-      ${host ? `<button class="btn" data-act="edit" title="edit">✎</button><button class="btn danger" data-act="del" title="delete">✕</button>` : ""}`;
-    if (host?.tags?.length) {
+      <button class="btn" data-act="edit" title="edit">✎</button><button class="btn danger" data-act="del" title="delete">✕</button>`;
+    const tags = host.tags ?? [];
+    if (tags.length) {
       const chips = document.createElement("div");
       chips.className = "tag-chips";
       /* 只放第一枚,其余收进 `+N`(见下);单行不换行,永不出现半截芯片 */
       const MAX_VISIBLE = 1;
-      for (const tag of host.tags) {
+      for (const tag of tags.slice(0, MAX_VISIBLE)) {
         const c = document.createElement("span");
         c.className = "tag-chip";
         const col = tagColor(tag);
@@ -402,19 +405,18 @@ const SORT_LABEL: Record<SortMode, string> = {
         rm.title = "Remove tag";
         rm.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          const left = (host.tags ?? []).filter((x) => x !== tag);
+          const left = tags.filter((x) => x !== tag);
           void bridge.hosts.update(host.id, { ...host, tags: left.length ? left : undefined }).then(() => refresh());
         });
         c.append(dot, label, rm);
         chips.append(c);
-        if (chips.querySelectorAll(".tag-chip").length >= MAX_VISIBLE) break;
       }
-      if (host.tags.length > MAX_VISIBLE) {
+      if (tags.length > MAX_VISIBLE) {
         /* 卡片右侧空间有限:多余的标签收进 `+N`(悬停 title 列出全部),避免出现被裁半截的芯片 */
         const more = document.createElement("span");
         more.className = "tag-chip tag-more";
-        more.textContent = `+${host.tags.length - MAX_VISIBLE}`;
-        more.title = host.tags.join(", ");
+        more.textContent = `+${tags.length - MAX_VISIBLE}`;
+        more.title = tags.join(", ");
         chips.append(more);
       }
       el.append(chips);
@@ -423,7 +425,7 @@ const SORT_LABEL: Record<SortMode, string> = {
       const target = e.target as HTMLElement;
       const act = target.dataset?.act;
       if (act === "edit") { e.stopPropagation(); openForm(host); return; }
-      if (act === "del") { e.stopPropagation(); void removeHost(host!); return; }
+      if (act === "del") { e.stopPropagation(); void removeHost(host); return; }
       onConnect(host);
     });
     return el;

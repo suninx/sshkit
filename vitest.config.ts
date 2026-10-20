@@ -12,7 +12,19 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/shared/**/*.ts", "src/main/**/*.ts", "src/renderer/*.ts"],
-      exclude: ["src/renderer/themes.ts", "src/renderer/fonts/**"],
+      /* 排除项只有两类,理由如下(AGENTS §0.3):
+         1) src/renderer/themes.ts —— 1600+ 行纯配色数据表,唯一函数 toXtermTheme 另有用例覆盖;
+         2) src/shared/{host,knownhost,sftp,forward}.ts —— **纯类型模块**,编译后不产生任何
+            运行时语句(grep 验证:0 处 const/function/class 声明),计入分母只会拉低百分比。
+         字体是二进制资源,不参与统计。 */
+      exclude: [
+        "src/renderer/themes.ts",
+        "src/renderer/fonts/**",
+        "src/shared/host.ts",
+        "src/shared/knownhost.ts",
+        "src/shared/sftp.ts",
+        "src/shared/forward.ts",
+      ],
       reporter: ["text-summary", "html", "lcov"],
       reportsDirectory: "test/.coverage",
       /* 阈值是"棘轮下限":贴近当前实测值,只许升不许降(见 AGENTS.md §0.3)。

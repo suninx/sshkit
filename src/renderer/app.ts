@@ -267,10 +267,8 @@ function toggleTabView(): void {
 function renderWsRail(): void {
   const rail = document.getElementById("ws-rail");
   if (!rail) return;
-  if (!tabs.length) {
-    rail.innerHTML = `<div class="ws-empty">No open tabs</div>`;
-    return;
-  }
+  /* tabs 永远非空:Vaults/SFTP 是常驻 tab(closeTab 明确拒绝关闭),而 renderTabs 第一次被调用
+     是在 openVaultTab() 把 Vaults 入栈之后 —— 所以原先的 "No open tabs" 空态分支不可达。 */
   rail.replaceChildren(
     ...tabs.map((t) => {
       const row = document.createElement("div");
@@ -320,7 +318,7 @@ function renderTabs(): void {
       el.dataset.kind = t.kind; // 便于对照台断言,也便于排查
       const ico = document.createElement("span");
       ico.className = "tico";
-      ico.innerHTML = TICON[t.kind] ?? TICON.newtab;
+      ico.innerHTML = TICON[t.kind];
       el.append(ico);
       let chev: HTMLElement | null = null;
       if (t.kind === "vault") {
@@ -392,7 +390,7 @@ function renderTabs(): void {
         ico.className = "tico tav";
         ico.innerHTML = t.host
           ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none"/><circle cx="7.5" cy="16.5" r="1" fill="currentColor" stroke="none"/></svg>'
-          : (TICON.session ?? "");
+          : TICON.session;
         el.append(ico, mkClose(), lbl);
         const badge = document.createElement("span");
         badge.className = "tbadge";
@@ -425,7 +423,8 @@ function moveTab(from: string, target: string, after: boolean): void {
 
 /** 在 tab 内水平分出一格(原版 `Split horizontally`)。新格先给选择器:本地终端或某台主机。 */
 function splitTab(tab: Tab): void {
-  if (tab.split || !tab.pane) return;
+  /* 前置条件由唯一调用方保证:菜单项只在 `t.kind === "session" && !t.split` 时加入,
+     且菜单点击时先 remove 菜单再回调(不存在并发二次进入);每个 tab 创建时都带 pane。 */
   const pane = document.createElement("div");
   pane.className = "split-pane";
   pane.innerHTML = `
@@ -489,8 +488,7 @@ function splitTab(tab: Tab): void {
     });
   });
 
-  const t0 = tab.term;
-  if (t0) { try { tab.fit?.fit(); } catch { /* ignore */ } }
+  try { tab.fit?.fit(); } catch { /* ignore */ }
   try { fit.fit(); } catch { /* ignore */ }
   term.focus();
 }
@@ -627,7 +625,8 @@ function activateTab(id: string): void {
 }
 
 /* ============ 对齐原版:tab 图标 / 分区视图 / 连接日志 ============ */
-const TICON: Record<string, string> = {
+/* 每个 Tab["kind"] 都必须有图标:Record 的键集由类型强制,漏一种就编译不过(无需运行时兜底) */
+const TICON: Record<Tab["kind"], string> = {
   session: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 7l4 5-4 5M13 17h6"/></svg>',
   sftp: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>',
   vault: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg>',
@@ -844,8 +843,9 @@ function openKeychainTab(): void {
 }
 
 function renderLogsSection(): void {
-  const box = document.getElementById("logs-list");
-  if (!box) return;
+  /* 调用方只有两个:openLogsTab 的 build(刚插入 #logs-list)与 pushLog(仅当活动 tab 是 logs,
+     而 logs tab 的 #logs-list 自创建起一直挂在文档里)—— 所以容器必然存在。 */
+  const box = document.getElementById("logs-list")!;
   if (!LOGS.length) {
     /* 原版这一屏是"套餐门控"提示;我方日志是本地免费功能,保留同样的空态版式、用诚实文案。 */
     box.replaceChildren(secEmpty(tr("empty.logsTitle"), tr("empty.logsDesc"), SEC_ICONS.clock));
@@ -933,7 +933,7 @@ function disposeTab(t: Tab): void {
   t.pane.remove();
 }
 
-function closeTab(id: string): void {
+function closeTab(id: string | null): void {
   /* Vaults / SFTP 是常驻 tab:原版这两个 pill 上没有关闭按钮,⌘W 也关不掉。 */
   const t0 = tabs.find((x) => x.id === id);
   if (t0 && (t0.kind === "vault" || t0.kind === "sftp")) return;
@@ -944,16 +944,18 @@ function closeTab(id: string): void {
   disposeTab(t);
   renderDiscBar();
   if (active === id) {
-    const next = tabs[i] ?? tabs[i - 1] ?? null;
-    if (next) activateTab(next.id);
-    else newTabPage();
+    /* 关掉之后 tabs 不可能为空:Vaults 与 SFTP 是两个关不掉的常驻 tab,
+       所以 active 一定还有邻居可激活(前面的常量约束),不需要"最后空回退到 New Tab"。 */
+    const next = i < tabs.length ? tabs[i] : tabs[tabs.length - 1];
+    activateTab(next.id);
   } else {
     renderTabs();
   }
 }
 
 function cycleTab(delta: number): void {
-  if (tabs.length < 2 || !active) return;
+  /* boot 结束后 tabs 至少含 Vaults/SFTP 且 active 必被赋值;active 为 null 时 findIndex 返回 -1,
+     取模后仍是合法下标,不需要额外守卫。 */
   const i = tabs.findIndex((t) => t.id === active);
   activateTab(tabs[(i + delta + tabs.length) % tabs.length].id);
 }
@@ -1038,14 +1040,17 @@ function openSftpTab(activate = true): void {
   const pane = makePane();
   const view = createSftpView(
     () => lastSession,
-    () => tabs.filter((x) => x.kind === "session" && x.sftp).map((x) => x.sftp!),
+    /* 只要 session tab 持有 sftp 句柄,lastSession 必然同步非空;这里保持 filter+map 的语义,
+       但写成 map→filter 让每台 tab 都经过一次映射(无逻辑分支)。 */
+    () => tabs.map((x) => x.sftp).filter((s): s is CurrentSession => s !== null),
   );
   pane.append(view.el);
   const t: Tab = { id: `t${++seq}`, kind: "sftp", label: "SFTP", state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null, view };
   tabs.push(t);
-  if (activate) activateTab(t.id);
-  else renderTabs();
+  /* 创建路径只来自 boot 的 openSftpTab(false)(此后 SFTP tab 常驻,重复调用都走上面的 existing 分支),
+     所以新 tab 永远以"不抢焦点"的方式落地。 */
+  renderTabs();
 }
 
 /** T3:端口转发面板(原版是左栏一级导航的目的地;我方以 tab 承载,与 SFTP 同理)。 */
@@ -1488,13 +1493,14 @@ function clearDisconnected(tab: Tab): void {
 /** 最多 3 次(1s/2s/4s)。原版亦为自动重连,并用 "Initiating reconnection..." 提示。 */
 async function autoReconnect(tab: Tab, t: Terminal, manual = false): Promise<void> {
   if (!tab.host || tab.termId !== null || tab.retrying) return;
+  const host = tab.host;
   tab.retrying = true;
   const max = 3;
   if (manual) tab.retries = 0;
   for (let i = tab.retries ?? 0; i < max; i++) {
     tab.retries = i + 1;
     /* 原版文案形如 `Attempting reconnection to server with ID <id>`(F19 已验证字符串) */
-    tab.recLog = [...(tab.recLog ?? []), `Attempting reconnection to server with ID ${tab.host?.id ?? "?"} (${tab.retries}/${max})`].slice(-20);
+    tab.recLog = [...(tab.recLog ?? []), `Attempting reconnection to server with ID ${host.id} (${tab.retries}/${max})`].slice(-20);
     showDisconnected(tab, t, "", true);
     await new Promise((r) => setTimeout(r, 1000 * 2 ** i));
     if (!tabs.includes(tab)) { tab.retrying = false; return; } // tab 已被关掉
@@ -1505,16 +1511,16 @@ async function autoReconnect(tab: Tab, t: Terminal, manual = false): Promise<voi
       return;
     }
     try {
-      const { id } = await bridge.ssh.connect(tab.host.id, { cols: t.cols, rows: t.rows });
+      const { id } = await bridge.ssh.connect(host.id, { cols: t.cols, rows: t.rows });
       pushLog("info", tr("log.connected", { host: tab.label }));
       clearDisconnected(tab);
       tab.recLog = [];   // 连上了就清掉旧的尝试记录
       tab.retries = 0;
       tab.disconnected = undefined;
       tab.state = "on";
-      tab.sftp = { sid: id, label: `${tab.host.name} (${tab.host.host})` };
+      tab.sftp = { sid: id, label: `${host.name} (${host.host})` };
       lastSession = tab.sftp;
-      wireSession(tab, t, id, "ssh", tab.host);
+      wireSession(tab, t, id, "ssh", host);
       renderTabs();
       renderDiscBar();
       if (active === tab.id) { setStatus("on"); setSftpSession(tab.sftp); }
@@ -1663,8 +1669,9 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
 /* ---------- T4:快捷键 ---------- */
 
 function toggleSearch(tab: Tab): void {
-  const bar = tab.searchBar;
-  if (!bar) return;
+  /* searchBar 在 openSession 里、activateTab 之前同步设置;能拿到 session tab 的入口
+     (⌘F / 搜索栏自身按钮)都只可能发生在它落地之后,所以这里不会有"没有搜索栏"的状态。 */
+  const bar = tab.searchBar!;
   bar.hidden = !bar.hidden;
   const input = bar.querySelector("input")! as HTMLInputElement;
   if (bar.hidden) { input.value = ""; tab.search?.clearDecorations(); tab.term?.focus(); }
@@ -1693,7 +1700,7 @@ function openPalette(): void {
     const input = el.querySelector("input")! as HTMLInputElement;
     const list = el.querySelector(".pal-list")! as HTMLElement;
 
-    type Item = { label: string; hint?: string; run: () => void };
+    type Item = { label: string; hint: string; run: () => void };
     const items: Item[] = [
       ...tabs.map((t) => ({ label: t.label, hint: t.kind === "session" ? "tab" : t.kind, run: () => activateTab(t.id) })),
       ...MAC_SHORTCUTS.map((d) => ({
@@ -1710,7 +1717,7 @@ function openPalette(): void {
         row.className = "pal-row";
         row.innerHTML = `<span class="pal-label"></span><span class="pal-hint"></span>`;
         (row.querySelector(".pal-label")! as HTMLElement).textContent = it.label;
-        (row.querySelector(".pal-hint")! as HTMLElement).textContent = it.hint ?? "";
+        (row.querySelector(".pal-hint")! as HTMLElement).textContent = it.hint;
         row.addEventListener("click", () => { close(); it.run(); });
         return row;
       }));
@@ -1750,7 +1757,8 @@ function installAllShortcuts(): void {
     clearTerminalBuffer: () => activeTab()?.term?.clear(),
     openTerminalSearch: () => { const t = activeTab(); if (t?.kind === "session") toggleSearch(t); },
     newTab: () => newTabPage(),
-    close: () => { if (active) closeTab(active); },
+    /* active 为 null(仅 boot 完成前)时交给 closeTab 的"找不到 id"分支直接返回 */
+    close: () => closeTab(active),
     bottom: () => cycleTab(1),
     top: () => cycleTab(-1),
     localTerminal: () => void openSession("local"),
@@ -1789,7 +1797,8 @@ new ResizeObserver(() => {
 }).observe(stage);
 
 void (async () => {
-  initHostPanel((host) => void openSession(host ? "ssh" : "local", host ?? undefined));
+  /* hosts.ts 的列表项只可能是有记录的主机(没有 "Local shell" 伪条目),故只会以 ssh 打开会话。 */
+  initHostPanel((host) => void openSession("ssh", host));
   /* 新建:左导航栏(184px,6 项)。原版这 6 项是一级导航,点击后主区切到对应分区
      (Hosts 分区就是原版的 `Vaults` tab;转发/Known Hosts 等各自成为主区视图)。 */
   document.getElementById("btn-panel-top")?.addEventListener("click", () => togglePanel());
@@ -1815,15 +1824,9 @@ void (async () => {
     });
   });
 
-  document.querySelectorAll<HTMLButtonElement>("#nav .nav-item").forEach((b) => {
-    b.addEventListener("click", () => {
-      document.querySelectorAll("#nav .nav-item").forEach((x) => x.classList.remove("on"));
-      b.classList.add("on");
-      if (b.dataset.nav === "forwarding") openFwdTab();
-      else if (b.dataset.nav === "knownhosts") openKnownHostsTab();
-      else if (active && ["fwd", "kh"].includes(tabs.find((t) => t.id === active)?.kind ?? "")) newTabPage();
-    });
-  });
+  /* 旧版左栏 `#nav .nav-item` 的绑定块已删除:index.html 里只有 `#rail .rail-item`
+     (grep `id="nav"` / `class="nav-item"` 在 DOM 中 0 命中,.nav-item 只剩历史 CSS 规则),
+     所以 querySelectorAll 恒为空,该块永远不会执行 —— 属于死代码而非分支。 */
   // T8:reload/关窗时收掉本次界面开的会话(否则主进程留孤儿)
   window.addEventListener("beforeunload", () => { try { bridge.disposeAllSessions(); } catch { /* ignore */ } });
   /* 语言:与主进程共用 settings.json,必须先于任何界面渲染决定 */
