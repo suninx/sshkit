@@ -14,8 +14,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:all": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e",
-    "dist": "pnpm run build && electron-builder --mac --arm64",
-    "dist:dir": "pnpm run build && electron-builder --mac --arm64 --dir",
+    "dist": "pnpm run build && electron-builder --mac --arm64 --publish never",
+    "dist:dir": "pnpm run build && electron-builder --mac --arm64 --publish never --dir",
     "dist:dmg": "bash scripts/make-dmg.sh"
   },
   "devDependencies": {

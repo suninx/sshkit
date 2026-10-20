@@ -27,7 +27,16 @@ export async function launchApp(): Promise<Launched> {
     cwd: process.cwd(),
     env,
   });
-  const page = await app.firstWindow();
+  /* 从启动那一刻就收集 Electron 自身的输出:窗口没起来时,答案通常在它的 stderr 里
+     (例如原生模块 ABI 不匹配 → 主进程 require 失败 → 进程退出无窗口)。 */
+  const chunks: string[] = [];
+  app.process().stdout?.on("data", (d: Buffer) => chunks.push(d.toString()));
+  app.process().stderr?.on("data", (d: Buffer) => chunks.push(d.toString()));
+
+  const page = await app.firstWindow().catch((err: unknown) => {
+    const tail = chunks.join("").split("\n").slice(-25).join("\n");
+    throw new Error(`${String(err)}\n--- Electron 输出 ---\n${tail || "(无输出)"}`);
+  });
   await page.waitForSelector("#rail", { state: "attached" });
   return {
     app, page, userData,
