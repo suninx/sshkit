@@ -118,9 +118,13 @@ ipcMain.on("terminal:dispose", (_e, id: number) => { ptyService.dispose(id); ssh
 ipcMain.handle("hosts:list", () => hostStore.list());
 ipcMain.handle("hosts:create", (_e, input: HostInput) => hostStore.create(input));
 ipcMain.handle("hosts:update", (_e, id: string, patch: Partial<HostInput>) => hostStore.update(id, patch));
-ipcMain.handle("hosts:delete", (_e, id: string) => {
+ipcMain.handle("hosts:delete", async (_e, id: string) => {
   hostStore.remove(id);
-  return deleteCreds(id);
+  /* 凭据清理是**尽力而为**:钥匙串不可用时(无 keyring 守护进程、被锁、CI 环境)
+     deleteCreds 会 reject,但主机记录已经删掉了 —— 此时让整个操作失败,用户看到的是
+     "点了删除没反应"(列表不刷新)。记录日志即可。 */
+  try { await deleteCreds(id); }
+  catch (err) { console.error("[hosts:delete] 清理钥匙串凭据失败(主机记录已删除):", err); }
 });
 
 /* ---------- credentials (write-only from renderer) ---------- */
