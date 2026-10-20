@@ -10,6 +10,14 @@ import { resolveCwd, resolveShell } from "../../src/main/pty";
  * 把平台/环境作为参数传入后,两个分支在任何机器上都能被覆盖。
  */
 let em: ElectronMock;
+/* Linux 上真 keytar 链接 libsecret,缺库时 import 阶段就崩;这份用例只关心平台分支,不需要钥匙串 */
+vi.mock("keytar", () => ({
+  default: {
+    setPassword: async () => undefined,
+    getPassword: async () => null,
+    deletePassword: async () => false,
+  },
+}));
 vi.mock("electron", async () => {
   const { createElectronMock } = await import("../helpers/electron-mock");
   em = createElectronMock();

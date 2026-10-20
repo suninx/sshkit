@@ -6,6 +6,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { ed25519Blob } from "../helpers/keys";
 import type { ElectronMock } from "../helpers/electron-mock";
 
+/* 本文件的「应用菜单」用例测的就是 macOS 菜单(带 ⌘, 偏好设置入口)。
+   installAppMenu 在 main.ts 启动时按 process.platform 决定是"装菜单"还是"清空菜单",
+   而 GitHub 的 Linux/Windows runner 上会走后者 —— 于是这些断言必然红。
+   用 vi.hoisted 在模块 import 之前把平台声明成 darwin:
+   这样三平台都能验证同一个产品逻辑,且不影响其它测试文件(每个文件独立进程)。 */
+vi.hoisted(() => {
+  Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+});
+
 /**
  * main.ts 覆盖率补齐:菜单(偏好设置入口 / 语言重建 / 非 mac 平台)、bench 窗口定位、
  * 渲染层 console 转发、ssh:connect 的三类认证与终端转发、knownhost 导入对话框、
