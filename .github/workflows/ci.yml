@@ -16,7 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 11 }
+        # 版本由 package.json 的 packageManager 决定;这里不再写 version,
+        # 否则 action 会报 "Multiple versions of pnpm specified"。
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -32,7 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 11 }
+        # 版本由 package.json 的 packageManager 决定;这里不再写 version,
+        # 否则 action 会报 "Multiple versions of pnpm specified"。
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -74,7 +76,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 11 }
+        # 版本由 package.json 的 packageManager 决定;这里不再写 version,
+        # 否则 action 会报 "Multiple versions of pnpm specified"。
       - uses: actions/setup-node@v4
         with:
           node-version: 22
