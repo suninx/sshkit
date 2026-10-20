@@ -19,7 +19,13 @@ export class PtyService {
 
   create(sender: WebContents, opts: TerminalCreateOptions): number {
     const id = this.nextId++;
-    const shell = process.env.SHELL || "/bin/zsh";
+    /* 按平台选默认 shell:macOS/Linux 用登录 shell,Windows 没有 $SHELL 也没有 /bin/zsh,
+       退回 COMSPEC(cmd.exe)/PowerShell —— 否则本地终端在 Windows 上直接起不来。 */
+    const shell =
+      process.env.SHELL ||
+      (process.platform === "win32"
+        ? process.env.COMSPEC || "powershell.exe"
+        : "/bin/zsh");
     const pty = PTY.spawn(shell, [], {
       name: "xterm-256color",
       cols: Math.max(2, Math.min(opts.cols, 500)),

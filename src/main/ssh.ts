@@ -27,10 +27,15 @@ interface PendingHostKey {
   sessionId: number;
 }
 
+/** 客户端工厂:生产用 `new Client()`,测试注入假实现以覆盖连接/鉴权/主机密钥分支。 */
+export type SshClientFactory = () => Client;
+
 export class SshService {
   /** ssh ids start at 1M to never collide with local pty ids */
   private nextId = 1_000_001;
   private readonly sessions = new Map<number, SshSession>();
+
+  constructor(private readonly clientFactory: SshClientFactory = () => new Client()) {}
 
   async connect(
     sender: WebContents,
@@ -39,7 +44,7 @@ export class SshService {
     opts: { cols: number; rows: number },
   ): Promise<number> {
     const id = this.nextId++;
-    const client = new Client();
+    const client = this.clientFactory();
     this.sessions.set(id, { client, stream: null, decoder: null, hostId: host.id });
 
     const safeSend = (channel: string, ...payload: unknown[]) => {
@@ -220,7 +225,7 @@ export class SshService {
       再请求 `sftp` 子系统就报 "Unable to start subsystem: sftp" / "Channel open failure: open failed"
       (实测 node-1)。SFTP 另开一条连接即可绕开。这条连接不属于终端会话,由调用方负责 end()。 */
   async openAux(host: HostRecord, secrets: HostSecrets): Promise<Client> {
-    const client = new Client();
+    const client = this.clientFactory();
     const cfg = this.buildConfig(host, secrets);
     /* 交互会话已经把主机密钥确认过了(写进 known_hosts),这里不再弹窗:一致才通过,否则拒绝。 */
     cfg.hostVerifier = (key: unknown, verify: (valid: boolean) => void) => {
