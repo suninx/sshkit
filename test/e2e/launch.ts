@@ -19,8 +19,11 @@ export async function launchApp(): Promise<Launched> {
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.NODE_OPTIONS;
 
+  /* Linux CI(容器内)没有用户命名空间,Chromium 的沙箱会直接让进程起不来;
+     只在 CI 下关掉沙箱,本地运行仍保持默认安全设置。 */
+  const ciArgs = process.env.CI ? ["--no-sandbox", "--disable-gpu"] : [];
   const app = await electron.launch({
-    args: [".", `--user-data-dir=${userData}`],
+    args: [".", `--user-data-dir=${userData}`, ...ciArgs],
     cwd: process.cwd(),
     env,
   });

@@ -44,6 +44,14 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
             libgtk-3-0 libgbm1 libasound2t64 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2
+      - name: 确保 Electron 二进制就位
+        # 干净安装时 electron 的下载步骤可能没落地(CI 实测:dist 缺失 → e2e 启动超时、
+        # electron-builder 报 "electronDist does not exist")。显式补齐,幂等。
+        run: |
+          if [ ! -d node_modules/electron/dist ]; then
+            node node_modules/electron/install.js
+          fi
+          ls node_modules/electron/dist >/dev/null && echo "electron dist ok"
       - run: pnpm run build
       - run: xvfb-run -a pnpm run test:e2e
 
@@ -60,6 +68,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: 确保 Electron 二进制就位
+        # 干净安装时 electron 的下载步骤可能没落地(CI 实测:dist 缺失 → e2e 启动超时、
+        # electron-builder 报 "electronDist does not exist")。显式补齐,幂等。
+        run: |
+          if [ ! -d node_modules/electron/dist ]; then
+            node node_modules/electron/install.js
+          fi
+          ls node_modules/electron/dist >/dev/null && echo "electron dist ok"
       - run: pnpm run build
       - run: pnpm exec electron-builder --mac --arm64
       - uses: actions/upload-artifact@v4

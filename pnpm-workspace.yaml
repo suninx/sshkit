@@ -1,4 +1,5 @@
 allowBuilds:
+  electron: true
   cpu-features: true
   electron-winstaller: true
   esbuild: true
