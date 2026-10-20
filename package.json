@@ -16,7 +16,8 @@
     "test:all": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:e2e",
     "dist": "pnpm run build && electron-builder --mac --arm64 --publish never",
     "dist:dir": "pnpm run build && electron-builder --mac --arm64 --publish never --dir",
-    "dist:dmg": "bash scripts/make-dmg.sh"
+    "dist:dmg": "bash scripts/make-dmg.sh",
+    "pretest:e2e": "pnpm run build"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.1",
@@ -46,5 +47,9 @@
     "type": "git",
     "url": "git+https://github.com/suninx/sshkit.git"
   },
-  "homepage": "https://github.com/suninx/sshkit#readme"
+  "homepage": "https://github.com/suninx/sshkit#readme",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=22.12"
+  }
 }

@@ -55,6 +55,8 @@
     .host-item .small { color: var(--fg-dim); font-size: 11px; }
     .host-item .btn { visibility: hidden; }
     .host-item:hover .btn { visibility: visible; }
+    /* 键盘用户把焦点移进按钮时同样显形(纯 hover 才能看到操作是可达性缺陷) */
+    .host-item:focus-within .btn { visibility: visible; }
     .empty-hint { color: var(--fg-dim); padding: 12px 10px; }
 
     /* buttons */

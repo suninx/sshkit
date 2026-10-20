@@ -24,11 +24,16 @@ Feature-complete for daily SSH work:
 
 ## Install / run
 
+Prerequisites: **Node ≥ 22.12**, **pnpm 11**, macOS (Apple silicon for the packaged build).
+
 ```sh
 pnpm install
 pnpm run rebuild:pty     # build node-pty for the Electron ABI
 pnpm start               # build + launch
 ```
+
+> First `test:e2e` (or first `dist`) downloads the Electron binary (~290 MB) — Electron 44 no
+> longer does that at install time. `pnpm run test:e2e` builds first automatically.
 
 Packaging:
 
