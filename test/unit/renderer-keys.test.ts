@@ -239,3 +239,21 @@ describe("installShortcuts · 焦点语义", () => {
     expect(handlers.newTab).toHaveBeenCalledTimes(1);
   });
 });
+
+/* ================= 覆盖率补强:无焦点文档 ================= */
+
+describe("inFormField 的边界", () => {
+  it("document.activeElement 为 null 时视为不在表单控件里,应用快捷键照常触发", () => {
+    const desc = Object.getOwnPropertyDescriptor(document, "activeElement");
+    Object.defineProperty(document, "activeElement", { configurable: true, get: () => null });
+    try {
+      const { handlers } = installWithHandlers(["newTab"]);
+      const ev = key({ code: "KeyT", metaKey: true }, window);
+      expect(handlers.newTab).toHaveBeenCalledTimes(1);
+      expect(ev.defaultPrevented).toBe(true);
+    } finally {
+      if (desc) Object.defineProperty(document, "activeElement", desc);
+      else delete (document as unknown as Record<string, unknown>).activeElement;
+    }
+  });
+});

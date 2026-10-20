@@ -462,8 +462,8 @@ const SORT_LABEL: Record<SortMode, string> = {
         o.value = n;
         return o;
       }));
-      const inp = document.getElementById("f-tags");
-      if (inp) inp.setAttribute("list", "tag-suggest");
+      /* #f-tags 是 index.html 里固定存在的输入框(openForm 在更早的 setVal 里已假定它在) */
+      document.getElementById("f-tags")!.setAttribute("list", "tag-suggest");
     });
     setVal("f-host", host?.host ?? "");
     setVal("f-port", String(host?.port ?? 22));

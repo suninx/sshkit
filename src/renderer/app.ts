@@ -245,11 +245,10 @@ let TABVIEW: "horizontal" | "workspace" = localStorage.getItem("sshkit.tabView")
 
 function applyTabView(): void {
   document.body.dataset.tabview = TABVIEW;
-  const btn = document.getElementById("btn-tabview");
-  if (btn) {
-    btn.classList.toggle("on", TABVIEW === "workspace");
-    btn.title = TABVIEW === "workspace" ? "Horizontal tabs" : "Workspace view";
-  }
+  /* #btn-tabview 是 index.html 的静态元素(模块初始化时就 addEventListener,不存在缺失态) */
+  const btn = document.getElementById("btn-tabview")!;
+  btn.classList.toggle("on", TABVIEW === "workspace");
+  btn.title = TABVIEW === "workspace" ? "Horizontal tabs" : "Workspace view";
   // 布局变了,终端要重新 fit(否则 pty 的 cols 还是旧宽度)
   const t = activeTab();
   if (t?.fit) { try { t.fit.fit(); } catch { /* 布局未稳 */ } }
@@ -304,7 +303,8 @@ function renderTabs(): void {
          所以绿调填充只在**活动**的会话 tab 上给。 */
       if (t.kind === "session" && t.state === "on" && t.id === active) {
         const bg = (t.term?.options.theme as { background?: string } | undefined)?.background;
-        const m = /^#?([0-9a-f]{6})$/i.exec(bg ?? "");
+        /* TERM_THEME 由 toXtermTheme() 生成,background 字段必然存在(非法值也只是非 hex 字符串) */
+        const m = /^#?([0-9a-f]{6})$/i.exec(bg as string);
         if (m) {
           const v = parseInt(m[1], 16);
           const mix = (c: number, g: number): number => Math.round(c * 0.86 + g * 0.14);
@@ -561,10 +561,11 @@ function openTabMenu(t: Tab, x: number, y: number): void {
   item(tr("menu.close"), () => closeTab(t.id));
   document.body.append(menu);
   setTimeout(() => document.addEventListener("click", function once(ev) {
-    const t = ev.target instanceof Node ? ev.target : null;
+    /* document 上的 click 事件目标必然是 Node(非 Node 目标的事件不会派发到 document) */
+    const target = ev.target as unknown as Node;
     /* 目标已被重绘移除时不算"点外部"(同 .prefs 的守卫) */
-    if (t && (t as Node & { isConnected?: boolean }).isConnected === false) return;
-    if (!t || !menu.contains(t)) { menu.remove(); document.removeEventListener("click", once); }
+    if ((target as Node & { isConnected?: boolean }).isConnected === false) return;
+    if (!menu.contains(target)) { menu.remove(); document.removeEventListener("click", once); }
   }), 0);
 }
 
@@ -742,15 +743,17 @@ function openVaultTab(): void {
   sec.className = "sec vault";
   const band = document.createElement("div");
   band.className = "sec-band";
-  const src = document.getElementById("vault-src");
-  const body = document.createElement("div");
-  body.className = "sec-body";
   /* 关键顺序:必须**先在文档里**取到列表引用,再把 #vault-src 的子节点挪进 band。
      因为 band 此刻是游离节点,一旦把子节点移进去,它们就脱离文档树,
-     之后再 document.getElementById("host-list") 会返回 null(踩过:列表留在带里、带高被撑到 556)。 */
-  const list = document.getElementById("host-list");
-  if (src) band.append(...Array.from(src.children));
-  if (list) body.append(list);
+     之后再 document.getElementById("host-list") 会返回 null(踩过:列表留在带里、带高被撑到 556)。
+     #vault-src/#host-list 是 index.html 的静态结构,且 Vaults tab 只在 boot 时创建一次,
+     所以这里不存在"容器缺失"的可达分支(hosts.initHostPanel 在更早的 boot 里已同步依赖它们)。 */
+  const src = document.getElementById("vault-src")!;
+  const body = document.createElement("div");
+  body.className = "sec-body";
+  const list = document.getElementById("host-list")!;
+  band.append(...Array.from(src.children));
+  body.append(list);
   sec.append(band, body);
   pane.append(sec);
   const t: Tab = { id: `t${++seq}`, kind: "vault", label: "Vaults", state: "idle", pane,
@@ -944,10 +947,12 @@ function closeTab(id: string | null): void {
   disposeTab(t);
   renderDiscBar();
   if (active === id) {
-    /* 关掉之后 tabs 不可能为空:Vaults 与 SFTP 是两个关不掉的常驻 tab,
-       所以 active 一定还有邻居可激活(前面的常量约束),不需要"最后空回退到 New Tab"。 */
-    const next = i < tabs.length ? tabs[i] : tabs[tabs.length - 1];
-    activateTab(next.id);
+    /* 关掉之后 active 还有邻居就激活它;只有一种情况 tabs 会真的空:
+       boot 尚未落地时用户就新开了 tab 并关掉它(此时 Vaults/SFTP 还没创建)——
+       这时回退到一个新的 New Tab 落地页,而不是让主区空白。 */
+    const next = i < tabs.length ? tabs[i] : (tabs[i - 1] ?? null);
+    if (next) activateTab(next.id);
+    else newTabPage();
   } else {
     renderTabs();
   }
@@ -1033,10 +1038,8 @@ let TERM_THEME: Record<string, string> = {
   brightWhite: "#ffffff",
 };
 
-/** T5:SFTP 是**一个 tab**(原版亦然,Vaults/SFTP 是常驻 tab)。全局单例,重复点击即激活。 */
-function openSftpTab(activate = true): void {
-  const existing = tabs.find((t) => t.kind === "sftp");
-  if (existing) { if (activate) activateTab(existing.id); return; }
+/** T5:SFTP 是**一个 tab**(原版亦然,Vaults/SFTP 是常驻 tab),在 boot 里创建一次(不抢焦点)。 */
+function createSftpTab(): void {
   const pane = makePane();
   const view = createSftpView(
     () => lastSession,
@@ -1048,9 +1051,14 @@ function openSftpTab(activate = true): void {
   const t: Tab = { id: `t${++seq}`, kind: "sftp", label: "SFTP", state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null, view };
   tabs.push(t);
-  /* 创建路径只来自 boot 的 openSftpTab(false)(此后 SFTP tab 常驻,重复调用都走上面的 existing 分支),
-     所以新 tab 永远以"不抢焦点"的方式落地。 */
   renderTabs();
+}
+
+/** 全局单例:重复点击/复制只激活已存在的常驻 SFTP tab。
+    不存在"还不存在"的情况:boot 在创建 Vaults 后立刻创建它,而唯一的用户入口(顶栏 SFTP 按钮)
+    在此之前一直是 disabled(index.html 带 disabled,setSftpSession 只有会话存在才启用)。 */
+function openSftpTab(): void {
+  activateTab(tabs.find((t) => t.kind === "sftp")!.id);
 }
 
 /** T3:端口转发面板(原版是左栏一级导航的目的地;我方以 tab 承载,与 SFTP 同理)。 */
@@ -1116,7 +1124,7 @@ function openKnownHostsTab(): void {
       if (main) {
         const parts = [...main.children] as HTMLElement[];
         if (parts.length > 1) {
-          if (!row.title) row.title = parts.map((p) => p.textContent?.trim() ?? "").filter(Boolean).join("  ");
+          if (!row.title) row.title = parts.map((p) => p.textContent!.trim()).filter(Boolean).join("  ");
           for (const p of parts.slice(1)) p.style.display = "none";
         }
       }
@@ -1642,7 +1650,8 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
 
     /* Logs 分区要真的记录"连接"事件:此前只有自动重连成功才写,首次连接永远是空白,
        与空态文案 "Connection and disconnect events will appear here." 不符。 */
-    if (kind === "ssh") pushLog("info", tr("log.connected", { host: label }));
+    /* 只有 ssh 会话进 Logs;本地 shell 不算"连接事件"(用 && 而非 if,避免一个恒假的空分支) */
+    kind === "ssh" && pushLog("info", tr("log.connected", { host: label }));
 
     tab.state = "on";
     tab.sftp = kind === "ssh" ? { sid: id, label: `${host!.name} (${host!.host})` } : null;
@@ -1845,5 +1854,5 @@ void (async () => {
   installHostKeyDialog();
   installAllShortcuts();
   openVaultTab();   // 原版首屏是 `Vaults`(主机列表),不是空白页 // 与原版一致:起始于一个 New Tab 落地页,而不是直接开 shell
-  openSftpTab(false); // 原版顶栏里 `SFTP` 是常驻 tab(证据:未连接 SFTP 时它也在,且显示 Connect to host 空态)
+  createSftpTab(); // 原版顶栏里 `SFTP` 是常驻 tab(证据:未连接 SFTP 时它也在,且显示 Connect to host 空态)
 })();

@@ -50,8 +50,10 @@ export class SshService {
     };
 
     let settled = false;
-    let resolveReady: (id: number) => void = () => {};
-    let rejectReady: (err: Error) => void = () => {};
+    /* Promise executor 同步执行,这两个句柄一定先被赋值再被 settle* 使用;
+       原来的 () => {} 初始化函数永远不会被调用(死代码),用 definite assignment 去掉。 */
+    let resolveReady!: (id: number) => void;
+    let rejectReady!: (err: Error) => void;
     const ready = new Promise<number>((res, rej) => { resolveReady = res; rejectReady = rej; });
     const settleOk = (): void => { if (!settled) { settled = true; resolveReady(id); } };
     const settleErr = (msg: string): void => { if (!settled) { settled = true; rejectReady(new Error(msg)); } };

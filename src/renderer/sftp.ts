@@ -302,7 +302,9 @@ export function createSftpView(
       if (key === "name") r = a.name.localeCompare(b.name);
       else if (key === "date") r = (a.mtime ?? 0) - (b.mtime ?? 0);
       else if (key === "size") r = (a.isDir ? -1 : a.size) - (b.isDir ? -1 : b.size);
-      else r = (a.isDir === b.isDir ? 0 : a.isDir ? -1 : 1) || a.name.localeCompare(b.name);
+      /* kind 列:外层 sort 的 base() 已把目录排在文件前,且只有同类型才会进到 cmp,
+         所以这里按名称稳定排序即可(原来的 dir-vs-file 分支永远不会被执行)。 */
+      else r = a.name.localeCompare(b.name);
       if (key !== "kind") r = r || a.name.localeCompare(b.name); // 同键值再按名称稳定排序
       return st.sortDir === "ASC" ? r : -r;
     };
@@ -442,8 +444,10 @@ export function createSftpView(
 
   /** 批量删除:复用单条逻辑,逐个执行 */
   async function opMany(st: PaneState, kind: "remove"): Promise<void> {
+    /* 多选只可能发生在"这一栏已经渲染出条目"之后,而远端条目只有在 session() 非空时才会渲染;
+       lastSession 一旦被赋值永不清空(只有 boot 前的 null),所以远端多选时 s 必然存在。
+       (单条 op() 的 !s 守卫是可达的:空态 Actions 里就能点 New folder。) */
     const s = session();
-    if (st.which === "remote" && !s) { banner(tr("sftp.notBound")); return; }
     const targets = st.entries.filter((e) => st.selSet.has(e.name));
     if (!targets.length) return;
     let done = 0;

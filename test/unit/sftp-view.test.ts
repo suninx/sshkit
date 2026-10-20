@@ -950,3 +950,400 @@ describe("SFTP 视图 · 拖拽与远端操作", () => {
     expect(lastBanner()).toBe("Deleted 2/2 items");
   });
 });
+
+/* ================= 覆盖率补强:边界路径 / 弹窗关闭 / 排序与拖拽方向 ================= */
+
+describe("SFTP 视图 · 边界路径", () => {
+  it("重连后的迟到错误直接删掉旧询问框(不叠两个弹窗)", async () => {
+    /* 由已知主机询问弹窗覆盖;这里只确认 SFTP 侧没有残留 .prompt-dlg 干扰 —— 留作占位以防回归。 */
+    const view = await mountView(null);
+    view.onShow();
+    await flushView();
+    expect(document.querySelector(".prompt-dlg")).toBeNull();
+  });
+
+  it("远端列表失败且主进程给的是字符串:横幅与错误态显示原始原因", async () => {
+    listRemote.mockRejectedValueOnce("plain channel failure");
+    const view = await mountView({ sid: 1, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(document.querySelector(".sftp-err")).toBeTruthy());
+    expect(lastBanner()).toBe("plain channel failure");
+    expect(document.querySelector(".sftp-err p")!.textContent).toBe("plain channel failure");
+  });
+
+  it("空态/错误态/列表渲染时 `.sp-cols` 不在 DOM 也不会崩(列头是可选装饰)", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    /* 无会话:只有远端的 renderEmpty 会画空态;本地栏走普通 render */
+    await vi.waitFor(() => expect(document.querySelectorAll(".sftp-empty").length).toBe(1));
+    /* 人为移走列头:renderEmpty(远端)与 render(本地)都要能继续工作 */
+    for (const cols of document.querySelectorAll(".sftp-pane .sp-cols")) cols.remove();
+    view.onShow();
+    await vi.waitFor(() => expect(document.querySelectorAll(".sftp-empty").length).toBe(1));
+
+    const filterInput = pane("local").querySelector(".sp-filter input") as HTMLInputElement;
+    filterInput.value = "zzz";
+    filterInput.dispatchEvent(new Event("input"));
+    await flushView();
+    /* 过滤后没有条目,但列表容器仍然可用(说明 render 没有因缺列头提前崩掉) */
+    expect(pane("local").querySelector(".sp-rows")).toBeTruthy();
+
+    document.body.innerHTML = "";
+    listRemote.mockRejectedValueOnce(new Error("boom"));
+    const errView = await mountView({ sid: 2, label: "node-2" });
+    errView.onShow();
+    await vi.waitFor(() => expect(document.querySelector(".sftp-err")).toBeTruthy());
+    document.querySelectorAll('.sftp-pane[data-which="remote"] .sp-cols').forEach((n) => n.remove());
+    listRemote.mockRejectedValueOnce(new Error("boom2"));
+    errView.onShow();
+    await vi.waitFor(() => expect(document.querySelector(".sftp-err p")!.textContent).toContain("boom2"));
+  });
+
+  it("parentOf:Home 之上仍停在 ~;根目录下一级回到 /", async () => {
+    /* 本地栏当前目录就是 "~",Go up 应仍请求 "~"(不能越出 home) */
+    listLocal.mockResolvedValue({ path: "~", entries: [] });
+    const view = await mountView({ sid: 1, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(listLocal).toHaveBeenCalledWith("~"));
+    const before = listLocal.mock.calls.length;
+    actionsMenu("local");
+    click(menuItem("Go up"));
+    await vi.waitFor(() => expect(listLocal.mock.calls.length).toBeGreaterThan(before));
+    expect(listLocal).toHaveBeenLastCalledWith("~");
+
+    /* 远端在 /root,Go up 应回到 "/" */
+    document.body.innerHTML = "";
+    listRemote.mockResolvedValue({ path: "/root", entries: [] });
+    const v2 = await mountView({ sid: 3, label: "node-3" });
+    v2.onShow();
+    await vi.waitFor(() => expect(listRemote).toHaveBeenCalledWith(3, "."));
+    actionsMenu("remote");
+    click(menuItem("Go up"));
+    await vi.waitFor(() => expect(listRemote).toHaveBeenLastCalledWith(3, "/"));
+  });
+
+  it("排序:名称列可点三次(ASC→DESC→ASC);日期/大小/类型列覆盖目录与缺失字段", async () => {
+    listLocal.mockResolvedValue({
+      path: "/home/u",
+      entries: [
+        { ...FILE("b.txt"), mtime: 200 },
+        { ...FILE("a.txt"), mtime: 100 },
+        DIR("dir"),
+        DIR("dir2"),
+        { ...FILE("nodate.txt"), mtime: undefined },
+        { ...FILE("nodate2.txt"), mtime: undefined },
+      ],
+    });
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local").length).toBe(6));
+
+    const col = (k: string): HTMLElement => pane("local").querySelector(`.sp-col[data-sort="${k}"]`) as HTMLElement;
+    const nameCol = col("name");
+    click(nameCol);
+    await flushView();
+    expect(listedNames("local")).toEqual(["dir", "dir2", "a.txt", "b.txt", "nodate.txt", "nodate2.txt"]);
+    click(nameCol);
+    await flushView();
+    expect(nameCol.dataset.dir).toBe("DESC");
+    expect(listedNames("local").slice(0, 2).sort()).toEqual(["dir", "dir2"]); // 目录永远优先(DESC 只反转同类型内部)
+    click(nameCol);
+    await flushView();
+    expect(nameCol.dataset.dir).toBe("ASC");
+
+    click(col("date"));
+    await flushView();
+    expect(listedNames("local")[0]).toBe("dir"); // 目录优先,其余按 mtime(缺失按 0)
+    click(col("date"));
+    await flushView();
+    expect(col("date").dataset.dir).toBe("DESC");
+
+    click(col("size"));
+    await flushView();
+    expect(listedNames("local")[0]).toBe("dir");
+    click(col("size"));
+    await flushView();
+    expect(col("size").dataset.dir).toBe("DESC");
+
+    click(col("kind"));
+    await flushView();
+    expect(col("kind").dataset.dir).toBe("ASC");
+  });
+
+  it("条目没有 mode 时权限串按 0 渲染(不显示 undefined)", async () => {
+    listLocal.mockResolvedValue({
+      path: "/home/u",
+      entries: [{ name: "weird.bin", size: 3, isDir: false, mtime: 0 }],
+    });
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("weird.bin"));
+    expect(rowByName("local", "weird.bin").querySelector(".pm")!.textContent).toBe("----------");
+  });
+
+  it("dragstart 后直接 dragend(未 drop):清掉目标栏的 drop-hot 高亮", async () => {
+    const view = await mountView({ sid: 5, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    const src = rowByName("local", "a.txt");
+    src.dispatchEvent(new MouseEvent("dragstart", { bubbles: true }));
+    const remoteBody = pane("remote").querySelector(".sp-body")!;
+    remoteBody.dispatchEvent(new MouseEvent("dragover", { bubbles: true, cancelable: true }));
+    expect(remoteBody.classList.contains("drop-hot")).toBe(true);
+    remoteBody.dispatchEvent(new MouseEvent("dragleave", { bubbles: true }));
+    expect(remoteBody.classList.contains("drop-hot")).toBe(false);
+    remoteBody.dispatchEvent(new MouseEvent("dragover", { bubbles: true, cancelable: true }));
+    expect(remoteBody.classList.contains("drop-hot")).toBe(true);
+    src.dispatchEvent(new MouseEvent("dragend", { bubbles: true }));
+    await flushView();
+    expect(remoteBody.classList.contains("drop-hot")).toBe(false);
+    expect(document.querySelectorAll(".sp-row.dragging").length).toBe(0);
+  });
+
+  it("Shift 范围选择的锚点已被过滤掉时:不误选,也不崩", async () => {
+    listLocal.mockResolvedValue({ path: "/home/u", entries: [FILE("a.txt"), FILE("b.txt")] });
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local").length).toBe(2));
+    clickRow("local", "a.txt"); // anchor = a.txt
+    await flushView();
+    const filterInput = pane("local").querySelector(".sp-filter input") as HTMLInputElement;
+    filterInput.value = "b";
+    filterInput.dispatchEvent(new Event("input"));
+    await flushView();
+    expect(listedNames("local")).toEqual(["b.txt"]);
+    clickRow("local", "b.txt", { shiftKey: true }); // anchor 不在当前列表 → i<0,守卫生效
+    await flushView();
+    expect([...document.querySelectorAll(".sp-row.sel .nm")].map((n) => n.textContent)).toEqual([]);
+  });
+
+  it("⌘/Ctrl 再点同一行取消选中(切换语义)", async () => {
+    listLocal.mockResolvedValue({ path: "/home/u", entries: [FILE("a.txt"), FILE("b.txt")] });
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local").length).toBe(2));
+    clickRow("local", "a.txt");
+    await flushView();
+    expect([...document.querySelectorAll(".sp-row.sel .nm")].map((n) => n.textContent)).toEqual(["a.txt"]);
+    clickRow("local", "a.txt", { ctrlKey: true });
+    await flushView();
+    expect(document.querySelectorAll(".sp-row.sel").length).toBe(0);
+  });
+
+  it("重复打开 Actions 菜单只保留一个(旧菜单先被移除)", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(rows("local")).toBeGreaterThan(0));
+    actionsMenu("local");
+    actionsMenu("local");
+    expect(document.querySelectorAll(".sp-menu").length).toBe(1);
+  });
+
+  it("多选态菜单 Clear selection:清空选中并重绘", async () => {
+    listLocal.mockResolvedValue({ path: "/home/u", entries: [FILE("a.txt"), FILE("b.txt")] });
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local").length).toBe(2));
+    clickRow("local", "a.txt");
+    clickRow("local", "b.txt", { ctrlKey: true });
+    await flushView();
+    expect(document.querySelectorAll(".sp-row.sel").length).toBe(2);
+    actionsMenu("local");
+    click(menuItem("Clear selection"));
+    await flushView();
+    expect(document.querySelectorAll(".sp-row.sel").length).toBe(0);
+    expect(document.querySelector(".sp-menu")).toBeNull();
+  });
+
+  it("多选后刷新导致选中项消失:Delete 2 items 不误删(空目标直接返回)", async () => {
+    listLocal.mockResolvedValue({ path: "/home/u", entries: [FILE("a.txt"), FILE("b.txt"), FILE("c.txt")] });
+    const view = await mountView({ sid: 2, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local").length).toBe(3));
+    clickRow("local", "a.txt");
+    clickRow("local", "b.txt", { ctrlKey: true });
+    await flushView();
+
+    /* 目录内容被外部改掉:a/b 已不存在;但 selSet 仍是 {a,b} */
+    listLocal.mockResolvedValueOnce({ path: "/home/u", entries: [FILE("c.txt")] });
+    const arrows = [...pane("local").querySelectorAll<HTMLElement>(".sp-crumbs .sp-arrow")];
+    click(arrows[1]); // › Reload
+    await vi.waitFor(() => expect(listedNames("local")).toEqual(["c.txt"]));
+
+    const bannersBefore = bannerTexts().length;
+    actionsMenu("local");
+    click(menuItem("Delete 2 items"));
+    await flushView();
+    expect(rmLocal).not.toHaveBeenCalled();
+    expect(bannerTexts().length).toBe(bannersBefore); // 没有 "Deleted 0/2"
+  });
+
+  it("拖拽方向:远端条目拖到本地栏 = 下载", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 10)] });
+    const view = await mountView({ sid: 5, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    rowByName("remote", "x.bin").dispatchEvent(new MouseEvent("dragstart", { bubbles: true }));
+    const localBody = pane("local").querySelector(".sp-body")!;
+    localBody.dispatchEvent(new MouseEvent("dragover", { bubbles: true, cancelable: true }));
+    localBody.dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(downloadRemote).toHaveBeenCalledWith(5, "/root/x.bin", "/home/u/x.bin"));
+  });
+
+  it("本地多选 Upload 2 items:逐条上传并刷新", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [] });
+    listLocal.mockResolvedValue({ path: "/home/u", entries: [FILE("a.txt")] });
+    const view = await mountView({ sid: 5, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local").length).toBe(1));
+    clickRow("local", "a.txt");
+    await flushView();
+    actionsMenu("local");
+    click(menuItem("Upload →"));
+    await vi.waitFor(() => expect(uploadRemote).toHaveBeenCalledTimes(1));
+
+    /* 再选两项走批量路径 */
+    listLocal.mockResolvedValue({ path: "/home/u", entries: [FILE("a.txt"), FILE("b.txt")] });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local").length).toBe(2));
+    clickRow("local", "a.txt");
+    clickRow("local", "b.txt", { ctrlKey: true });
+    await flushView();
+    actionsMenu("local");
+    expect(menuLabels()).toContain("Upload 2 items →");
+    click(menuItem("Upload 2 items →"));
+    await vi.waitFor(() => expect(uploadRemote).toHaveBeenCalledTimes(3));
+    expect(uploadRemote).toHaveBeenNthCalledWith(2, 5, "/home/u/a.txt", "/root/a.txt");
+    expect(uploadRemote).toHaveBeenNthCalledWith(3, 5, "/home/u/b.txt", "/root/b.txt");
+  });
+
+  it("操作/传输失败且原因是字符串:横幅显示原始文本", async () => {
+    const view = await mountView({ sid: 7, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+
+    mkLocal.mockRejectedValueOnce("permission string");
+    actionsMenu("local");
+    click(menuItem("New folder"));
+    await openPromptDialog();
+    answerPrompt("dir-x");
+    await vi.waitFor(() => expect(lastBanner()).toBe("permission string"));
+
+    clickRow("local", "a.txt");
+    await flushView();
+    uploadRemote.mockRejectedValueOnce("network string");
+    actionsMenu("local");
+    click(menuItem("Upload →"));
+    await vi.waitFor(() => expect(bannerTexts()).toContain("network string"));
+  });
+
+  it("远端空态点 Download:没有会话时给原因、不发桥调用", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(document.querySelector(".sftp-empty")).toBeTruthy());
+    actionsMenu("remote");
+    click(menuItem("← Download"));
+    await flushView();
+    expect(downloadRemote).not.toHaveBeenCalled();
+    expect(lastBanner()).toBe("Remote pane is not bound to a session");
+  });
+
+  it("第二个弹窗打开时替换掉第一个(不叠层)", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(rows("local")).toBeGreaterThan(0));
+    actionsMenu("local");
+    click(menuItem("New folder"));
+    await openPromptDialog();
+
+    actionsMenu("local");
+    click(menuItem("New folder"));
+    await flushView();
+    expect(document.querySelectorAll(".prompt-dlg").length).toBe(1);
+    answerPrompt("second-dir");
+    await vi.waitFor(() => expect(mkLocal).toHaveBeenCalledWith("/home/u/second-dir"));
+    expect(document.querySelector(".prompt-dlg")).toBeNull();
+  });
+
+  it("输入弹窗:✕ / 点遮罩 / 空输入回车 都取消(不调桥)", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(rows("local")).toBeGreaterThan(0));
+
+    actionsMenu("local");
+    click(menuItem("New folder"));
+    let dlg = await openPromptDialog();
+    click(dlg.querySelector(".dd-x"));
+    await flushView();
+    expect(document.querySelector(".prompt-dlg")).toBeNull();
+    expect(mkLocal).not.toHaveBeenCalled();
+
+    actionsMenu("local");
+    click(menuItem("New folder"));
+    dlg = await openPromptDialog();
+    dlg.dispatchEvent(new MouseEvent("click", { bubbles: true })); // target = 遮罩本身
+    await flushView();
+    expect(document.querySelector(".prompt-dlg")).toBeNull();
+    expect(mkLocal).not.toHaveBeenCalled();
+
+    actionsMenu("local");
+    click(menuItem("New folder"));
+    dlg = await openPromptDialog();
+    (dlg.querySelector(".pd-input") as HTMLInputElement).value = "   ";
+    dlg.querySelector(".pd-input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flushView();
+    expect(document.querySelector(".prompt-dlg")).toBeNull();
+    expect(mkLocal).not.toHaveBeenCalled();
+  });
+
+  it("确认弹窗:✕ / 点遮罩 都按取消处理(不调桥)", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    clickRow("local", "a.txt");
+    await flushView();
+
+    actionsMenu("local");
+    click(menuItem("Delete"));
+    let dlg = await openPromptDialog();
+    click(dlg.querySelector(".dd-x"));
+    await flushView();
+    expect(rmLocal).not.toHaveBeenCalled();
+
+    actionsMenu("local");
+    click(menuItem("Delete"));
+    dlg = await openPromptDialog();
+    dlg.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushView();
+    expect(rmLocal).not.toHaveBeenCalled();
+    expect(document.querySelector(".prompt-dlg")).toBeNull();
+  });
+
+  it("进度:total=0 的 done 按 100% 画;error 没有原因时显示 failed;横幅 6s 自动移除", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    await flushView();
+    vi.useFakeTimers();
+    try {
+      emitProgress({ sid: 1, jobId: 21, dir: "up", file: "zero.bin", bytes: 9, total: 0, state: "done" });
+      expect(document.querySelector(".sftp-queue .job .jfill")!.getAttribute("style")).toContain("100%");
+      expect(document.querySelector(".sftp-queue .job .jstat")!.textContent).toBe("9 B done");
+
+      emitProgress({ sid: 1, jobId: 22, dir: "up", file: "bad.bin", bytes: 0, total: 0, state: "error" });
+      const errRows = [...document.querySelectorAll<HTMLElement>(".sftp-queue .job.err")];
+      expect(errRows[0].querySelector(".jstat")!.textContent).toBe("failed");
+
+      actionsMenu("remote");
+      click(menuItem("← Download")); // 未绑定会话 → banner
+      expect(bannerTexts()).toContain("Remote pane is not bound to a session");
+      expect(document.querySelectorAll(".sftp-queue .job").length).toBe(3);
+      await vi.advanceTimersByTimeAsync(6000);
+      /* 横幅(6s)被移除;错误任务行不是横幅,保留 */
+      expect(bannerTexts()).not.toContain("Remote pane is not bound to a session");
+      expect(document.querySelectorAll(".sftp-queue .job").length).toBe(1);
+      expect(document.querySelector(".sftp-queue .jstat")!.textContent).toBe("failed");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

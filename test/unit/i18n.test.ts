@@ -95,3 +95,13 @@ describe("setLocale / applyDom", () => {
     expect(document.getElementById("a")!.textContent).toBe("Logs");
   });
 });
+
+describe("边界:未知 locale 与无 DOM 环境", () => {
+  it("未注册的 locale 会退回英文表(不会因为查不到表而崩或返回键名)", () => {
+    // 类型上只允许 en/zh,但运行期可能被写脏(settings.json 手改) —— 必须可降级
+    setLocale("xx" as never);
+    expect(tr("rail.hosts")).toBe("Hosts");
+    setLocale("en");
+    expect(tr("rail.hosts")).toBe("Hosts");
+  });
+});

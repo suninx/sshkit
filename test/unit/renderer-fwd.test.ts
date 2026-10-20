@@ -601,3 +601,30 @@ describe("Remote 绑定地址与浏览器回归", () => {
     expect(saved.at(-1)!.remoteBindAddress).toBe("0.0.0.0");
   });
 });
+
+/* ================= 覆盖率补强:错误文案与第一步 Back ================= */
+
+describe("转发规则列表 · 边界文案", () => {
+  it("error 状态没有原因字符串时只渲染 `error:` 前缀(不出现 undefined)", async () => {
+    rules = [RULE({ id: "err-no-msg", label: "e" })];
+    statuses = new Map([["err-no-msg", STATUS("err-no-msg", { state: "error" })]]);
+    await mount();
+    expect(stateText("err-no-msg")).toBe("error: ");
+    expect(row("err-no-msg").querySelector(".fwd-state")!.className).toBe("fwd-state error");
+  });
+});
+
+describe("新建转发向导 · 边界", () => {
+  it("第一步的 Back 若被程序化派发点击也保持原地(按钮已 disabled)", async () => {
+    await mount();
+    (document.querySelector(".fwd-new-main") as HTMLButtonElement).click();
+    expect(back().disabled).toBe(true);
+    expect(crumb()).toBe("Port Forwarding");
+
+    /* 绕过 disabled 直接派发 click:守卫应吞掉它,向导不后退/不崩 */
+    back().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(crumb()).toBe("Port Forwarding");
+    expect(wizTitle()).toBe("New Port Forwarding");
+    expect(kindBtn("Local")).toBeTruthy();
+  });
+});

@@ -332,6 +332,79 @@ describe("ready / shell / 退出 的边界分支", () => {
   });
 });
 
+describe("openAux / disposeAll / 数据转发 的分支", () => {
+  it("默认客户端工厂真的能造出 ssh2 Client(只是构造,不发起连接)", () => {
+    const svc = new SshService();
+    const factory = (svc as unknown as { clientFactory: () => Record<string, unknown> }).clientFactory;
+    const client = factory();
+    expect(typeof client.connect).toBe("function");
+    expect(typeof client.on).toBe("function");
+  });
+
+  it("stderr 输出也转发成 terminal:data(不然错误提示看不到)", async () => {
+    const svc = mk();
+    const s = sender();
+    const p = svc.connect(s as never, host(), { password: "pw" }, opts);
+    const c = last!;
+    c.emit("ready");
+    const id = await p;
+    c.stream!.stderr.emit("data", Buffer.from("warn: something\n"));
+    expect(s.send).toHaveBeenCalledWith("terminal:data", id, "warn: something\n");
+  });
+
+  it("会话已清理后迟到的 stream exit 不恢复会话、不抛(仅断言状态没被复活)", async () => {
+    const svc = mk();
+    const s = sender();
+    const p = svc.connect(s as never, host(), { password: "pw" }, opts);
+    const c = last!;
+    c.emit("ready");
+    const id = await p;
+    svc.dispose(id);
+    expect(() => c.stream!.emit("exit", 0)).not.toThrow();
+    expect(svc.clientOf(id)).toBeUndefined();
+    expect(svc.hostIdOf(id)).toBeUndefined();
+  });
+
+  it("openAux 在 20s 内没有 ready 就超时拒绝(不会永远挂着)", async () => {
+    vi.useFakeTimers();
+    try {
+      const svc = mk();
+      const p = svc.openAux(host({ host: "aux-timeout.example" }), { password: "pw" });
+      const rejected = expect(p).rejects.toThrow(/aux connect timed out/);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("openAux 的 connect 同步抛错时立即拒绝并清掉超时定时器", async () => {
+    const svc = new SshService(() => {
+      const c = new FakeClient();
+      c.connect = () => { throw new Error("connect sync fail"); };
+      return c as never;
+    });
+    await expect(svc.openAux(host(), { password: "pw" })).rejects.toThrow(/connect sync fail/);
+  });
+
+  it("disposeAll 结束所有会话(各 client.end 被调用,会话表清空)", async () => {
+    const svc = mk();
+    const clients: FakeClient[] = [];
+    const s = sender();
+    for (const id of ["h_x", "h_y"]) {
+      const p = svc.connect(s as never, host({ id, host: `${id}.example` }), { password: "pw" }, opts);
+      const c = last!;
+      clients.push(c);
+      c.emit("ready");
+      await p;
+    }
+    svc.disposeAll();
+    expect(clients.every((c) => c.end.mock.calls.length === 1)).toBe(true);
+    expect(svc.clientOfHost("h_x")).toBeUndefined();
+    expect(svc.clientOfHost("h_y")).toBeUndefined();
+  });
+});
+
 describe("主机密钥答复:replace 动作", () => {
   it("replace 把旧条目换成新 key(不是追加成两条)", async () => {
     const svc = mk();

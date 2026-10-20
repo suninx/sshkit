@@ -196,9 +196,11 @@ ipcMain.handle("knownhost:import", async (e, sourcePath?: string) => {
   const r = win
     ? await dialog.showOpenDialog(win, { title: "Import Known Hosts", properties: ["openFile"], defaultPath: path.join(os.homedir(), ".ssh") })
     : await dialog.showOpenDialog({ title: "Import Known Hosts", properties: ["openFile"] });
-  if (r.canceled || !r.filePaths.length) return { canceled: true, added: 0, skipped: 0 };
-  const res = importKnownHosts(r.filePaths[0]);
-  return { canceled: false, ...res, file: r.filePaths[0], rows: listKnownHosts() };
+  if (!r.canceled && r.filePaths.length > 0) {
+    const res = importKnownHosts(r.filePaths[0]);
+    return { canceled: false, ...res, file: r.filePaths[0], rows: listKnownHosts() };
+  }
+  return { canceled: true, added: 0, skipped: 0 };
 });
 
 ipcMain.handle("knownhost:remove", (_e, host: string) => { removeKnownHost(host); return listKnownHosts(); });

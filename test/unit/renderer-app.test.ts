@@ -17,6 +17,11 @@ import { loadRendererDom, flush } from "../helpers/renderer";
 type AnyFn = (...args: any[]) => any;
 type CallLog = Record<string, unknown[][]>;
 
+/* 记录搜索插件收到的查询,用于断言搜索栏(输入/回车/箭头)真的把查询交给了插件。
+   vi.hoisted:vi.mock 的工厂会被提升到 import 之前,共享数组也必须一起提升。 */
+interface SearchCall { kind: "next" | "prev" | "clear"; term: string | null; incremental: boolean }
+const searchCalls = vi.hoisted(() => [] as SearchCall[]);
+
 /* jsdom 没有 canvas 2D 上下文;@xterm/addon-canvas 是在 xterm.open() 之后由内部定时器异步激活的,
    抛错发生在产品 try/catch 之外(会变成 uncaught exception)。这里把它换成"构造即失败"的替身,
    与真实环境里 canvas 插件不可用时产品的容错路径一致(产品会退回 DOM 渲染器)。 */
@@ -31,9 +36,16 @@ vi.mock("@xterm/addon-search", () => ({
     constructor() {
       if ((globalThis as { __failSearchAddon?: boolean }).__failSearchAddon) throw new Error("search addon unavailable");
     }
-    findNext(): void { /* noop */ }
-    findPrevious(): void { /* noop */ }
-    clearDecorations(): void { /* noop */ }
+    /* xterm 6 的 loadAddon 会调用 activate;缺了它产品侧会走"插件不可用"的 catch,搜索栏就没有 addon */
+    activate(): void {}
+    dispose(): void {}
+    findNext(term?: string, opts?: { incremental?: boolean }): void {
+      searchCalls.push({ kind: "next", term: term ?? null, incremental: !!opts?.incremental });
+    }
+    findPrevious(term?: string): void {
+      searchCalls.push({ kind: "prev", term: term ?? null, incremental: false });
+    }
+    clearDecorations(): void { searchCalls.push({ kind: "clear", term: null, incremental: false }); }
   },
 }));
 
@@ -186,11 +198,15 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
 
 /* ---------------- 环境准备 ---------------- */
 
+/* 捕获 ResizeObserver 的回调,使用例能模拟"窗口尺寸变化"(jsdom 没有布局,不会自己触发) */
+const resizeCallbacks: Array<() => void> = [];
 class FakeResizeObserver {
-  observe(): void { /* jsdom 没有布局,不触发回调 */ }
+  constructor(private readonly cb: () => void) { resizeCallbacks.push(cb); }
+  observe(): void { /* 由用例显式触发 */ }
   unobserve(): void { /* noop */ }
   disconnect(): void { /* noop */ }
 }
+const triggerResize = (): void => { for (const cb of resizeCallbacks) cb(); };
 
 type TrackedListener = [EventTarget, string, EventListenerOrEventListenerObject, boolean | AddEventListenerOptions | undefined];
 let tracked: TrackedListener[] = [];
@@ -213,6 +229,8 @@ const captureOf = (opts: boolean | AddEventListenerOptions | undefined): boolean
 
 beforeEach(() => {
   tracked = [];
+  resizeCallbacks.length = 0;
+  searchCalls.length = 0;
   vi.useRealTimers();
   trackListeners(document);
   trackListeners(window);
@@ -228,6 +246,7 @@ beforeEach(() => {
   HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
   document.documentElement.innerHTML = "";
   localStorage.clear();
+  delete (window as unknown as { __bench?: unknown }).__bench;
 });
 
 afterEach(() => {
@@ -242,17 +261,46 @@ afterEach(() => {
 interface BootOptions {
   overrides?: Record<string, AnyFn>;
   storage?: Record<string, string>;
+  /** loadRendererDom() 之后、import app 之前改 DOM(用于构造"index.html 缺某个元素"的防御路径) */
+  mutateDom?: () => void;
+  /** import app 之前改 shared/i18n 的 zh 目录(用于制造 audit() 能发现的缺失文案) */
+  mutateZh?: (zh: Record<string, string>) => void;
+  /** 让 boot 卡在语言初始化(用于模拟"boot 尚未落地时用户已经点了按钮"的竞态) */
+  localeGate?: Promise<{ pref: "system" | "zh" | "en"; system: string; effective: "zh" | "en" }>;
 }
 
 async function boot(opts: BootOptions = {}) {
   vi.resetModules();
   for (const [k, v] of Object.entries(opts.storage ?? {})) localStorage.setItem(k, v);
   loadRendererDom();
+  opts.mutateDom?.();
+  if (opts.localeGate) opts.overrides = { ...(opts.overrides ?? {}), "settings.getLocale": () => opts.localeGate };
   const bridge = makeBridge(opts.overrides ?? {});
   (window as unknown as { sshkit: unknown }).sshkit = bridge.api;
+  if (opts.mutateZh) {
+    const i18n = await import("../../src/shared/i18n");
+    opts.mutateZh(i18n.zh as unknown as Record<string, string>);
+  }
   const app = await import("../../src/renderer/app");
   await flush(6);
   return { ...bridge, app };
+}
+
+/** 让挂起的 promise 的 resolve/reject 由用例控制(构造"先切走再完成"的竞态) */
+function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+
+/** app 已经 import 完成后(同一模块实例)再取 xterm 真类,用于 spy 边界 API */
+async function xtermApis(): Promise<{ Terminal: any; FitAddon: any }> {
+  const [{ Terminal }, { FitAddon }] = await Promise.all([
+    import("@xterm/xterm"),
+    import("@xterm/addon-fit"),
+  ]);
+  return { Terminal, FitAddon };
 }
 
 /* ---------------- 查询工具 ---------------- */
@@ -1687,5 +1735,1105 @@ describe("容错与集成边界", () => {
     await flush(2);
     const banners = [...document.querySelectorAll(".sftp-queue .jname")].map((n) => n.textContent);
     expect(banners.at(-1)).toBe("No session available yet — connect a host from the host list first");
+  });
+});
+
+/* ================= 生命周期竞态 / boot 未落地 ================= */
+
+describe("生命周期竞态", () => {
+  it("boot 尚未落地时新建并关掉唯一的 New Tab:回退到新的落地页而不是空白主区", async () => {
+    vi.resetModules();
+    loadRendererDom();
+    const gate = deferred<{ pref: "system"; system: string; effective: "en" }>();
+    const b = makeBridge({ "settings.getLocale": () => gate.promise });
+    (window as unknown as { sshkit: unknown }).sshkit = b.api;
+    await import("../../src/renderer/app");
+
+    click(document.querySelector("#btn-new-tab"));
+    expect(tabKinds()).toEqual(["newtab"]);
+    click(tabByKind("newtab").querySelector(".tab-close"));
+    /* 关掉的是当前唯一 tab:没有邻居可激活,产品应给一个新的 New Tab 落地页 */
+    expect(tabKinds()).toEqual(["newtab"]);
+    expect(activeTab()!.dataset.kind).toBe("newtab");
+
+    gate.resolve({ pref: "system", system: "en", effective: "en" });
+    await flush(8);
+    expect(tabKinds()).toContain("vault");
+    expect(tabKinds()).toContain("sftp");
+    expect(activeTab()!.dataset.kind).toBe("vault");
+  });
+
+  it("连接在用户切走后才成功:后台 tab 变 on,但不抢标题/状态灯", async () => {
+    const d = deferred<{ id: number }>();
+    const { calls } = await boot({ overrides: { createLocal: () => d.promise } });
+    click(document.querySelector("#btn-quick-term"));
+    await flush(2); // tab 已建、connect 未决
+    click(tabByKind("vault"));
+    await waitFor(() => activeTab()!.dataset.kind === "vault");
+
+    d.resolve({ id: 7 });
+    await flush(6);
+    expect(count(calls, "createLocal")).toBe(1);
+    expect(title()).toBe("Vaults");
+    expect(document.querySelector("#status-dot")!.className).toBe("");
+    const sessionTab = tabEls().find((t) => t.dataset.kind === "session")!;
+    expect(sessionTab.classList.contains("on")).toBe(true);
+    expect(sessionTab.classList.contains("active")).toBe(false);
+  });
+
+  it("连接在用户切走后才失败:后台 tab 标 off,但不在活动页上弹横幅/改标题", async () => {
+    const d = deferred<never>();
+    await boot({ overrides: { createLocal: () => d.promise } });
+    click(document.querySelector("#btn-quick-term"));
+    await flush(2);
+    click(tabByKind("vault"));
+    await waitFor(() => activeTab()!.dataset.kind === "vault");
+
+    d.reject(new Error("spawn failed"));
+    await flush(6);
+    expect(title()).toBe("Vaults");
+    expect(document.querySelector("#banner")!.classList.contains("visible")).toBe(false);
+    expect(tabEls().find((t) => t.dataset.kind === "session")!.classList.contains("off")).toBe(true);
+  });
+
+  it("连接失败时主进程给的是字符串(非 Error):横幅显示原始原因", async () => {
+    await boot({ overrides: { createLocal: async () => { throw "local spawn failed"; } } });
+    click(document.querySelector("#btn-quick-term"));
+    await waitFor(() => document.querySelector("#banner")!.classList.contains("visible"));
+    expect(document.querySelector("#banner")!.textContent).toBe("local spawn failed");
+    expect(title()).toBe("Local shell (failed)");
+  });
+
+  it("会话 tab 的 Reconnect 在已断开(termId 为空)且非活动页时:只重连、不 dispose、不抢标题", async () => {
+    const HOST2 = { ...HOST, id: "h_bob", name: "bob", host: "192.0.2.11" };
+    let connects = 0;
+    const { calls, emit } = await boot({
+      overrides: {
+        "hosts.list": async () => [HOST, HOST2],
+        "ssh.connect": async () => ({ id: ++connects }),
+      },
+    });
+    await waitFor(() => document.querySelectorAll(".host-item").length === 2);
+    click(document.querySelector('.host-item[data-id="h_alice"]'));
+    await waitFor(() => title() === "alice");
+    click(document.querySelector('.host-item[data-id="h_bob"]'));
+    await waitFor(() => title() === "bob");
+
+    /* alice 的会话自然退出(auth 失败不走自动重连):termId 归 null,tab 转为 off */
+    emit.exit(1, { exitCode: 1, error: "auth failed", reason: "auth" });
+    await flush(3);
+    /* 切到 Vaults 分区屏(Vaults 是 section:状态灯应为空) */
+    click(tabByKind("vault"));
+    await waitFor(() => activeTab()!.dataset.kind === "vault");
+    expect(document.querySelector("#status-dot")!.className).toBe("");
+
+    contextMenuOn(tabByKind("session")); // 第一个 session tab = alice
+    click(tabMenuItem("Reconnect"));
+    await waitFor(() => count(calls, "ssh.connect") === 3);
+
+    expect(calls["dispose"]).toBeUndefined(); // termId 为空:没有旧会话可 dispose
+    /* 后台 tab 重连成功不得改写前台 chrome:活动页仍是 Vaults,状态灯不被置为 on */
+    expect(activeTab()!.dataset.kind).toBe("vault");
+    expect(document.querySelector("#status-dot")!.className).toBe("");
+    expect(tabEls().find((el) => el.title === "alice")!.classList.contains("on")).toBe(true);
+  });
+
+  it("Reconnect 失败且主进程给的是字符串:终端里写出的原因不是 undefined", async () => {
+    let n = 0;
+    await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "ssh.connect": async () => { n++; if (n === 1) return { id: 1 }; throw "dial tcp timeout"; },
+      },
+    });
+    const { Terminal } = await xtermApis();
+    const written: unknown[] = [];
+    const writeSpy = vi.spyOn(Terminal.prototype, "write").mockImplementation((data: unknown) => {
+      written.push(data);
+      return undefined as never;
+    });
+    try {
+      await openSsh();
+      contextMenuOn(tabByKind("session"));
+      click(tabMenuItem("Reconnect"));
+      await waitFor(() => title() === "alice (failed)");
+      expect(written.some((d) => String(d).includes("dial tcp timeout"))).toBe(true);
+      expect(written.some((d) => String(d).includes("undefined"))).toBe(false);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("关闭两个会话里靠前的活动 tab:顺位激活后面的邻居", async () => {
+    const HOST2 = { ...HOST, id: "h_bob", name: "bob", host: "192.0.2.11" };
+    let n = 0;
+    await boot({
+      overrides: {
+        "hosts.list": async () => [HOST, HOST2],
+        "ssh.connect": async () => ({ id: ++n }),
+      },
+    });
+    await waitFor(() => document.querySelectorAll(".host-item").length === 2);
+    click(document.querySelector('.host-item[data-id="h_alice"]'));
+    await waitFor(() => title() === "alice");
+    click(document.querySelector('.host-item[data-id="h_bob"]'));
+    await waitFor(() => title() === "bob");
+    /* 回到 alice(索引处于中间),再关闭它。注意不能用主机卡片(那会新开 tab),点 tab pill 才是激活 */
+    click(tabEls().find((el) => el.title === "alice")!);
+    await waitFor(() => title() === "alice");
+    key(document, { code: "KeyW", key: "w", metaKey: true });
+    await waitFor(() => tabKinds().filter((k) => k === "session").length === 1);
+    expect(title()).toBe("bob");
+    expect(activeTab()!.dataset.kind).toBe("session");
+  });
+
+  it("关闭仍持有会话的 tab:先 dispose 掉 pty 再移除", async () => {
+    const { calls } = await boot();
+    await openLocal();
+    click(tabByKind("session").querySelector(".tab-close"));
+    await waitFor(() => !tabKinds().includes("session"));
+    expect(lastCall(calls, "dispose")).toEqual([1]);
+  });
+
+  /* 501 次真实"掉线→自动重连"才能验证环形缓冲上限,单条用例耗时数秒,故单独放宽超时 */
+  it("Logs 环形缓冲只保留最近 500 条(第 501 条挤掉最旧一条)", { timeout: 30000 }, async () => {
+    const { calls, emit } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    await openSsh();
+    vi.useFakeTimers();
+    try {
+      let sid = (lastCall(calls, "onExit") as unknown[])[0] as number;
+      for (let i = 0; i < 501; i++) {
+        emit.exit(sid, { exitCode: 0, reason: "dropped" });
+        await vi.advanceTimersByTimeAsync(1000); // 1s 重连退避 + 微任务链
+        sid = (lastCall(calls, "onExit") as unknown[])[0] as number;
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+
+    click(document.querySelector('#rail .rail-item[data-nav="logs"]'));
+    await waitFor(() => tabKinds().includes("logs"));
+    await waitFor(() => document.querySelectorAll(".tab-pane.active .sec-row.log").length === 500);
+    expect(document.querySelectorAll(".tab-pane.active .sec-row.log").length).toBe(500);
+    /* 最新的在最上面 */
+    expect(document.querySelector(".tab-pane.active .sec-row.log .tx")!.textContent).toContain("connected");
+  });
+
+  it("旧的会话退出事件迟到时被忽略,不会重复关会话/记日志", async () => {
+    const { calls, emit } = await boot();
+    await openLocal();
+    const sid = (lastCall(calls, "onExit") as unknown[])[0] as number;
+    emit.exit(sid, { exitCode: 0, reason: "closed" });
+    await flush(3);
+    emit.exit(sid, { exitCode: 0, reason: "closed" }); // 迟到事件:tab.termId 已是 null
+    await flush(3);
+
+    click(document.querySelector('#rail .rail-item[data-nav="logs"]'));
+    await waitFor(() => !!document.querySelector(".tab-pane.active .sec-row.log"));
+    expect(document.querySelectorAll(".tab-pane.active .sec-row.log").length).toBe(1);
+    expect(tabEls().find((t) => t.dataset.kind === "session")!.classList.contains("off")).toBe(true);
+  });
+
+  it("对照台钩子:活动 tab 没有终端时 input() 返回 false(而不是崩)", async () => {
+    await boot({ storage: { "sshkit.bench": "1" } });
+    const bench = (window as unknown as { __bench: { input: (d: string, p?: number) => boolean } }).__bench;
+    expect(bench.input("hello")).toBe(false); // 活动页是 Vaults,没有 term
+  });
+});
+
+/* ================= 分屏边界 ================= */
+
+describe("分屏边界", () => {
+  it("未接会话就关分屏:不 dispose 主会话;重复点已摘除的关闭按钮是无操作", async () => {
+    const { calls } = await boot();
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Split horizontally"));
+    await waitFor(() => !!document.querySelector(".split-pane"));
+    const closeBtn = document.querySelector(".split-close") as HTMLButtonElement;
+    click(closeBtn);
+    await waitFor(() => !document.querySelector(".split-pane"));
+    expect(calls["dispose"]).toBeUndefined(); // 分屏从未连接,主会话也还活着
+
+    expect(() => closeBtn.click()).not.toThrow(); // 第二次调用命中 !split 守卫
+    expect(document.querySelector(".split-pane")).toBeNull();
+    expect(calls["dispose"]).toBeUndefined();
+  });
+
+  it("分屏被关掉后才返回的「选本地 shell」不会把会话接到已消失的分屏", async () => {
+    const { calls } = await boot();
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Split horizontally"));
+    await waitFor(() => !!document.querySelector(".split-pane"));
+    const localBtn = document.querySelector(".sp-local") as HTMLButtonElement;
+    click(document.querySelector(".split-close"));
+    await waitFor(() => !document.querySelector(".split-pane"));
+
+    localBtn.click(); // 已脱离文档的按钮:connectSplit 命中 !split 守卫
+    await flush(3);
+    expect(count(calls, "createLocal")).toBe(1); // 只有主终端
+  });
+
+  it("分屏选主机后、点连接前主机会列表变空:不发连接,选择器保留", async () => {
+    let n = 0;
+    const { calls } = await boot({
+      overrides: {
+        "hosts.list": async () => { n++; return n === 3 ? [] : [HOST]; },
+        "ssh.connect": async () => ({ id: 99 }),
+      },
+    });
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Split horizontally"));
+    await waitFor(() => document.querySelectorAll(".sp-host option").length === 1);
+    const sel = document.querySelector(".sp-host") as HTMLSelectElement;
+    sel.value = "h_alice";
+    sel.dispatchEvent(new Event("change"));
+    click(document.querySelector(".sp-connect"));
+    await flush(4);
+    expect(count(calls, "ssh.connect")).toBe(0);
+    expect(document.querySelector(".split-picker")).toBeTruthy();
+  });
+
+  it("广播关闭时:主终端与分屏各自只写自己的会话", async () => {
+    const { calls } = await boot({ storage: { "sshkit.bench": "1" } });
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Split horizontally"));
+    click(document.querySelector(".sp-local"));
+    await waitFor(() => !document.querySelector(".split-picker"));
+
+    const bench = (window as unknown as { __bench: { tabs: () => Array<Record<string, unknown>>; input: (d: string, p?: number) => boolean } }).__bench;
+    const tab = bench.tabs().find((t) => t.kind === "session")!;
+    const mainId = tab.termId as number;
+    const splitId = tab.splitTermId as number;
+    expect(tab.broadcast).toBe(false);
+
+    expect(bench.input("m")).toBe(true);
+    const mainWrites = (calls["write"] ?? []).filter((a) => a[1] === "m");
+    expect(mainWrites).toEqual([[mainId, "m"]]);
+
+    expect(bench.input("s", 1)).toBe(true);
+    const splitWrites = (calls["write"] ?? []).filter((a) => a[1] === "s");
+    expect(splitWrites).toEqual([[splitId, "s"]]);
+  });
+
+  it("主终端与分屏的 xterm resize 都转发成 bridge.resize(sid, cols, rows)", async () => {
+    const { calls } = await boot();
+    const { Terminal } = await xtermApis();
+    const terms: any[] = [];
+    const origOpen = Terminal.prototype.open;
+    /* 捕获真实 Terminal 实例,再用 xterm 自己的 resize() 驱动 onResize 事件(不伪造事件) */
+    const spy = vi.spyOn(Terminal.prototype, "open").mockImplementation(function (this: any, parent: HTMLElement) {
+      terms.push(this);
+      return origOpen.call(this, parent);
+    });
+    try {
+      await openLocal();
+      terms[0].resize(100, 30);
+      await flush(2);
+      expect(lastCall(calls, "resize")).toEqual([1, 100, 30]);
+
+      contextMenuOn(tabByKind("session"));
+      click(tabMenuItem("Split horizontally"));
+      click(document.querySelector(".sp-local"));
+      await waitFor(() => !document.querySelector(".split-picker"));
+      terms[1].resize(90, 20);
+      await flush(2);
+      expect(lastCall(calls, "resize")).toEqual([2, 90, 20]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("主进程推来的终端输出被写进 xterm(bridge.onData → term.write)", async () => {
+    const { emit } = await boot();
+    const { Terminal } = await xtermApis();
+    const writeSpy = vi.spyOn(Terminal.prototype, "write");
+    try {
+      await openLocal();
+      emit.data(1, "hello from pty");
+      await flush(2);
+      expect(writeSpy.mock.calls.some((c) => c[0] === "hello from pty")).toBe(true);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("⌘B 在已有分屏时切换广播开关(否则给出先分屏提示)", async () => {
+    await boot({ storage: { "sshkit.bench": "1" } });
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Split horizontally"));
+    click(document.querySelector(".sp-local"));
+    await waitFor(() => !document.querySelector(".split-picker"));
+    const box = document.querySelector(".split-bc input") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(box.disabled).toBe(false);
+
+    key(document, { code: "KeyB", key: "b", metaKey: true });
+    await flush(2);
+    expect(box.checked).toBe(true);
+    const bench = (window as unknown as { __bench: { tabs: () => Array<Record<string, unknown>> } }).__bench;
+    expect(bench.tabs().find((t) => t.kind === "session")!.broadcast).toBe(true);
+  });
+
+  it("切换 tab 视图模式时会重新 fit 已打开的分屏终端", async () => {
+    await boot();
+    const { FitAddon } = await xtermApis();
+    const fitSpy = vi.spyOn(FitAddon.prototype, "fit");
+    try {
+      await openLocal();
+      contextMenuOn(tabByKind("session"));
+      click(tabMenuItem("Split horizontally"));
+      await waitFor(() => !!document.querySelector(".split-pane"));
+      const before = fitSpy.mock.calls.length;
+      click(document.querySelector("#btn-tabview"));
+      await flush(3);
+      expect(document.body.dataset.tabview).toBe("workspace");
+      expect(fitSpy.mock.calls.length).toBeGreaterThan(before);
+    } finally {
+      fitSpy.mockRestore();
+    }
+  });
+
+  it("窗口尺寸变化时 ResizeObserver 会重新 fit 活动终端", async () => {
+    await boot();
+    const { FitAddon } = await xtermApis();
+    const fitSpy = vi.spyOn(FitAddon.prototype, "fit");
+    try {
+      triggerResize(); // 活动页是 Vaults(没有终端):t?.fit 为 false 的分支
+      await flush(2);
+      await openLocal();
+      const before = fitSpy.mock.calls.length;
+      triggerResize();
+      await flush(2);
+      expect(fitSpy.mock.calls.length).toBeGreaterThan(before);
+    } finally {
+      fitSpy.mockRestore();
+    }
+  });
+
+  it("分屏连接失败且原因是字符串:分屏内写出原因,选择器保留可重试", async () => {
+    await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "ssh.connect": async () => { throw "handshake string"; },
+      },
+    });
+    const { Terminal } = await xtermApis();
+    const written: unknown[] = [];
+    const writeSpy = vi.spyOn(Terminal.prototype, "write").mockImplementation((data: unknown) => {
+      written.push(data);
+      return undefined as never;
+    });
+    try {
+      await openLocal();
+      contextMenuOn(tabByKind("session"));
+      click(tabMenuItem("Split horizontally"));
+      await waitFor(() => document.querySelectorAll(".sp-host option").length === 1);
+      const sel = document.querySelector(".sp-host") as HTMLSelectElement;
+      sel.value = "h_alice";
+      sel.dispatchEvent(new Event("change"));
+      click(document.querySelector(".sp-connect"));
+      await flush(4);
+      expect(written.some((d) => String(d).includes("handshake string"))).toBe(true);
+      expect(document.querySelector(".split-picker")).toBeTruthy();
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+});
+
+/* ================= 覆盖率补强:防御守卫 / DOM 结构缺项 ================= */
+
+describe("防御守卫", () => {
+  it("侧栏开关按钮缺失时 ⌘. 仍能切换侧栏状态(只是没有按钮高亮)", async () => {
+    await boot();
+    document.getElementById("btn-panel")!.remove();
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await waitFor(() => document.body.dataset.panel === "1");
+    expect(document.getElementById("btn-panel")).toBeNull();
+    expect(document.querySelector(".sp-close")).toBeTruthy();
+  });
+
+  it("侧栏分区标题被移除时 ⌘J 不崩、也不会闪不存在的分区", async () => {
+    const { calls } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    document.querySelectorAll("#sidepanel .sp-title").forEach((n) => n.remove());
+    key(document, { code: "KeyJ", key: "j", metaKey: true });
+    await waitFor(() => document.body.dataset.panel === "1");
+    await flush(4);
+    expect(document.querySelector(".sp-flash")).toBeNull();
+    expect(count(calls, "hosts.list")).toBeGreaterThan(0);
+  });
+
+  it("侧栏列表容器缺失时打开侧栏直接早退,不再拉主机/片段", async () => {
+    const { calls } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    const hostsBefore = count(calls, "hosts.list");
+    document.getElementById("snip-list")!.remove();
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await waitFor(() => document.body.dataset.panel === "1");
+    await flush(4);
+    expect(count(calls, "hosts.list")).toBe(hostsBefore); // renderSidePanel 在守卫处返回
+    expect(document.getElementById("snip-list")).toBeNull();
+  });
+
+  it("工作区竖排栏容器缺失时新建 tab 不崩(renderWsRail 早退)", async () => {
+    await boot();
+    document.getElementById("ws-rail")!.remove();
+    click(document.querySelector("#btn-new-tab"));
+    await waitFor(() => tabKinds().includes("newtab"));
+    expect(document.getElementById("ws-rail")).toBeNull();
+    expect(activeTab()!.dataset.kind).toBe("newtab");
+  });
+
+  it("index.html 缺少可选顶栏元素时启动不崩(Vaults 仍渲染,只是少几处按钮绑定)", async () => {
+    await boot({
+      mutateDom: () => {
+        /* 这几个是可选的顶栏/工具条按钮;移除后 boot 里的 ?.addEventListener 应安静跳过 */
+        for (const id of ["btn-panel-top", "btn-quick-term", "btn-quick-serial", "btn-appearance", "btn-new-host-caret"]) {
+          document.getElementById(id)?.remove();
+        }
+      },
+    });
+    expect(tabKinds()).toEqual(["vault", "sftp"]);
+    expect(activeTab()!.dataset.kind).toBe("vault");
+    expect(title()).toBe("Vaults");
+    expect(document.getElementById("btn-panel-top")).toBeNull();
+    expect(document.getElementById("btn-quick-term")).toBeNull();
+    expect(tabByKind("vault")).toBeTruthy();
+  });
+
+  it("#term-head 在运行中被移除后切 tab:applyChrome 跳过标题栏也不崩", async () => {
+    await boot();
+    const titleEl = document.getElementById("term-title")!;
+    document.getElementById("term-head")!.remove(); // 整个标题栏(含 btn-panel/tab-sftp 等)一起没了
+    expect(titleEl.textContent).toBe("Vaults");
+    click(tabByKind("sftp"));
+    await waitFor(() => activeTab()!.dataset.kind === "sftp");
+    expect(document.body.dataset.chrome).toBe("sftp"); // chrome 仍按 tab 类型切
+    expect(document.getElementById("term-title")).toBeNull(); // 但没有可写的标题元素(守卫跳过写入)
+  });
+
+
+});
+
+/* ================= 覆盖率补强:tab 拖拽 / 菜单 / 改名 ================= */
+
+describe("tab 拖拽边界", () => {
+  it("没有 dragstart 的 dragover/drop 不产生拖放指示、也不重排", async () => {
+    await boot();
+    click(document.querySelector("#btn-new-tab"));
+    const target = tabByKind("sftp");
+    target.dispatchEvent(new MouseEvent("dragover", { bubbles: true, cancelable: true, clientX: 999 }));
+    expect(target.classList.contains("drop-before")).toBe(false);
+    expect(target.classList.contains("drop-after")).toBe(false);
+    const before = tabKinds();
+    target.dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true, clientX: 999 }));
+    await flush(2);
+    expect(tabKinds()).toEqual(before);
+  });
+
+  it("拖到目标左半边:插到它前面(而不是后面)", async () => {
+    await boot();
+    click(document.querySelector("#btn-new-tab"));
+    const newtab = tabByKind("newtab");
+    newtab.dispatchEvent(new MouseEvent("dragstart", { bubbles: true }));
+    const sftp = tabByKind("sftp");
+    sftp.dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true, clientX: 0 }));
+    await flush(3);
+    await waitFor(() => tabKinds()[1] === "newtab");
+    expect(tabKinds()).toEqual(["vault", "newtab", "sftp"]);
+  });
+
+  it("拖拽源 tab 在 drop 前被关掉:drop 是无操作", async () => {
+    await boot();
+    click(document.querySelector("#btn-new-tab"));
+    const newtab = tabByKind("newtab");
+    newtab.dispatchEvent(new MouseEvent("dragstart", { bubbles: true }));
+    click(newtab.querySelector(".tab-close")); // 源 tab 消失,但 dragTabId 还留着
+    await waitFor(() => !tabKinds().includes("newtab"));
+    tabByKind("sftp").dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true, clientX: 999 }));
+    await flush(2);
+    expect(tabKinds()).toEqual(["vault", "sftp"]);
+  });
+
+  it("目标 tab 在 drop 前被关掉(源还在):移到末尾而不是崩", async () => {
+    await boot();
+    click(document.querySelector("#btn-new-tab"));
+    click(document.querySelector("#btn-new-tab"));
+    const [first, second] = tabEls().filter((el) => el.dataset.kind === "newtab");
+    const stale = second;
+    first.dispatchEvent(new MouseEvent("dragstart", { bubbles: true }));
+    click(stale.querySelector(".tab-close")); // 目标被关掉(元素引用仍在)
+    await waitFor(() => tabKinds().filter((k) => k === "newtab").length === 1);
+    stale.dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true, clientX: 999 }));
+    await flush(2);
+    /* from 被移到最后(target 不存在 → 末尾兜底) */
+    expect(tabKinds().at(-1)).toBe("newtab");
+    expect(tabKinds().filter((k) => k === "newtab").length).toBe(1);
+  });
+});
+
+describe("tab 右键菜单边界", () => {
+  it("连续右键两个 tab 只保留最后一个菜单", async () => {
+    await boot();
+    contextMenuOn(tabByKind("vault"));
+    contextMenuOn(tabByKind("sftp"));
+    expect(document.querySelectorAll(".tab-menu").length).toBe(1);
+  });
+
+  it("菜单 Close 项关闭对应 tab", async () => {
+    await boot();
+    click(document.querySelector("#btn-new-tab"));
+    await waitFor(() => tabKinds().includes("newtab"));
+    contextMenuOn(tabByKind("newtab"));
+    click(tabMenuItem("Close"));
+    await waitFor(() => !tabKinds().includes("newtab"));
+    expect(document.querySelector(".tab-menu")).toBeNull();
+  });
+
+  it("点菜单内部不关;点页面其它地方关", async () => {
+    await boot();
+    contextMenuOn(tabByKind("vault"));
+    await flush(3); // 让 setTimeout 里的"点外部"监听器挂上
+    const menu = document.querySelector(".tab-menu")!;
+    menu.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector(".tab-menu")).toBeTruthy();
+    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(2);
+    expect(document.querySelector(".tab-menu")).toBeNull();
+  });
+
+  it("tab 在菜单打开期间被关掉:点 Rename / Close 都是安全无操作,点已摘除的 tab 也不激活", async () => {
+    await boot();
+    click(document.querySelector("#btn-new-tab"));
+    const el = tabByKind("newtab");
+    contextMenuOn(el);
+    key(document, { code: "KeyW", key: "w", metaKey: true }); // 关掉该 tab(菜单仍开着)
+    await waitFor(() => !tabKinds().includes("newtab"));
+    const activeKind = activeTab()!.dataset.kind;
+
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true })); // 已摘除元素的点击 → activateTab 找不到 id
+    await flush(2);
+    expect(activeTab()!.dataset.kind).toBe(activeKind);
+
+    click(tabMenuItem("Rename")); // startRenameTab 找不到 .lbl → 早退
+    await flush(2);
+    expect(document.querySelector(".tab-rename")).toBeNull();
+
+    /* 再开一个会被关掉的 tab,验证 Close 菜单项对"已关闭 id"的守卫 */
+    click(document.querySelector("#btn-new-tab"));
+    const el2 = tabByKind("newtab");
+    contextMenuOn(el2);
+    key(document, { code: "KeyW", key: "w", metaKey: true });
+    await waitFor(() => !tabKinds().includes("newtab"));
+    const kinds = tabKinds();
+    click(tabMenuItem("Close"));
+    await flush(2);
+    expect(tabKinds()).toEqual(kinds);
+  });
+
+  it("重命名输入框里的点击/按下不冒泡到 tab(否则输入框会被重建)", async () => {
+    await boot();
+    contextMenuOn(tabByKind("vault"));
+    click(tabMenuItem("Rename"));
+    const input = document.querySelector(".tab-rename") as HTMLInputElement;
+    expect(input).toBeTruthy();
+    input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    input.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush(2);
+    expect(document.querySelector(".tab-rename")).toBe(input); // 同一个节点,没被重建
+    expect(activeTab()!.dataset.kind).toBe("vault");
+  });
+
+  it("Duplicate 在非会话/非分区 tab(New Tab)上回退到 Vaults,而不是开第二个 New Tab", async () => {
+    await boot();
+    click(document.querySelector("#btn-new-tab"));
+    await waitFor(() => tabKinds().includes("newtab"));
+    contextMenuOn(tabByKind("newtab"));
+    click(tabMenuItem("Duplicate"));
+    await waitFor(() => activeTab()!.dataset.kind === "vault");
+    expect(tabKinds().filter((k) => k === "vault").length).toBe(1);
+    expect(tabKinds().filter((k) => k === "newtab").length).toBe(1);
+  });
+});
+
+/* ================= 覆盖率补强:分区屏 / 快照 ================= */
+
+describe("分区屏边界", () => {
+  it("片段没有名字时用命令作为显示名", async () => {
+    await boot({
+      overrides: {
+        "snippets.list": async () => [{ id: "s1", name: "", command: "echo hi" }],
+      },
+    });
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await waitFor(() => !!document.querySelector("#snip-list .sp-nm"));
+    expect(document.querySelector("#snip-list .sp-nm")!.textContent).toBe("echo hi");
+  });
+
+  it("Snippets 分区发送以换行结尾的命令时只补一个回车", async () => {
+    const { calls } = await boot({
+      overrides: { "snippets.list": async () => [{ id: "s1", name: "NL", command: "echo hi\n" }] },
+    });
+    await openLocal();
+    click(document.querySelector('#rail .rail-item[data-nav="snippets"]'));
+    await waitFor(() => !!document.querySelector(".tab-pane.active .sec-row"));
+    click(document.querySelector(".tab-pane.active .sec-send"));
+    await flush(2);
+    expect((lastCall(calls, "write") as unknown[])[1]).toBe("echo hi\r");
+  });
+
+  it("Keychain 只列出钥匙串里确实有凭据的主机", async () => {
+    const HOST2 = { ...HOST, id: "h_bob", name: "bob", host: "192.0.2.11" };
+    await boot({
+      overrides: {
+        "hosts.list": async () => [HOST, HOST2],
+        "creds.has": async (id: unknown) => id === "h_alice",
+      },
+    });
+    click(document.querySelector('#rail .rail-item[data-nav="keychain"]'));
+    await waitFor(() => !!document.querySelector(".tab-pane.active .sec-row"));
+    const names = [...document.querySelectorAll(".tab-pane.active .sec-row .nm")].map((n) => n.textContent);
+    expect(names).toEqual(["alice"]);
+  });
+
+  it("Known Hosts 卡片绘制对陌生行结构容错,且重复绘制不会重画已上色图标", async () => {
+    await boot({
+      overrides: {
+        "knownhost.list": async () => [{ host: "192.0.2.10", keyType: "ssh-ed25519", fingerprint: "SHA256:abc", hashed: false }],
+      },
+    });
+    click(document.querySelector('#rail .rail-item[data-nav="knownhosts"]'));
+    await waitFor(() => !!document.querySelector(".tab-pane.active .kh-row"));
+    const root = document.querySelector(".tab-pane.active .kh")!;
+    await waitFor(() => row_title());
+
+    function row_title(): boolean {
+      return (root.querySelector(".kh-row")!.getAttribute("title") ?? "").includes("SHA256:abc");
+    }
+
+    /* 注入两种陌生行:一个完全没有 .kh-ico/.kh-main/.kh-type;一个 .kh-main 只有一个子节点 */
+    root.insertAdjacentHTML("beforeend",
+      '<div class="kh-row"></div><div class="kh-row"><span class="kh-ico"></span><span class="kh-main"><span>only-child</span></span></div>');
+    await flush(3); // MutationObserver → paint
+    expect(root.querySelectorAll(".kh-row").length).toBe(3);
+    expect(root.querySelectorAll(".kh-row")[1].getAttribute("title")).toBeNull();
+
+    /* 再触发一次 mutation:已有行的图标已标记 painted,不会重画 */
+    root.append(document.createElement("div"));
+    await flush(3);
+    expect(document.querySelector(".tab-pane.active .kh-type")!.style.display).toBe("none");
+    expect(root.querySelectorAll(".kh-row").length).toBe(3);
+  });
+
+  it("Snippets 分区在删除请求返回前被关掉:迟到刷新安全早退", async () => {
+    const d = deferred<void>();
+    const { calls } = await boot({
+      overrides: {
+        "snippets.list": async () => [{ id: "s1", name: "Deploy", command: "make deploy" }],
+        "snippets.remove": () => d.promise,
+      },
+    });
+    click(document.querySelector('#rail .rail-item[data-nav="snippets"]'));
+    await waitFor(() => !!document.querySelector(".tab-pane.active .sec-row"));
+    const listId = document.querySelector(".tab-pane.active .sec-list")!.id;
+    click(document.querySelector(".tab-pane.active .sec-del"));
+    await waitFor(() => count(calls, "snippets.remove") === 1);
+    click(tabByKind("snippets").querySelector(".tab-close")); // 关掉分区 tab
+    await waitFor(() => !tabKinds().includes("snippets"));
+    d.resolve();
+    await flush(4);
+    expect(document.getElementById(listId)).toBeNull(); // 没有把已关 tab 的列表复活
+  });
+});
+
+/* ================= 覆盖率补强:外观 / 设置面板 ================= */
+
+describe("外观与设置边界", () => {
+  it("localStorage 里的配色名不存在时回退到第一套配色", async () => {
+    await boot({ storage: { "sshkit.scheme": "NoSuchScheme" } });
+    const { TERM_SCHEMES } = await import("../../src/renderer/themes");
+    expect(document.documentElement.style.getPropertyValue("--term-bg")).toBe(TERM_SCHEMES[0].background);
+  });
+
+  it("配色数据坏掉(非 hex 背景)时前景色回退,tab 不染色但界面不崩", async () => {
+    await boot();
+    await openLocal();
+    const { TERM_SCHEMES } = await import("../../src/renderer/themes");
+    const first = TERM_SCHEMES[0];
+    const original = first.background;
+    first.background = "transparent";
+    try {
+      await openPrefs();
+      const schemeBtn = [...document.querySelectorAll<HTMLElement>(".prefs .scheme")]
+        .find((b) => b.textContent?.includes(first.name))!;
+      click(schemeBtn);
+      await flush(3);
+      /* pickOnColor 回退:浅色底自动配深前景的兜底色 */
+      expect(document.documentElement.style.getPropertyValue("--term-fg")).toBe("#e6e9ef");
+
+      click(tabByKind("session"));
+      await flush(2);
+      const sessionTab = tabByKind("session");
+      expect(sessionTab.style.background).toBe("");
+    } finally {
+      first.background = original;
+    }
+  });
+
+  it("#term-head 缺失时设置面板挂到 body 上", async () => {
+    await boot();
+    document.getElementById("term-head")!.remove();
+    await openPrefs();
+    expect(document.querySelector(".prefs")!.parentElement).toBe(document.body);
+  });
+
+  it("语言按钮缺 data-lang 属性时按 system 处理", async () => {
+    const { calls } = await boot();
+    await openPrefs();
+    const en = prefsBtn('.lang-mode[data-lang="en"]');
+    en.removeAttribute("data-lang");
+    click(en);
+    await waitFor(() => count(calls, "settings.setLocale") >= 1);
+    expect((lastCall(calls, "settings.setLocale") as unknown[])[0]).toBe("system");
+  });
+
+  it("字号输入非法(空/非数字)时回落到 14", async () => {
+    await boot();
+    await openPrefs();
+    const input = prefsBtn<HTMLInputElement>(".ps-size");
+    input.value = "abc";
+    input.dispatchEvent(new Event("change"));
+    await flush(2);
+    expect(localStorage.getItem("sshkit.fontSize")).toBe("14");
+    expect(prefsBtn(".ps-val").textContent).toBe("14px");
+  });
+
+  it("顶栏侧栏按钮与设置齿轮都能打开对应 UI", async () => {
+    await boot();
+    click(document.querySelector("#btn-panel"));
+    expect(document.body.dataset.panel).toBe("1");
+    click(document.querySelector("#btn-panel-top"));
+    expect(document.body.dataset.panel).toBe("0");
+    click(document.querySelector("#btn-appearance"));
+    await waitFor(() => !!document.querySelector(".prefs"));
+    expect(prefsBtn(".scheme-list")).toBeTruthy();
+  });
+
+  it("侧栏关闭状态下点 .sp-close 不反向打开面板", async () => {
+    await boot();
+    expect(document.body.dataset.panel).toBe("0");
+    click(document.querySelector(".sp-close"));
+    await flush(2);
+    expect(document.body.dataset.panel).toBe("0");
+  });
+
+  it("片段保存时名字为空:用命令补名字,不存空标题", async () => {
+    const { calls } = await boot();
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await waitFor(() => document.body.dataset.panel === "1");
+    (document.querySelector(".snip-name") as HTMLInputElement).value = "";
+    (document.querySelector(".snip-cmd") as HTMLInputElement).value = "ls -la";
+    click(document.querySelector(".snip-save"));
+    await waitFor(() => count(calls, "snippets.save") === 1);
+    expect((lastCall(calls, "snippets.save") as unknown[])[0]).toEqual({ name: "ls -la", command: "ls -la" });
+  });
+
+  it("点设置面板里的纯文本节点不算「点外部」,面板保持打开", async () => {
+    await boot();
+    await openPrefs();
+    const h4 = document.querySelector(".prefs h4")!;
+    h4.firstChild!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(2);
+    expect(document.querySelector(".prefs")).toBeTruthy();
+  });
+
+  it("i18n 自检:启动时发现 zh 缺键会 console.warn 列出键名", async () => {
+    await boot({ mutateZh: (zh) => { delete zh["rail.hosts"]; } });
+    const warn = vi.mocked(console.warn);
+    const hit = warn.mock.calls.some((c) => String(c[0]).includes("[i18n] 缺少文案") && String(c[1]).includes("rail.hosts"));
+    expect(hit).toBe(true);
+  });
+
+  it("切语言时也会重新跑 i18n 自检并报告缺键", async () => {
+    await boot();
+    const i18n = await import("../../src/shared/i18n");
+    delete (i18n.zh as unknown as Record<string, string>)["rail.hosts"];
+    await openPrefs();
+    click(prefsBtn('.lang-mode[data-lang="zh"]'));
+    await waitFor(() => document.documentElement.lang === "zh-CN");
+    const warn = vi.mocked(console.warn);
+    const hit = warn.mock.calls.some((c) => String(c[0]).includes("[i18n] 缺少文案") && String(c[1]).includes("rail.hosts"));
+    expect(hit).toBe(true);
+  });
+});
+
+/* ================= 覆盖率补强:搜索栏 / 剪贴板 / 快捷命令 ================= */
+
+describe("搜索栏与终端快捷键", () => {
+  it("搜索栏:回车下一个、Shift+回车上一个、箭头按钮、非 Escape 键不收起", async () => {
+    await boot();
+    await openLocal();
+    key(document, { code: "KeyF", key: "f", metaKey: true });
+    await flush(2);
+    const bar = document.querySelector(".term-search") as HTMLElement;
+    const input = bar.querySelector("input") as HTMLInputElement;
+    input.value = "needle";
+    input.dispatchEvent(new Event("input"));
+    await flush(2);
+    expect(searchCalls.at(-1)).toEqual({ kind: "next", term: "needle", incremental: true });
+
+    const before = searchCalls.length;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(searchCalls.slice(before).at(-1)).toEqual({ kind: "next", term: "needle", incremental: false });
+    expect(bar.hidden).toBe(false);
+
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }));
+    expect(searchCalls.at(-1)).toEqual({ kind: "prev", term: "needle", incremental: false });
+
+    click(bar.querySelector('[data-nav="prev"]'));
+    expect(searchCalls.at(-1)).toEqual({ kind: "prev", term: "needle", incremental: false });
+    click(bar.querySelector('[data-nav="next"]'));
+    expect(searchCalls.at(-1)).toEqual({ kind: "next", term: "needle", incremental: false });
+
+    const settled = searchCalls.length;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true }));
+    expect(searchCalls.length).toBe(settled); // 非 Enter/Escape 不触发搜索也不收起
+    expect(bar.hidden).toBe(false);
+  });
+
+  it("⌘F 在非会话 tab 上不打开搜索栏", async () => {
+    await boot();
+    key(document, { code: "KeyF", key: "f", metaKey: true });
+    await flush(2);
+    expect(document.querySelector(".term-search")).toBeNull();
+    expect(activeTab()!.dataset.kind).toBe("vault");
+  });
+
+  it("⌘C 有选中文本时写入剪贴板,并计入对照台计数器", async () => {
+    const { calls } = await boot({ storage: { "sshkit.bench": "1" } });
+    const { Terminal } = await xtermApis();
+    const selSpy = vi.spyOn(Terminal.prototype, "getSelection").mockReturnValue("picked text");
+    try {
+      await openLocal();
+      key(document, { code: "KeyC", key: "c", metaKey: true });
+      await flush(2);
+      expect(calls["clipboard.write"]!.at(-1)).toEqual(["picked text"]);
+      const counters = (window as unknown as { __bench: { counters: Record<string, number> } }).__bench.counters;
+      expect(counters.copyFromTerminal).toBe(1);
+    } finally {
+      selSpy.mockRestore();
+    }
+  });
+
+  it("⌘C 没有选中文本时不写剪贴板(无对照台钩子也不崩)", async () => {
+    const { calls } = await boot();
+    const { Terminal } = await xtermApis();
+    const selSpy = vi.spyOn(Terminal.prototype, "getSelection").mockReturnValue(undefined);
+    try {
+      await openLocal();
+      key(document, { code: "KeyC", key: "c", metaKey: true });
+      key(document, { code: "KeyV", key: "v", metaKey: true }); // 没有对照台钩子也不崩(计数器分支不走)
+      await flush(2);
+      expect(calls["clipboard.write"]).toBeUndefined();
+    } finally {
+      selSpy.mockRestore();
+    }
+  });
+
+  it("⌘V 读取剪贴板并粘贴进终端,并计入对照台计数器", async () => {
+    await boot({
+      storage: { "sshkit.bench": "1" },
+      overrides: { "clipboard.read": async () => "pasted" },
+    });
+    const { Terminal } = await xtermApis();
+    const pasteSpy = vi.spyOn(Terminal.prototype, "paste").mockImplementation(() => undefined);
+    try {
+      await openLocal();
+      key(document, { code: "KeyV", key: "v", metaKey: true });
+      await waitFor(() => pasteSpy.mock.calls.length > 0);
+      expect(pasteSpy.mock.calls.at(-1)).toEqual(["pasted"]);
+      const counters = (window as unknown as { __bench: { counters: Record<string, number> } }).__bench.counters;
+      expect(counters.pasteToTerminal).toBe(1);
+    } finally {
+      pasteSpy.mockRestore();
+    }
+  });
+
+  it("命令面板执行 Clear Terminal Buffer(没有加速键的项也能通过面板触发)", async () => {
+    await boot();
+    const { Terminal } = await xtermApis();
+    const clearSpy = vi.spyOn(Terminal.prototype, "clear").mockImplementation(() => undefined);
+    try {
+      await openLocal();
+      key(document, { code: "KeyK", key: "k", metaKey: true });
+      await waitFor(() => !!document.querySelector(".palette-backdrop"));
+      const input = document.querySelector(".palette-backdrop input") as HTMLInputElement;
+      input.value = "Clear Terminal Buffer";
+      input.dispatchEvent(new Event("input"));
+      await flush(2);
+      click(document.querySelector(".palette-backdrop .pal-row"));
+      await flush(2);
+      expect(clearSpy.mock.calls.length).toBeGreaterThan(0);
+    } finally {
+      clearSpy.mockRestore();
+    }
+  });
+
+  it("点命令面板遮罩关闭面板", async () => {
+    await boot();
+    key(document, { code: "KeyK", key: "k", metaKey: true });
+    await waitFor(() => !!document.querySelector(".palette-backdrop"));
+    const back = document.querySelector(".palette-backdrop")!;
+    back.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(2);
+    expect(document.querySelector(".palette-backdrop")).toBeNull();
+  });
+});
+
+/* ================= 覆盖率补强:分屏的迟到事件 / 断线覆盖层兜底 ================= */
+
+describe("分屏与断线的迟到事件", () => {
+  it("分屏会话的输出被写进分屏终端", async () => {
+    const { emit } = await boot({ storage: { "sshkit.bench": "1" } });
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Split horizontally"));
+    click(document.querySelector(".sp-local"));
+    await waitFor(() => !document.querySelector(".split-picker"));
+    const { Terminal } = await xtermApis();
+    const writeSpy = vi.spyOn(Terminal.prototype, "write").mockImplementation(() => undefined);
+    try {
+      const bench = (window as unknown as { __bench: { tabs: () => Array<Record<string, unknown>> } }).__bench;
+      const splitId = bench.tabs().find((t) => t.kind === "session")!.splitTermId as number;
+      emit.data(splitId, "pane output");
+      await flush(2);
+      expect(writeSpy.mock.calls.some((c) => c[0] === "pane output")).toBe(true);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("分屏会话的迟到退出事件只写一次 [pane session closed]", async () => {
+    const { emit } = await boot({ storage: { "sshkit.bench": "1" } });
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Split horizontally"));
+    click(document.querySelector(".sp-local"));
+    await waitFor(() => !document.querySelector(".split-picker"));
+    const { Terminal } = await xtermApis();
+    const writes: unknown[] = [];
+    const writeSpy = vi.spyOn(Terminal.prototype, "write").mockImplementation((data: unknown) => {
+      writes.push(data);
+      return undefined as never;
+    });
+    try {
+      const bench = (window as unknown as { __bench: { tabs: () => Array<Record<string, unknown>> } }).__bench;
+      const splitId = bench.tabs().find((t) => t.kind === "session")!.splitTermId as number;
+      emit.exit(splitId, { exitCode: 0, reason: "closed" });
+      await flush(2);
+      emit.exit(splitId, { exitCode: 0, reason: "closed" }); // 迟到事件:termId 已为 null
+      await flush(2);
+      expect(writes.filter((d) => String(d).includes("[pane session closed]")).length).toBe(1);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it("分屏连接在用户切走后成功:不抢焦点但仍标记会话", async () => {
+    const d = deferred<{ id: number }>();
+    let connectCalls = 0;
+    await boot({
+      storage: { "sshkit.bench": "1" },
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "ssh.connect": () => { connectCalls++; return connectCalls === 1 ? d.promise : Promise.resolve({ id: 5 }); },
+      },
+    });
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Split horizontally"));
+    await waitFor(() => document.querySelectorAll(".sp-host option").length === 1);
+    const sel = document.querySelector(".sp-host") as HTMLSelectElement;
+    sel.value = "h_alice";
+    sel.dispatchEvent(new Event("change"));
+    click(document.querySelector(".sp-connect"));
+    await flush(2);
+    click(tabByKind("sftp")); // 切走
+    await waitFor(() => activeTab()!.dataset.kind === "sftp");
+
+    d.resolve({ id: 6 });
+    await flush(6);
+    const bench = (window as unknown as { __bench: { tabs: () => Array<Record<string, unknown>> } }).__bench;
+    expect(bench.tabs().find((t) => t.kind === "session")!.splitTermId).toBe(6);
+    expect(activeTab()!.dataset.kind).toBe("sftp");
+  });
+
+  it("自动重连成功时 tab 已非活动:状态回到 on 但不抢前台 chrome", async () => {
+    const HOST2 = { ...HOST, id: "h_bob", name: "bob", host: "192.0.2.11" };
+    let n = 0;
+    const { calls, emit } = await boot({
+      overrides: {
+        "hosts.list": async () => [HOST, HOST2],
+        "ssh.connect": async () => ({ id: ++n }),
+      },
+    });
+    await waitFor(() => document.querySelectorAll(".host-item").length === 2);
+    click(document.querySelector('.host-item[data-id="h_alice"]'));
+    await waitFor(() => title() === "alice");
+    /* 再开 bob(他会成为活动 tab);随后 alice 掉线时自动重连发生在后台 */
+    click(document.querySelector('.host-item[data-id="h_bob"]'));
+    await waitFor(() => title() === "bob");
+
+    vi.useFakeTimers();
+    try {
+      emit.exit(1, { exitCode: 0, reason: "dropped" }); // alice 掉线 → 自动重连
+      await vi.advanceTimersByTimeAsync(1100);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(count(calls, "ssh.connect")).toBe(3);
+    expect(activeTab()!.dataset.kind).toBe("session");
+    expect(title()).toBe("bob"); // 后台重连不抢标题
+    expect(tabEls().find((el) => el.title === "alice")!.classList.contains("on")).toBe(true);
+  });
+
+  it("xterm 元素缺失时断线覆盖层退回到 tab.pane(仍然可见)", async () => {
+    const { emit } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    const { Terminal } = await xtermApis();
+    const terms: any[] = [];
+    const origOpen = Terminal.prototype.open;
+    const openSpy = vi.spyOn(Terminal.prototype, "open").mockImplementation(function (this: any, parent: HTMLElement) {
+      terms.push(this);
+      return origOpen.call(this, parent);
+    });
+    try {
+      await openSsh();
+      Object.defineProperty(terms[0], "element", { value: null, configurable: true });
+      vi.useFakeTimers();
+      try {
+        emit.exit(1, { exitCode: 0, reason: "dropped" });
+        await vi.advanceTimersByTimeAsync(10);
+      } finally {
+        vi.useRealTimers();
+      }
+      const disc = document.querySelector(".disc")!;
+      expect(disc).toBeTruthy();
+      expect(disc.parentElement!.classList.contains("tab-pane")).toBe(true);
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it("Reconnect 对非会话 tab 是无操作(菜单项不区分 tab 类型)", async () => {
+    const { calls } = await boot();
+    contextMenuOn(tabByKind("vault"));
+    click(tabMenuItem("Reconnect"));
+    await flush(3);
+    expect(count(calls, "ssh.connect")).toBe(0);
+    expect(tabKinds()).toEqual(["vault", "sftp"]);
   });
 });

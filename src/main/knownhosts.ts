@@ -116,7 +116,8 @@ export function addHostKey(host: string, keyData: Buffer, file = KNOWN_HOSTS, re
 export function importKnownHosts(sourcePath: string, file = KNOWN_HOSTS): { added: number; skipped: number } {
   let raw = "";
   try { raw = readFileSync(sourcePath, "utf8"); } catch (e) {
-    throw new Error(tr("err.readFile", { msg: String((e as Error).message ?? e) }));
+    /* readFileSync 只会抛带 message 的 Error,原来的 `?? e` 是不可达分支,已删除。 */
+    throw new Error(tr("err.readFile", { msg: String((e as Error).message) }));
   }
   const existing = loadEntries(file);
   const seen = new Set(existing.map((e) => `${e.rawHostField}|${e.keyType}|${e.keyBytes.toString("base64")}`));

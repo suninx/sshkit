@@ -467,3 +467,30 @@ describe("主机密钥询问弹窗", () => {
     expect((globalThis as Record<string, unknown>).__pwned).toBeUndefined();
   });
 });
+
+/* ================= 覆盖率补强:删除失败路径 ================= */
+
+describe("已知主机 · 删除失败", () => {
+  it("删除失败:toast 显示主机名与原因,行保留(回归:以前只有 unhandled rejection)", async () => {
+    rows = [ROW()];
+    removeImpl = async () => { throw new Error("permission denied"); };
+    await mountView();
+    await waitFor(() => rowEls().length === 1);
+
+    (rowByHost("node-a.example.com").querySelector(".kh-del") as HTMLButtonElement).click();
+    await waitFor(() => lastToast() !== null, "failure toast");
+    expect(lastToast()!.textContent).toBe("Failed to remove node-a.example.com: permission denied");
+    expect(rowEls().length).toBe(1); // 行没被误删
+  });
+
+  it("删除失败且异常是字符串:toast 不出现 undefined", async () => {
+    rows = [ROW()];
+    removeImpl = async () => { throw "acl denied"; };
+    await mountView();
+    await waitFor(() => rowEls().length === 1);
+
+    (rowByHost("node-a.example.com").querySelector(".kh-del") as HTMLButtonElement).click();
+    await waitFor(() => lastToast() !== null, "failure toast");
+    expect(lastToast()!.textContent).toBe("Failed to remove node-a.example.com: acl denied");
+  });
+});

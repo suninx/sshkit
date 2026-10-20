@@ -790,3 +790,73 @@ describe("回归:放弃修改的「有改动」判定", () => {
     expect(getVal("f-username")).toBe("root");
   });
 });
+
+/* ================= 覆盖率补强:时间戳缺失 / 表单容器缺项 / 弹窗替换 ================= */
+
+describe("列表排序 · 缺失 createdAt", () => {
+  it("createdAt 缺失的主机按空串参与 Newest/Oldest 排序(不抛错)", async () => {
+    hosts = [
+      HOST({ id: "h1", name: "dated", createdAt: "2026-02-01T00:00:00.000Z" }),
+      HOST({ id: "h2", name: "nodate", createdAt: undefined as unknown as string }),
+    ];
+    await mount();
+    await openTagMenu();
+    menuItem("Newest to oldest").click();
+    await waitFor(() => names().join() === "dated,nodate", "newest with missing createdAt");
+
+    await openTagMenu();
+    menuItem("Oldest to newest").click();
+    await waitFor(() => names().join() === "nodate,dated", "oldest with missing createdAt");
+
+    /* 换个数组顺序再排一次:比较器的两个参数分别轮到"缺失值"时才覆盖 (x.createdAt ?? "") 的两侧 */
+    hosts = [
+      HOST({ id: "h2", name: "nodate", createdAt: undefined as unknown as string }),
+      HOST({ id: "h1", name: "dated", createdAt: "2026-02-01T00:00:00.000Z" }),
+    ];
+    search("");
+    await flush(6);
+    await openTagMenu();
+    menuItem("Newest to oldest").click();
+    await waitFor(() => names().join() === "dated,nodate", "newest reversed");
+    await openTagMenu();
+    menuItem("Oldest to newest").click();
+    await waitFor(() => names().join() === "nodate,dated", "oldest reversed");
+  });
+});
+
+describe("表单快照 · 字段容器缺项", () => {
+  it("某字段不在 DOM 时按空值快照:未改动的表单取消时不弹放弃确认", async () => {
+    await mount();
+    await openNewForm();
+    document.getElementById("f-group")!.remove(); // 新建时 f-group 本来就是空的
+    ($("#btn-cancel") as HTMLButtonElement).click();
+    await flush(6);
+    expect(confirmDialog()).toBeNull();
+    expect(formVisible()).toBe(false);
+  });
+
+  it("放弃确认框重复打开时只保留一个(旧框先移除)", async () => {
+    await mount();
+    await openNewForm();
+    setVal("f-name", "dirty");
+    ($("#btn-cancel") as HTMLButtonElement).click();
+    await waitFor(() => !!confirmDialog(), "first discard dialog");
+    ($("#btn-cancel") as HTMLButtonElement).click(); // 再点一次:openDiscardDialog 先清旧框
+    await flush(4);
+    expect(document.querySelectorAll(".discard-dlg").length).toBe(1);
+    expect(confirmDialog()!.querySelector(".dd-head span")!.textContent).toBe("Do you want to discard changes?");
+  });
+
+  it("标签自动补全:datalist 收集全部主机的标签并挂到 f-tags", async () => {
+    hosts = [
+      HOST({ id: "h1", name: "a", tags: ["prod", "db"] }),
+      HOST({ id: "h2", name: "b", tags: ["dev", "prod"] }),
+    ];
+    await mount();
+    await openNewForm();
+    await waitFor(() => !!document.getElementById("tag-suggest"), "tag datalist");
+    const opts = [...document.querySelectorAll<HTMLOptionElement>("#tag-suggest option")].map((o) => o.value);
+    expect(opts).toEqual(["db", "dev", "prod"]);
+    expect(document.getElementById("f-tags")!.getAttribute("list")).toBe("tag-suggest");
+  });
+});
