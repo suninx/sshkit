@@ -14,3 +14,10 @@ onlyBuiltDependencies:
   - keytar
   - ssh2
   - cpu-features
+
+# app-builder-lib 26.17.0 的代码用了 @electron/get@5 才有的 ElectronDownloadCacheMode,
+# 但它的依赖声明仍是 ^3.0.0 —— 于是 resolveCacheMode 读到 undefined.ReadWrite,任何需要
+# 下载 builder toolset 的打包(Windows 的 7zip/图标、以及任何未提供原生图标的产物)都会崩。
+# 定向把 app-builder-lib 依赖的 @electron/get 提到 5.x(它的代码正是按 5.x 写的)。
+overrides:
+  app-builder-lib>@electron/get: ^5.1.0
