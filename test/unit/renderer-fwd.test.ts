@@ -7,11 +7,10 @@ import type { ForwardRule, ForwardStatus } from "../../src/shared/forward";
  * fwd.ts 的行为测试:转发规则列表(三种类型 / 四种状态 / 起停 / 删除 / 实时状态推送)
  * + 四步向导(类型选择 → 端口绑定 → 中间主机 → 目的主机 → 保存;编辑复用同一向导)。
  *
- * 说明:共享 helper 的假桥里 `fwd.onStatus` 调用被记录但 override 不生效,而本视图
- * 必须在创建时订阅实时状态;因此按 preload 真实签名(返回退订函数)在实例上补齐。
+ * 假桥用共享 helper;fwd.onStatus 按 preload 真实签名实现(注册回调、返回退订函数),
+ * 用于断言"主进程推状态 → 行就地更新"。
  */
 
-type AnyBridge = Record<string, any>;
 interface HostLite { id: string; name: string; username: string; host: string; authType: string }
 
 let rules: ForwardRule[];
@@ -44,7 +43,7 @@ async function waitFor(cond: () => boolean, label = "condition"): Promise<void> 
   throw new Error(`waitFor timeout: ${label}`);
 }
 
-function installFake(): AnyBridge {
+function installFake(): void {
   loadRendererDom();
   const b = installBridge({
     "hosts.list": async () => hosts,
@@ -66,24 +65,16 @@ function installFake(): AnyBridge {
       statuses.set(st.id, st);
       return st;
     },
+    "fwd.remove": async (id) => {
+      rules = rules.filter((r) => r.id !== String(id));
+      return rules.map((r) => ({ ...r }));
+    },
+    "fwd.onStatus": (cb) => {
+      statusCb = cb as (s: ForwardStatus) => void;
+      return () => { statusCb = null; };
+    },
   });
   calls = b.calls;
-  const api = (window as unknown as { sshkit: AnyBridge }).sshkit;
-  /* 共享 helper 目前把 preload 的 fwd.remove 写成了 fwd.delete、且 onStatus 不读 override;
-     按 preload 真实签名在实例上补齐(仍是"忠实替身":返回规则列表 / 退订函数)。 */
-  const record = (name: string, impl: (...args: unknown[]) => unknown) => (...args: unknown[]) => {
-    (calls[name] ??= []).push(args);
-    return impl(...args);
-  };
-  api.fwd.remove = record("fwd.remove", async (id) => {
-    rules = rules.filter((r) => r.id !== String(id));
-    return rules.map((r) => ({ ...r }));
-  });
-  api.fwd.onStatus = (cb: (s: ForwardStatus) => void) => {
-    statusCb = cb;
-    return () => { statusCb = null; };
-  };
-  return api;
 }
 
 async function mount(): Promise<HTMLElement> {
@@ -298,7 +289,7 @@ describe("转发规则列表", () => {
     rules = [RULE({ id: "r1", label: "live" })];
     statuses = new Map([["r1", STATUS("r1", { state: "stopped" })]]);
     await mount();
-    expect(statusCb).toBeTruthy();
+    expect(typeof statusCb).toBe("function");
     const ruleCalls = calls["fwd.rules"]!.length;
     const statusCalls = calls["fwd.statuses"]!.length;
 
@@ -322,7 +313,7 @@ describe("新建转发向导", () => {
     await mount();
     (document.querySelector(".fwd-new-main") as HTMLButtonElement).click();
 
-    expect(wiz()).toBeTruthy();
+    expect(wiz()).not.toBeNull();
     expect(crumb()).toBe("Port Forwarding");
     expect(wizTitle()).toBe("New Port Forwarding");
     expect(hints()[0]).toBe("Select the port forwarding type:");
@@ -440,13 +431,13 @@ describe("新建转发向导", () => {
 
     next().click(); // 必填为空 → 不保存
     expect(calls["fwd.save"]).toBeUndefined();
-    expect(wiz()).toBeTruthy();
+    expect(wiz()).not.toBeNull();
 
     typeField("dest", "db.internal");
     typeField("destport", "abc"); // 非数字 → 0,必填校验拦住
     next().click();
     expect(calls["fwd.save"]).toBeUndefined();
-    expect(wiz()).toBeTruthy();
+    expect(wiz()).not.toBeNull();
 
     typeField("destport", "5432");
     next().click();
@@ -473,7 +464,7 @@ describe("新建转发向导", () => {
     await mount();
     const listCalls = calls["fwd.rules"]!.length;
     (document.querySelector(".fwd-new-main") as HTMLButtonElement).click();
-    expect(wiz()).toBeTruthy();
+    expect(wiz()).not.toBeNull();
 
     skip().click();
     expect(wiz()).toBeNull();

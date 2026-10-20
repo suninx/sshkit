@@ -36,7 +36,9 @@ mac:
 
 # Windows:NSIS 安装包 + zip 免安装包(CI 的 windows job 会构建并上传这两种)
 win:
-  icon: build/icon.png
+  # 提供原生 .ico:否则 electron-builder 会去下载"图标转换工具集",在 26.15.3 上会踩
+  # resolveCacheMode 崩溃(本机 macOS 打包同样问题,用 electronDist/原生图标绕开)
+  icon: build/icon.ico
   target:
     - nsis
     - zip

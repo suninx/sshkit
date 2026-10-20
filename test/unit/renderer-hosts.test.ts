@@ -8,8 +8,8 @@ import type { HostInput, HostRecord } from "../../src/shared/host";
  * 新建/编辑表单(认证方式联动、校验、错误提示)、删除确认与放弃修改确认弹窗、
  * 点击卡片连接与活动态标记。
  *
- * 说明:共享 helper 的假桥把 preload 的 `hosts.remove` 写成了 `hosts.delete`
- * (src/preload/preload.ts 真实方法名是 remove),本文件按真实签名在实例上补齐。
+ * 假桥用共享 helper(方法名/返回值与 src/preload/preload.ts 一致);所有桥调用都记录在 calls 里,
+ * 断言"界面到底请求了什么"。
  */
 
 type AnyBridge = Record<string, any>;
@@ -61,16 +61,11 @@ function installFake(storage?: Record<string, string>): void {
       return rec;
     },
     "creds.put": async () => undefined,
+    "hosts.remove": async (id) => {
+      hosts = hosts.filter((h) => h.id !== String(id));
+    },
   });
   calls = b.calls;
-  const api = (window as unknown as { sshkit: AnyBridge }).sshkit;
-  const record = (name: string, impl: (...args: unknown[]) => unknown) => (...args: unknown[]) => {
-    (calls[name] ??= []).push(args);
-    return impl(...args);
-  };
-  api.hosts.remove = record("hosts.remove", async (id) => {
-    hosts = hosts.filter((h) => h.id !== String(id));
-  });
 }
 
 async function mount(opts: { storage?: Record<string, string> } = {}): Promise<void> {
@@ -356,6 +351,9 @@ describe("主机列表", () => {
 
     (itemByName("alpha").querySelector(".tag-dot") as HTMLButtonElement).click();
     await waitFor(() => !!document.querySelector(".tag-pal"), "palette");
+    /* 再点一次色点:旧调色板先被收掉,页面里始终只有一块 */
+    (itemByName("alpha").querySelector(".tag-dot") as HTMLButtonElement).click();
+    await waitFor(() => document.querySelectorAll(".tag-pal").length === 1, "single palette");
     const swatches = [...document.querySelectorAll<HTMLButtonElement>(".tag-pal .tag-sw")];
     expect(swatches).toHaveLength(9); // 8 色 + 清除
     expect(swatches.at(-1)!.className).toContain("clear");
@@ -653,6 +651,24 @@ describe("确认弹窗", () => {
     expect(confirmDialog()).toBeNull();
     expect(calls["hosts.remove"]).toBeUndefined();
     expect(items()).toHaveLength(1);
+  });
+
+  it("连续触发确认框时只保留最新一个(不叠两层)", async () => {
+    hosts = [HOST({ id: "h_a", name: "alpha" }), HOST({ id: "h_b", name: "beta" })];
+    await mount();
+
+    (itemByName("alpha").querySelector("[data-act=del]") as HTMLButtonElement).click();
+    await waitFor(() => !!confirmDialog(), "first dialog");
+    (itemByName("beta").querySelector("[data-act=del]") as HTMLButtonElement).click();
+    await waitFor(
+      () => confirmDialog()!.querySelector(".dd-body p")!.textContent!.includes('Delete "beta"'),
+      "second dialog replaces",
+    );
+    expect(document.querySelectorAll(".discard-dlg")).toHaveLength(1);
+    (confirmDialog()!.querySelector(".dd-x") as HTMLButtonElement).click();
+    await flush(4);
+    expect(confirmDialog()).toBeNull();
+    expect(calls["hosts.remove"]).toBeUndefined();
   });
 
   it("删除主机:确认后调 remove(id) 并刷新掉该行", async () => {

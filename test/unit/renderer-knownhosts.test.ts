@@ -9,11 +9,9 @@ import type { HostKeyAsk, KnownHostRow } from "../../src/shared/knownhost";
  * 弹窗文案逐字取自原版(F18):未知主机 "Are you sure you want to connect?",
  * 指纹变更 "The fingerprint for <host> has changed" + error 色。
  *
- * 说明:共享 helper 的假桥目前**没有** knownhost.onAsk/onAskCancel(installHostKeyDialog
- * 需要它们),本文件按 preload 真实签名在实例上补齐,不改共享 helper。
+ * 假桥用共享 helper;knownhost.onAsk/onAskCancel 按 preload 真实签名注册回调并返回退订函数,
+ * 用于驱动"主进程发起主机密钥询问"的真实路径。
  */
-
-type AnyBridge = Record<string, any>;
 
 let rows: KnownHostRow[];
 let importImpl: () => Promise<{ canceled?: boolean; added: number; skipped: number }>;
@@ -40,26 +38,23 @@ async function waitFor(cond: () => boolean, label = "condition"): Promise<void> 
 }
 
 /** 装 DOM + 忠实假桥(含 helper 缺少的两个订阅方法),再动态 import 被测模块 */
-function installFake(overrides: Record<string, (...a: unknown[]) => unknown> = {}): AnyBridge {
+function installFake(overrides: Record<string, (...a: unknown[]) => unknown> = {}): void {
   loadRendererDom();
   const b = installBridge({
     "knownhost.list": async () => rows.map((r) => ({ ...r })),
     "knownhost.remove": async (host) => removeImpl(String(host)),
     "knownhost.import": async () => importImpl(),
+    "knownhost.onAsk": (cb) => {
+      askCb = cb as (req: HostKeyAsk) => void;
+      return () => { askCb = null; };
+    },
+    "knownhost.onAskCancel": (cb) => {
+      askCancelCb = cb as (reqId: string) => void;
+      return () => { askCancelCb = null; };
+    },
     ...overrides,
   });
   calls = b.calls;
-  const api = (window as unknown as { sshkit: AnyBridge }).sshkit;
-  /* preload 真实签名:onAsk/onAskCancel 返回"取消订阅"函数 */
-  api.knownhost.onAsk = (cb: (req: HostKeyAsk) => void) => {
-    askCb = cb;
-    return () => { askCb = null; };
-  };
-  api.knownhost.onAskCancel = (cb: (reqId: string) => void) => {
-    askCancelCb = cb;
-    return () => { askCancelCb = null; };
-  };
-  return api;
 }
 
 async function mountView(): Promise<HTMLElement> {
@@ -171,7 +166,7 @@ describe("导入 known_hosts", () => {
 
     expect(lastToast()!.textContent).toBe("Imported 2 known hosts, skipped 1");
     await waitFor(() => rowEls().length === 1, "imported row");
-    expect(rowByHost("imported.example.com")).toBeTruthy();
+    rowByHost("imported.example.com"); // 找不到会抛错
   });
 
   it("只新增 1 条时用单数文案", async () => {
@@ -188,6 +183,23 @@ describe("导入 known_hosts", () => {
     (el.querySelector(".kh-import") as HTMLButtonElement).click();
     await waitFor(() => !!lastToast());
     expect(lastToast()!.textContent).toBe("Nothing new to import (3 skipped)");
+  });
+
+  it("提示 3.2 秒后自动消失(不长期占用界面)", async () => {
+    const el = await mountView();
+    importImpl = async () => ({ canceled: false, added: 1, skipped: 0 });
+
+    vi.useFakeTimers();
+    try {
+      (el.querySelector(".kh-import") as HTMLButtonElement).click();
+      for (let i = 0; i < 6 && !lastToast(); i++) await Promise.resolve();
+      expect(lastToast()).not.toBeNull();
+
+      await vi.advanceTimersByTimeAsync(3200);
+      expect(lastToast()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("导入失败:非 Error 的拒绝值(字符串)也能显示,不是 undefined", async () => {
@@ -349,7 +361,6 @@ describe("主机密钥询问弹窗", () => {
     ask();
 
     const back = backdrop()!;
-    expect(back).toBeTruthy();
     expect(back.dataset.req).toBe("req-1");
     const title = back.querySelector("h3")!;
     expect(title.textContent).toBe("Are you sure you want to connect?");
@@ -420,10 +431,10 @@ describe("主机密钥询问弹窗", () => {
   it("会话结束的取消事件只撤掉对应 reqId 的弹窗", async () => {
     await mountDialog();
     ask({ reqId: "req-1" });
-    expect(askCancelCb).toBeTruthy();
+    expect(typeof askCancelCb).toBe("function");
 
     askCancelCb!("req-other");
-    expect(backdrop()).toBeTruthy();
+    expect(backdrop()).not.toBeNull();
     askCancelCb!("req-1");
     expect(backdrop()).toBeNull();
   });
