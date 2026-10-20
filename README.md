@@ -1,35 +1,59 @@
 # sshkit
 
-Lean local-first SSH terminal client. Original implementation, informed by a
-feature study of a commercial terminal (see sibling repo `termius-rea` for the
-research archive); no code or assets from that study are reused here.
+A lean, local-first SSH client for macOS — **original implementation**.
+Electron + TypeScript + xterm.css, no cloud, no accounts, no telemetry.
 
-> Working with an AI agent? Read **[`AGENTS.md`](./AGENTS.md)** first (red lines,
-> commands, verification discipline, i18n and commit conventions).
-> Human handover / project history: **[`HANDOVER.md`](./HANDOVER.md)**.
+> Design informed by a behavioral study of a commercial SSH terminal
+> (read-only, local). **No code, binaries, or assets from that product are reused here.**
 
-## Status: M0 — local terminal shell
+## Status
 
-- Electron 44 thin shell, esbuild bundling, TypeScript.
-- `@xterm/xterm` renderer × `node-pty` main-process host.
-- Secure defaults: `contextIsolation: true`, `nodeIntegration: false`,
-  `sandbox: true`, `contextBridge` API allowlist (anti-pattern remediation of
-  the studied app).
+Feature-complete for daily SSH work:
 
-## Run
+- **SSH**: password / private-key / agent auth, known-hosts verification (TOFU with explicit prompt,
+  hashed entries, import from another `known_hosts`), reconnect on drop.
+- **Terminal**: xterm with canvas renderer, colour schemes, font & size, scrollback, search,
+  split panes, workspace view, broadcast input to all panes.
+- **SFTP**: dual-pane browser (local ↔ remote) with upload/download, mkdir/rename/delete.
+  Remote side rides a dedicated connection so it also works on servers that refuse extra
+  channels on the interactive session.
+- **Port forwarding**: local / remote / dynamic (built-in SOCKS5), rule persistence, live status.
+- **Host book**: groups, tags, search, edit/delete; credentials stored in the system Keychain.
+- **Snippets**, **Logs**, **appearance settings** (dark/light UI, 12 terminal schemes).
+- **i18n**: 中文 / English, switchable at runtime (Follow system / 中文 / English).
+
+## Install / run
 
 ```sh
 pnpm install
-pnpm run build        # esbuild → dist/
-pnpm run rebuild:pty  # compile node-pty against Electron ABI
-pnpm start            # build + electron .
+pnpm run rebuild:pty     # build node-pty for the Electron ABI
+pnpm start               # build + launch
 ```
 
-## Roadmap
+Packaging:
 
-- M1 SSH connection desk: host book (CRUD + groups), ssh2 sessions,
-  key/password storage in Keychain (keytar).
-- M2 SFTP dual-pane + port forwarding.
-- M3 UX: themes / keybindings / snippets.
-- M4 mosh bridge (system binary), serial (optional).
-- M5 packaging (electron-builder, GH Releases update feed).
+```sh
+pnpm dist                # → release/*.zip (unsigned)
+pnpm run dist:dmg        # → release/*.dmg (via system hdiutil)
+pnpm run dist:dir        # unpacked .app, handy when debugging packaging
+```
+
+## Development
+
+```sh
+pnpm run typecheck       # tsc --noEmit
+pnpm test                # unit/integration (vitest)
+pnpm run test:e2e        # end-to-end (Playwright drives the real Electron app)
+pnpm run test:coverage   # coverage (thresholds are a ratchet)
+pnpm run test:all        # typecheck + unit + build + e2e
+```
+
+Working with an AI agent? Read **[`AGENTS.md`](./AGENTS.md)** first — red lines, commands,
+verification discipline, testing iron rules (tests lock *desired* behaviour, never current
+behaviour), i18n and commit conventions. Human handover / project history:
+**[`HANDOVER.md`](./HANDOVER.md)**.
+
+## License
+
+[MIT](./LICENSE) © 2026 suninx. Third-party components and bundled font licences:
+[`THIRD-PARTY.md`](./THIRD-PARTY.md).
