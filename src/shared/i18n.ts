@@ -17,6 +17,7 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "snippets.sendToTerminal": "Send to terminal",
   "common.more": "More",
   "common.search": "Search",
   "common.view": "View",
@@ -281,6 +282,7 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "snippets.sendToTerminal": "发送到终端",
   "common.more": "更多",
   "common.search": "搜索",
   "common.view": "视图",

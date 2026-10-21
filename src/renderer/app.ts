@@ -795,7 +795,7 @@ async function renderSnippetsSection(boxId: string): Promise<void> {
     const row = document.createElement("div");
     row.className = "sec-row";
     row.innerHTML = `<span class="nm"></span><span class="cm"></span>
-      <button class="btn sec-send">Send to terminal</button><button class="btn danger sec-del">✕</button>`;
+      <button class="btn sec-send">${tr("snippets.sendToTerminal")}</button><button class="btn danger sec-del">✕</button>`;
     (row.querySelector(".nm") as HTMLElement).textContent = sn.name;
     (row.querySelector(".cm") as HTMLElement).textContent = sn.command;
     (row.querySelector(".sec-send") as HTMLElement).addEventListener("click", () => {
