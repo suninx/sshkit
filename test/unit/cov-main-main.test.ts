@@ -371,6 +371,10 @@ describe("应用菜单", () => {
     for (const item of edit.submenu.filter((i: any) => typeof i.click === "function")) item.click();
     const help = template.find((m: any) => m.label === "Help");
     help.submenu[0].click();
+    /* "关于"走 showAboutPanel(不是 role:"about",否则系统默认面板会忽略我们的选项) */
+    appItem.submenu[0].click();
+    expect((em as unknown as { module: { app: { showAboutPanel: { calls: unknown[] } } } })
+      .module.app.showAboutPanel.mock.calls.length).toBeGreaterThan(0);
     /* 窗口关闭后点菜单项:菜单回调里的 wc() 变成 null,不能抛(覆盖 if (w) 的假分支) */
     const win = em.windows[0] as unknown as { emit: (ev: string) => void };
     win.emit("closed");

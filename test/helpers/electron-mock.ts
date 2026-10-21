@@ -78,6 +78,7 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
       quit: vi.fn(),
       setName: vi.fn(),
       setAboutPanelOptions: vi.fn(),
+      showAboutPanel: vi.fn(),
       dock: { setIcon: vi.fn() },
       isPackaged: false,
     },

@@ -49,7 +49,9 @@ export function installAppMenu(platform: NodeJS.Platform = process.platform): vo
     {
       label: name,
       submenu: [
-        { role: "about", label: `${tr("menu.about")} ${name}` },
+        /* 用 click 调 showAboutPanel,而不是 role:"about" —— role 走的是系统默认面板,
+       会忽略 setAboutPanelOptions(实测还是显示 Electron 44.8.0)。 */
+        { label: `${tr("menu.about")} ${name}`, click: () => app.showAboutPanel() },
         { type: "separator" },
         { label: tr("menu.preferences"), accelerator: "Cmd+,", click: sendPrefs },
         { type: "separator" },
@@ -347,6 +349,7 @@ app.setName("sshkit");
 
 app.whenReady().then(() => {
   setDockIcon(process.platform, (file) => app.dock?.setIcon(file));
+  installAboutPanel();   // 必须在 ready 之后,否则 setAboutPanelOptions 不生效
   installAppMenu();
   createWindow();
   app.on("activate", () => {
