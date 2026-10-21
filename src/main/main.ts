@@ -340,8 +340,13 @@ app.whenReady().then(() => {
 /* macOS 约定:关掉窗口**不退出应用**,留在 Dock,点 Dock 图标(activate)能重开窗口。
    Windows/Linux 仍按各自惯例退出。之前的无条件 quit() 让用户"一关窗口应用就没了",
    再点 Dock 也回不来(用户反馈"没看到窗口呀")。 */
+/** 关掉所有窗口时是否退出应用:macOS 不退出(留在 Dock),其余平台按惯例退出。 */
+export function shouldQuitOnAllClosed(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== "darwin";
+}
+
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (shouldQuitOnAllClosed()) app.quit();
 });
 app.on("before-quit", () => {
   forwardService.stopAll();

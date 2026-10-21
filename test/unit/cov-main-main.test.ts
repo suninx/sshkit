@@ -815,10 +815,14 @@ describe("app 生命周期", () => {
     expect(em.windows.length).toBe(1);
   });
 
-  it("window-all-closed → app.quit", async () => {
+  it("window-all-closed:macOS 不退出应用(留在 Dock,activate 可重开窗口)", async () => {
+    /* macOS 约定:关窗口不退出;之前无条件 quit() 导致"一关窗口应用就没了",
+       点 Dock 也回不来(用户反馈"没看到窗口呀")。本文件把平台桩成 darwin,
+       所以这里断言**不**调用 quit;非 darwin 的退出分支由 platform.test.ts 覆盖
+       (shouldQuitOnAllClosed 纯函数,两个平台都能测)。 */
     const before = T.quitCalls();
     em.fire("app:window-all-closed");
-    expect(T.quitCalls()).toBe(before + 1);
+    expect(T.quitCalls()).toBe(before);
   });
 
   it("before-quit 收掉 pty、ssh 会话与端口转发", async () => {

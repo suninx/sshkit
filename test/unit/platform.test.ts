@@ -26,11 +26,13 @@ vi.mock("electron", async () => {
 
 let installAppMenu: typeof import("../../src/main/main").installAppMenu;
 let windowChrome: typeof import("../../src/main/main").windowChrome;
+let shouldQuitOnAllClosed: typeof import("../../src/main/main").shouldQuitOnAllClosed;
 
 beforeAll(async () => {
   const mod = await import("../../src/main/main");
   installAppMenu = mod.installAppMenu;
   windowChrome = mod.windowChrome;
+  shouldQuitOnAllClosed = mod.shouldQuitOnAllClosed;
 });
 
 describe("resolveShell:按平台选默认 shell", () => {
@@ -93,5 +95,15 @@ describe("installAppMenu:非 macOS 不装应用菜单", () => {
     const template = em.menu.built[0] as Array<{ label?: string; submenu?: unknown[] }>;
     expect(template.length).toBeGreaterThan(0);
     expect(em.menu.applied).toHaveLength(1);
+  });
+});
+
+describe("关窗口是否退出应用", () => {
+  it("macOS 不退出(留在 Dock),Windows/Linux 退出", () => {
+    /* macOS 约定:关窗口应用继续活着,点 Dock 图标能重开(activate);
+       其余平台按惯例退出。用户之前"一关窗口应用就没了"就是这个无条件 quit 造成的。 */
+    expect(shouldQuitOnAllClosed("darwin")).toBe(false);
+    expect(shouldQuitOnAllClosed("win32")).toBe(true);
+    expect(shouldQuitOnAllClosed("linux")).toBe(true);
   });
 });
