@@ -371,8 +371,11 @@ describe("应用菜单", () => {
     for (const item of edit.submenu.filter((i: any) => typeof i.click === "function")) item.click();
     const help = template.find((m: any) => m.label === "Help");
     help.submenu[0].click();
-    /* 没有窗口时的分支:click 不能抛 */
+    /* 窗口关闭后点菜单项:菜单回调里的 wc() 变成 null,不能抛(覆盖 if (w) 的假分支) */
+    const win = em.windows[0] as unknown as { emit: (ev: string) => void };
+    win.emit("closed");
     appItem.submenu.find((i: any) => i.accelerator === "Cmd+,").click();
+    for (const item of edit.submenu.filter((i: any) => typeof i.click === "function")) item.click();
   });
 
   it("点偏好设置把 prefs:open 发给当前窗口", async () => {
