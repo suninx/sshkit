@@ -619,7 +619,6 @@
     .tb-icon { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent;
       color: var(--fg); cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .tb-icon:hover { background: rgba(255,255,255,.07); }
-    .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff;
       display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; }
     #host-tools { display: flex; align-items: center; gap: 8px; height: 36px;
       background: var(--panel); border-radius: 9px; padding: 0 6px 0 12px; }
@@ -678,10 +677,7 @@
     .pill.on { color: #0f2a20; background: #35d39a; }
     #host-list .host-item .hcol { display: flex; flex-direction: column; min-width: 0; }
 
-    .avatar { background: #ffcb00; border: 2px solid var(--accent); width: 30px; height: 30px; }
-    .avatar-add { width: 26px; height: 26px; border: 0; border-radius: 50%; background: var(--disabled);
       display: flex; align-items: center; justify-content: center; cursor: pointer; margin-left: 2px; }
-    .avatar-add:hover { background: #6b7086; }
     #host-list { padding-left: 22px; }
     #host-list .group-label { padding-left: 0; }
     .tb-btn svg { flex: none; }
@@ -946,8 +942,6 @@
     <button id="host-tags" class="tb-icon" title="Filter and sort" data-i18n-title="toolbar.tags" aria-label="Filter and sort" data-i18n-aria="toolbar.tags"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.6 2.6H21a.4.4 0 0 1 .4.4v9.4a1 1 0 0 1-.3.7l-8.4 8.4a1 1 0 0 1-1.4 0l-8.1-8.1a1 1 0 0 1 0-1.4l8.4-8.4a1 1 0 0 1 .7-.3Z"/><circle cx="17" cy="7" r="1.6" fill="var(--bg2)"/></svg></button>
     <button id="host-layout" class="tb-icon" title="Change layout" data-i18n-title="toolbar.layout" aria-label="Change layout" data-i18n-aria="toolbar.layout"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2.2"/><rect x="13" y="3" width="8" height="8" rx="2.2"/><rect x="3" y="13" width="8" height="8" rx="2.2"/><rect x="13" y="13" width="8" height="8" rx="2.2"/></svg></button>
     <button id="btn-appearance" class="tb-icon" title="Preferences (⌘,)" data-i18n-title="top.preferences" aria-label="Preferences" data-i18n-aria="top.preferences"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.6a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.97z"/></svg></button>
-    <span class="avatar" title="Account" data-i18n-title="toolbar.account"><svg width="16" height="16" viewBox="0 0 24 24" fill="#3a2f00" stroke="#3a2f00" stroke-width="1.6"><circle cx="12" cy="9" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
-    <button class="avatar-add" title="Add account" data-i18n-title="toolbar.addAccount"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></button>
   </div>
   <div id="host-list"></div>
 </div>

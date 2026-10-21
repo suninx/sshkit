@@ -126,8 +126,6 @@ export const en = {
   "toolbar.tags": "Filter and sort",
   "toolbar.layout": "Change layout",
   "toolbar.appearance": "Appearance — theme / font",
-  "toolbar.account": "Account",
-  "toolbar.addAccount": "Add account",
 
   /* ---- 终端侧栏 ---- */
   "panel.terminal": "Terminal",
@@ -390,8 +388,6 @@ export const zh: Record<MsgKey, string> = {
   "toolbar.tags": "筛选与排序",
   "toolbar.layout": "切换布局",
   "toolbar.appearance": "外观 — 主题 / 字体",
-  "toolbar.account": "账户",
-  "toolbar.addAccount": "添加账户",
 
   "panel.terminal": "终端",
   "panel.jumpTo": "跳转到",
