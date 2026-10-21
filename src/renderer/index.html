@@ -611,7 +611,7 @@
     /* 注意:.sec.vault 同时带 sec 与 vault 两个类,这条早期规则的内边距会把整屏再压下去 10px
        (基准点 59/114/168/205 全部偏下)。内边距统一由 .sec-band 负责,这里必须为 0。 */
     .vault { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0; }
-    #host-toolbar { display: flex; align-items: center; gap: 6px; height: 30px; margin-top: 20px; }
+    #host-toolbar { display: flex; align-items: center; gap: 6px; height: 30px; margin-top: 14px; }
     .tb-btn { height: 30px; border: 0; border-radius: 8px; background: var(--btn2); color: var(--fg);
       font-size: 13px; padding: 0 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
     .tb-btn.caret { padding: 0 7px; }
@@ -622,8 +622,12 @@
       display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; }
     #host-tools { display: flex; align-items: center; gap: 8px; height: 36px;
       background: var(--panel); border-radius: 9px; padding: 0 6px 0 12px; }
-    #host-tools #host-search { flex: 1; min-width: 0; background: transparent; border: 0; outline: none;
-      color: var(--fg); font-size: 13px; height: 100%; }
+    /* 原版实测:输入框有自己的填充色 #3e4356(比面板底 #282c3c 亮一档),而不是透明的 —— 
+       透明会让整条带子糊成一片,看不出哪里能输入。圆角 8px、内边距 0 10px。 */
+    /* 显式 34px:height:100% 在 flex 行里没解析成 36(实测只有 15px,输入框被压成一条);
+       34px 取自原版实测(搜索框 59..93)。 */
+    #host-tools #host-search { flex: 1; min-width: 0; background: #3e4356; border: 0; outline: none;
+      color: var(--fg); font-size: 13px; height: 34px; border-radius: 8px; padding: 0 10px; }
     #host-tools #host-search::placeholder { color: var(--fg-dim); }
     #host-tools #btn-connect { height: 26px; border: 0; border-radius: 7px; background: transparent;
       color: var(--disabled); font-size: 13px; padding: 0 10px; cursor: default; }
@@ -728,7 +732,7 @@
     .sec { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); }
     .sec-band { background: var(--bg2); padding: 19px 10px 7px; display: flex; align-items: center; gap: 6px; }
     .sec.vault .sec-band { display: block; padding: 8px 10px 7px; }
-    .sec.vault .sec-band #host-toolbar { margin-top: 20px; }
+    .sec.vault .sec-band #host-toolbar { margin-top: 14px; }
     .sec-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 10px; }
     .sec-chip { height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--fg);
       font-size: 13px; padding: 0 10px; cursor: pointer; display: flex; align-items: center; gap: 7px; }
@@ -861,7 +865,19 @@
     .sftp .sp-title { line-height: 24px; font-size: 14px; margin: 0; font-weight: 500;
       color: #141728; }   /* 颜色也要显式给:某处的 .sp-title{color:var(--fg-dim)} 会漏进来,文字发灰 */
     .sftp .sp-head { padding: 7px 10px; }
-</style>
+    /* ---- 原版对齐补丁(放样式表最后,规避前面重复定义互相覆盖)---- */
+    #host-tools { background: transparent; }                     /* 带子本身不画底,靠输入框自己的 #3e4356 区分 */
+    #host-toolbar .tb-icon { background: transparent; }          /* 右侧是纯图标,hover 才出浅底 */
+    #host-toolbar .tb-icon:hover { background: rgba(255,255,255,.06); }
+    /* "连接"按钮在原版里是嵌在搜索框**内部**右侧的(框 194..1189,Connect 靠右内嵌)。
+       做法:让搜索带做定位容器,按钮绝对定位到右端,输入框右侧留出按钮宽度。 */
+    #host-tools { position: relative; }
+    #host-tools #host-search { padding-right: 74px; }
+    /* right 要算上带子的 10px 内边距,否则按钮右缘会探出输入框(实测 1264 > 1260) */
+    #host-tools #btn-connect { position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+      height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent;
+      color: var(--disabled); font-size: 13px; cursor: default; }
+  </style>
 </head>
 <body>
   <div id="app">
