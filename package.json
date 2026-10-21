@@ -17,7 +17,9 @@
     "dist": "pnpm run build && electron-builder --mac --arm64 --publish never",
     "dist:dir": "pnpm run build && electron-builder --mac --arm64 --publish never --dir",
     "dist:dmg": "bash scripts/make-dmg.sh",
-    "pretest:e2e": "pnpm run build"
+    "pretest:e2e": "pnpm run build",
+    "dev": "node esbuild.mjs --watch",
+    "app": "electron . --remote-debugging-port=9223"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.1",
