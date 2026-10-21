@@ -52,3 +52,7 @@ linux:
   target:
     - AppImage
     - tar.gz
+
+# 打包后对 macOS 产物做 adhoc 重签(免费;解决 app.asar 替换后 bundle 封印失效、
+# 以及 node-pty/keytar 的 .node 无签名的问题)。Windows/Linux 不受影响。
+afterPack: scripts/after-pack.js
