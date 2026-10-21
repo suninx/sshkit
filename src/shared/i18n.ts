@@ -17,6 +17,21 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "menu.services": "Services",
+  "menu.edit": "Edit",
+  "menu.undo": "Undo",
+  "menu.redo": "Redo",
+  "menu.cut": "Cut",
+  "menu.copy": "Copy",
+  "menu.paste": "Paste",
+  "menu.selectAll": "Select All",
+  "menu.view": "View",
+  "menu.zoomReset": "Actual Size",
+  "menu.zoomIn": "Zoom In",
+  "menu.zoomOut": "Zoom Out",
+  "menu.fullscreen": "Toggle Full Screen",
+  "menu.help": "Help",
+  "menu.docs": "Project Homepage",
   "panel.noSnippets": "No snippets yet",
   "snippets.sendToTerminal": "Send to terminal",
   "common.more": "More",
@@ -283,6 +298,21 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "menu.services": "服务",
+  "menu.edit": "编辑",
+  "menu.undo": "撤销",
+  "menu.redo": "重做",
+  "menu.cut": "剪切",
+  "menu.copy": "复制",
+  "menu.paste": "粘贴",
+  "menu.selectAll": "全选",
+  "menu.view": "显示",
+  "menu.zoomReset": "实际大小",
+  "menu.zoomIn": "放大",
+  "menu.zoomOut": "缩小",
+  "menu.fullscreen": "切换全屏",
+  "menu.help": "帮助",
+  "menu.docs": "项目主页",
   "panel.noSnippets": "还没有片段",
   "snippets.sendToTerminal": "发送到终端",
   "common.more": "更多",

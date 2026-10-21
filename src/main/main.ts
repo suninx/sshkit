@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from "electron";
 import os from "node:os";
 import path from "node:path";
 import { PtyService, type TerminalCreateOptions } from "./pty";
@@ -36,29 +36,76 @@ export function windowChrome(platform: NodeJS.Platform): WindowChrome {
 /* platform 作为参数传入(默认取真实平台):非 darwin 分支才能在 macOS 上被测到。 */
 export function installAppMenu(platform: NodeJS.Platform = process.platform): void {
   if (platform !== "darwin") { Menu.setApplicationMenu(null); return; }
-  /* 显式写应用菜单(而不是 {role:"appMenu"}),为的是加入**偏好设置(⌘,)** ——
-     macOS 上这是最容易被找到的设置入口;语言切换后要重建,所以文案走 tr()。 */
-  const sendPrefs = (): void => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("prefs:open");
-  };
+  const name = app.getName();
+  const wc = () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null);
+  const sendPrefs = (): void => { wc()?.send("prefs:open"); };
+  /* 编辑菜单里的复制/粘贴**不能**用 role:role 会在系统层吃掉 Cmd+C/V,渲染层就永远收不到
+     (终端是 canvas 渲染,必须自己处理选区复制)。所以这里只放点击项、不挂 accelerator:
+     菜单能点,快捷键仍归渲染层。 */
+  const editItem = (label: string, run: (w: Electron.WebContents) => void): Electron.MenuItemConstructorOptions => ({
+    label, click: () => { const w = wc(); if (w) run(w); },
+  });
   const menu = Menu.buildFromTemplate([
     {
-      label: app.getName(),
+      label: name,
       submenu: [
-        { role: "about", label: `${tr("menu.about")} ${app.getName()}` },
+        { role: "about", label: `${tr("menu.about")} ${name}` },
         { type: "separator" },
         { label: tr("menu.preferences"), accelerator: "Cmd+,", click: sendPrefs },
+        { type: "separator" },
+        { role: "services", label: tr("menu.services") },
         { type: "separator" },
         { role: "hide", label: tr("menu.hide") },
         { role: "hideOthers", label: tr("menu.hideOthers") },
         { role: "unhide", label: tr("menu.showAll") },
         { type: "separator" },
-        { role: "quit", label: `${tr("menu.quit")} ${app.getName()}` },
+        { role: "quit", label: `${tr("menu.quit")} ${name}` },
+      ],
+    },
+    {
+      label: tr("menu.edit"),
+      submenu: [
+        { role: "undo", label: tr("menu.undo") },
+        { role: "redo", label: tr("menu.redo") },
+        { type: "separator" },
+        editItem(tr("menu.cut"), (w) => w.cut()),
+        editItem(tr("menu.copy"), (w) => w.copy()),
+        editItem(tr("menu.paste"), (w) => w.paste()),
+        editItem(tr("menu.selectAll"), (w) => w.selectAll()),
+      ],
+    },
+    {
+      label: tr("menu.view"),
+      submenu: [
+        { role: "resetZoom", label: tr("menu.zoomReset") },
+        { role: "zoomIn", label: tr("menu.zoomIn") },
+        { role: "zoomOut", label: tr("menu.zoomOut") },
+        { type: "separator" },
+        { role: "togglefullscreen", label: tr("menu.fullscreen") },
       ],
     },
     { role: "windowMenu", label: tr("menu.window") },
+    {
+      role: "help",
+      label: tr("menu.help"),
+      submenu: [
+        { label: tr("menu.docs"), click: () => void shell.openExternal("https://github.com/suninx/sshkit") },
+      ],
+    },
   ]);
   Menu.setApplicationMenu(menu);
+}
+
+/** macOS 的"关于"面板:原生面板 + 版本/Electron/Chromium/Node 信息(与原版一致的信息密度)。 */
+export function installAboutPanel(platform: NodeJS.Platform = process.platform): void {
+  if (platform !== "darwin") return;
+  app.setAboutPanelOptions({
+    applicationName: app.getName(),
+    applicationVersion: app.getVersion(),
+    version: `Electron ${process.versions.electron}`,
+    copyright: "MIT License · Local-first SSH client",
+    credits: `Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
+  });
 }
 
 /* bench 专用:仅在 SSHKIT_BENCH=1 时输出,正常运行零噪音 */

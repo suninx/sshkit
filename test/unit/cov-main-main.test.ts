@@ -351,7 +351,15 @@ describe("应用菜单", () => {
     const template = T.menu.built[T.menu.built.length - 1] as any[];
     expect(template[0].label).toBe("sshkit");
     expect(template[0].submenu.some((x: any) => x.accelerator === "Cmd+,")).toBe(true);
-    expect(template[1]).toMatchObject({ role: "windowMenu" });
+    /* 菜单现在是完整的 macOS 结构:应用 / 编辑 / 显示 / 窗口 / 帮助。
+       编辑菜单的复制粘贴**故意不挂 accelerator**(挂了会被系统吃掉,终端收不到 Cmd+C/V)。 */
+    const labels = template.map((x: any) => x.label ?? x.role);
+    for (const want of ["Edit", "View", "Help"]) expect(labels).toContain(want);
+    const editMenu = template.find((x: any) => x.label === "Edit");
+    for (const item of editMenu.submenu.filter((i: any) => ["Copy", "Paste"].includes(i.label))) {
+      expect(item.accelerator).toBeUndefined();
+    }
+    expect(template.find((x: any) => x.role === "windowMenu")).toBeTruthy();
   });
 
   it("点偏好设置把 prefs:open 发给当前窗口", async () => {
