@@ -337,7 +337,12 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("window-all-closed", () => app.quit());
+/* macOS 约定:关掉窗口**不退出应用**,留在 Dock,点 Dock 图标(activate)能重开窗口。
+   Windows/Linux 仍按各自惯例退出。之前的无条件 quit() 让用户"一关窗口应用就没了",
+   再点 Dock 也回不来(用户反馈"没看到窗口呀")。 */
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
 app.on("before-quit", () => {
   forwardService.stopAll();
   ptyService.disposeAll();
