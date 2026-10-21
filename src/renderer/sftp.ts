@@ -6,7 +6,7 @@ import { applyDom, tr } from "../shared/i18n";
    原版实测的结构与尺寸(与主题无关的部分照抄):
      栏标题 14px/450、面包屑 14px/450、列头 12px/700(y=164,高 18)、
      行两行式(文件名 + 权限串 10px)、行距 47、列 x 偏移(相对栏)20/299/450/551、
-     栏间 1px 分隔线;远端未绑会话时显示 "Connect to host" + "Select host" 空态(18px/500)。
+     栏间 1px 分隔线;远端未绑会话时显示 tr("sftp.connectToHost") + tr("sftp.selectHost") 空态(18px/500)。
    原版那些**颜色**是在其浅色 UI 下测的(分隔 #e6ebed、权限字 #798c94),
    我方是深色 UI,故颜色映射到本应用主题变量,尺寸与结构照抄 —— 见 bench/FINDINGS.md F15。 */
 
@@ -170,7 +170,7 @@ export function createSftpView(
         render(st);
       });
     });
-    // "Select All" / "Clear selection"(文案取自原版字符串;焦点在该栏内时生效)
+    // tr("common.selectAll") / tr("common.clearSelection")(文案取自原版字符串;焦点在该栏内时生效)
     host.addEventListener("keydown", (ev) => {
       if (!(ev.metaKey || ev.ctrlKey) || ev.key.toLowerCase() !== "a") return;
       ev.preventDefault();
@@ -211,7 +211,7 @@ export function createSftpView(
     } catch (err) {
       const msg = pick(String((err as Error).message ?? err));
       banner(msg);
-      /* 远端失败要显示错误态(带原因与 Retry),不能停在"Connect to host"空态 —— 那是"没有会话"的语义。 */
+      /* 远端失败要显示错误态(带原因与 Retry),不能停在tr("sftp.connectToHost")空态 —— 那是"没有会话"的语义。 */
       if (st.which === "remote" && session()) renderError(st, msg);
       else render(st);
     }
@@ -225,7 +225,7 @@ export function createSftpView(
     /* 注意:这里必须**保留** .sp-rows 容器并在之后重新取回 st.rowsEl。
        之前直接 body.innerHTML = 空态,把 st.rowsEl 所在的容器整个换掉 →
        st.rowsEl 成了游离节点,之后所有 render() 都写进脱离文档的节点,
-       面板就永远停在 "Connect to host"(实测:Reload 报通道错误但界面纹丝不动)。 */
+       面板就永远停在 tr("sftp.connectToHost")(实测:Reload 报通道错误但界面纹丝不动)。 */
     body.innerHTML = `
       <div class="sftp-empty">
         <div class="sp-empty-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e3e7e9" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg></div>
@@ -271,7 +271,7 @@ export function createSftpView(
     back.className = "sp-arrow"; back.textContent = "‹"; back.title = "Up";
     back.addEventListener("click", () => { st.dir = parentOf(st.dir); void refresh(st); });
     const fwd = document.createElement("button");
-    fwd.className = "sp-arrow"; fwd.textContent = "›"; fwd.title = "Reload";
+    fwd.className = "sp-arrow"; fwd.textContent = "›"; fwd.title = tr("common.reload");
     fwd.addEventListener("click", () => void refresh(st));
     st.crumbsEl.append(back, fwd);
 
@@ -424,20 +424,20 @@ export function createSftpView(
   function openActions(st: PaneState, anchor: HTMLElement): void {
     const n = st.selSet.size;
     const items: Array<[string, () => void]> = [
-      ["Go up", () => { st.dir = parentOf(st.dir); void refresh(st); }],
-      ["New folder", () => void op(st, "mkdir")],
+      [tr("common.goUp"), () => { st.dir = parentOf(st.dir); void refresh(st); }],
+      [tr("common.newFolder"), () => void op(st, "mkdir")],
     ];
     if (n > 1) {
       // 多选态:动作作用于全部选中项
       items.push([`Delete ${n} items`, () => void opMany(st, "remove")]);
-      items.push(["Clear selection", () => { st.selSet.clear(); st.sel = null; render(st); }]);
+      items.push([tr("common.clearSelection"), () => { st.selSet.clear(); st.sel = null; render(st); }]);
     } else {
-      items.push(["Rename", () => void op(st, "rename")]);
-      items.push(["Delete", () => void op(st, "remove")]);
+      items.push([tr("common.rename"), () => void op(st, "rename")]);
+      items.push([tr("common.delete"), () => void op(st, "remove")]);
     }
-    items.push([st.showHidden ? "Hide hidden files" : "Show hidden files", () => { st.showHidden = !st.showHidden; render(st); }]);
+    items.push([st.showHidden ? tr("sftp.hideHidden") : tr("sftp.showHidden"), () => { st.showHidden = !st.showHidden; render(st); }]);
     if (n > 1) items.push([st.which === "local" ? `Upload ${n} items →` : `← Download ${n} items`, () => void transferMany(st)]);
-    else if (st.which === "local") items.push(["Upload →", () => void transfer("up")]);
+    else if (st.which === "local") items.push([tr("sftp.upload"), () => void transfer("up")]);
     else items.push(["← Download", () => void transfer("down")]);
     menuAt(anchor, items);
   }

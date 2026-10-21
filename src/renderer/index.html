@@ -60,7 +60,9 @@
     .host-item:focus-within .btn { visibility: visible; }
     .empty-hint { color: var(--fg-dim); padding: 12px 10px; }
     /* 空态:居中的"创建主机"卡片(对齐原版实测:卡片宽 383、图标 50×50、蓝色 Continue) */
-    .hosts-empty { display: flex; justify-content: center; padding-top: 132px; }
+    /* #host-list 是两列 grid(装主机卡片),空态卡片必须跨满整行并在内容区居中;
+       否则它只占一列,看起来"歪在左边"(实测踩到)。垂直位置按原版实测 ≈26vh。 */
+    .hosts-empty { grid-column: 1 / -1; display: flex; justify-content: center; padding: 24vh 0 0; }
     .he-inner { width: 383px; display: flex; flex-direction: column; align-items: center; text-align: center; }
     .he-ico { width: 50px; height: 50px; border-radius: 13px; background: var(--panel);
       display: flex; align-items: center; justify-content: center; color: var(--fg); margin-bottom: 26px; }

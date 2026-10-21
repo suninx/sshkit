@@ -5,15 +5,15 @@ import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
 /* T6 复刻 —— 已知主机视图 + 主机密钥询问对话框。
    文案逐字取自原版自身代码(F18):
      未知主机(首连):
-       标题 "Are you sure you want to connect?"
+       标题 tr("kh.connectConfirm")
        正文 "The authenticity of <host> can not be established." / "<keyType> fingerprint is SHA256:<fp>"
-            / "Do you want to add it to the list of known hosts?"
-       按钮 Close / Continue / "Add and continue"
+            / tr("kh.addPrompt")
+       按钮 Close / Continue / tr("kh.addAndContinue")
      指纹变更:
        标题 "The fingerprint for <host> has changed"(error 色)
-       正文 "Termius notices a potential security breach." / "New <keyType> fingerprint is SHA256:<fp>"
-       按钮 Replace / "Add as new" / Cancel
-     列表空态:"Known hosts will appear here" / "Known hosts are trusted server identities saved for secure future connections."
+       正文 tr("kh.breach") / "New <keyType> fingerprint is SHA256:<fp>"
+       按钮 Replace / tr("kh.addAsNew") / Cancel
+     列表空态:tr("kh.emptyTitle") / tr("kh.emptyDesc")
    注:正文里的产品名按本产品替换为 sshkit(与 T3 同策略),其余原样。 */
 
 export interface KhView {
@@ -36,7 +36,7 @@ export function createKnownHostsView(): KhView {
   root.className = "kh";
   root.innerHTML = `
     <div class="kh-bar">
-      <span class="kh-bar-title">Known Hosts</span>
+      <span class="kh-bar-title">${tr("kh.title")}</span>
       <span style="flex:1"></span>
       <span class="kh-hint">${tr("kh.note")}</span>
       <button class="btn kh-import" title="${tr("sec.import")}">${tr("sec.import")}</button>
@@ -67,8 +67,8 @@ export function createKnownHostsView(): KhView {
       body.innerHTML = `
         <div class="kh-empty">
           <div class="kh-empty-ico">🔑</div>
-          <h3>Known hosts will appear here</h3>
-          <p>Known hosts are trusted server identities saved for secure future connections.</p>
+          <h3>${tr("kh.emptyTitle")}</h3>
+          <p>${tr("kh.emptyDesc")}</p>
         </div>`;
       return;
     }
@@ -79,9 +79,9 @@ export function createKnownHostsView(): KhView {
     bar.className = "kh-selbar";
     if (sel.size) {
       bar.innerHTML = `<span class="kh-selcount"></span><span style="flex:1"></span>
-        <button class="btn kh-sel-all">Select All</button>
+        <button class="btn kh-sel-all">${tr("common.selectAll")}</button>
         <button class="btn danger kh-sel-del">Delete</button>
-        <button class="btn kh-sel-clear">Clear selection</button>`;
+        <button class="btn kh-sel-clear">${tr("common.clearSelection")}</button>`;
       (bar.querySelector(".kh-selcount")! as HTMLElement).textContent =
         `${sel.size} selected`;
       (bar.querySelector(".kh-sel-all")! as HTMLElement).addEventListener("click", () => {
@@ -115,7 +115,7 @@ export function createKnownHostsView(): KhView {
       <span class="kh-ico">🔑</span>
       <span class="kh-main"><span class="kh-host"></span><span class="kh-fp"></span></span>
       <span class="kh-type"></span>
-      <button class="btn danger kh-del" title="Remove">✕</button>`;
+      <button class="btn danger kh-del" title=tr("kh.remove")>✕</button>`;
     (el.querySelector(".kh-host")! as HTMLElement).textContent = r.host;
     (el.querySelector(".kh-fp")! as HTMLElement).textContent = r.fingerprint;
     (el.querySelector(".kh-type")! as HTMLElement).textContent = r.keyType;

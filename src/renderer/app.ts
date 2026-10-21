@@ -1072,7 +1072,7 @@ function openFwdTab(): void {
   const band = document.createElement("div");
   band.className = "sec-band";
   secToolbar(band, [
-    { label: "New forwarding", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
+    { label: tr("fwd.newCta"), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
       onClick: () => (view.el.querySelector(".fwd-new-main") as HTMLElement | null)?.click() },
   ]);
   const body = document.createElement("div");
@@ -1082,7 +1082,7 @@ function openFwdTab(): void {
   pane.append(sec);
   /* 视图自带的头部(fwd-bar)被工具条带取代 —— 原版这些分区屏的按钮就在顶部那条带上 */
   (view.el.querySelector(".fwd-bar") as HTMLElement | null)?.style.setProperty("display", "none");
-  const t: Tab = { id: `t${++seq}`, kind: "fwd", label: "Port Forwarding", state: "idle", pane,
+  const t: Tab = { id: `t${++seq}`, kind: "fwd", label: tr("fwd.title"), state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null, view: view as unknown as SftpView };
   tabs.push(t);
   activateTab(t.id);

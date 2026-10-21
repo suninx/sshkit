@@ -160,14 +160,14 @@ function openTagPalette(host: HostRecord, tag: string, after: HTMLElement, refre
   const clr = document.createElement("button");
   clr.className = "tag-sw clear";
   clr.textContent = "✕";
-  clr.title = "No color";
+  clr.title = tr("hosts.noColor");
   clr.addEventListener("click", (ev) => { ev.stopPropagation(); setTagColor(tag, null); refresh(); });
   pal.append(clr);
   after.append(pal);
 }
 
 const SORT_LABEL: Record<SortMode, string> = {
-    az: "A-z", za: "Z-a", newest: "Newest to oldest", oldest: "Oldest to newest",
+    az: "A-z", za: "Z-a", newest: tr("hosts.sortNewest"), oldest: tr("hosts.sortOldest"),
   };
   let sortMode: SortMode = (localStorage.getItem("sshkit.hostSort") as SortMode) || "az";
   let query = "";
@@ -200,7 +200,7 @@ const SORT_LABEL: Record<SortMode, string> = {
     if (!all.size) {
       const empty = document.createElement("div");
       empty.className = "sort-item";
-      empty.textContent = "No tags yet";
+      empty.textContent = tr("hosts.noTags");
       menu.append(empty);
     }
     for (const tag of [...all].sort()) {
@@ -222,7 +222,7 @@ const SORT_LABEL: Record<SortMode, string> = {
     if (tagFilter.size) {
       const clear = document.createElement("button");
       clear.className = "sort-item";
-      clear.textContent = "Clear filters";
+      clear.textContent = tr("hosts.clearFilters");
       clear.addEventListener("click", () => {
         tagFilter.clear();
         tagsBtn.classList.remove("on");
@@ -237,7 +237,7 @@ const SORT_LABEL: Record<SortMode, string> = {
     menu.append(sep);
     const cap = document.createElement("div");
     cap.className = "menu-cap";
-    cap.textContent = "Sort by";
+    cap.textContent = tr("hosts.sortBy");
     menu.append(cap);
     for (const mode of Object.keys(SORT_LABEL) as SortMode[]) {
       const item = document.createElement("button");
@@ -365,7 +365,7 @@ const SORT_LABEL: Record<SortMode, string> = {
     if (!shown.length) {
       const hint = document.createElement("div");
       hint.className = "empty-hint";
-      hint.textContent = "No hosts match your search.";
+      hint.textContent = tr("hosts.noMatch");
       listEl.appendChild(hint);
       return;
     }
@@ -384,7 +384,7 @@ const SORT_LABEL: Record<SortMode, string> = {
     }
   }
 
-  /* 主机列表只渲染真实的 HostRecord(没有 "Local shell" 伪条目,本地终端从工具条打开),
+  /* 主机列表只渲染真实的 HostRecord(没有 tr("hosts.localShell") 伪条目,本地终端从工具条打开),
      所以不带 null 分支。 */
   function renderItem(host: HostRecord): HTMLElement {
     const el = document.createElement("div");
@@ -412,7 +412,7 @@ const SORT_LABEL: Record<SortMode, string> = {
         const dot = document.createElement("button");
         dot.className = "tag-dot";
         dot.style.background = col ?? "transparent";
-        dot.title = "Tag color";
+        dot.title = tr("hosts.tagColor");
         dot.addEventListener("click", (ev) => {
           ev.stopPropagation();
           openTagPalette(host, tag, c, refresh);
@@ -423,7 +423,7 @@ const SORT_LABEL: Record<SortMode, string> = {
         const rm = document.createElement("button");
         rm.className = "tag-x";
         rm.textContent = "✕";
-        rm.title = "Remove tag";
+        rm.title = tr("hosts.removeTag");
         rm.addEventListener("click", (ev) => {
           ev.stopPropagation();
           const left = tags.filter((x) => x !== tag);

@@ -1,25 +1,26 @@
 import { bridge } from "./hosts";
+import { tr } from "../shared/i18n";
 import type { ForwardKind, ForwardRule, ForwardStatus } from "../shared/forward";
 
 /* T3 复刻 —— 端口转发面板与向导。
    结构与文案来自原版实测(F17):
      入口:左栏一级导航 Port Forwarding;工具栏 `+ New forwarding`;
-     空态:"Set up port forwarding" + "Save port forwarding to access databases, web apps, and other services."
+     空态:tr("fwd.setupTitle") + tr("fwd.setupDesc")
      向导四步(以 Local 为例):
        1) Select the port forwarding type: Local / Remote / Dynamic(各带说明,文案逐字照抄)
        2) Local Port Forwarding — Set the local port and binding address:
-          `Local port number *` + `Bind address`(占位符 0.0.0.0)
+          `Local port number *` + tr("fwd.bindAddress")(占位符 0.0.0.0)
        3) Intermediate host — This device is used as an intermediate host to access the remote host.
-          `Select a host`
+          tr("fwd.selectHost")
        4) Destination host — …where the intermediate host will direct the traffic.
           `Destination address *` + `Destination port number *`
-   注:Dynamic 的说明原文写的是 "turns Termius into a SOCKS proxy server",此处按本产品名替换为 sshkit,
+   注:Dynamic 的说明原文写的是 tr("fwd.socksHint"),此处按本产品名替换为 sshkit,
       其余文案原样保留。 */
 
 const KIND_LABEL: Record<ForwardKind, string> = { local: "Local", remote: "Remote", dynamic: "Dynamic" };
 
 const KIND_DESC: Record<ForwardKind, string> = {
-  local: "Local forwarding lets you access a remote server's listening port as though it were local.",
+  local: tr("fwd.localHint"),
   remote: "Remote forwarding opens a port on the remote machine and forwards connections to the local (current) host.",
   dynamic: "Dynamic port forwarding turns sshkit into a SOCKS proxy server. SOCKS proxy server is a protocol to request any connection via a remote host.",
 };
@@ -37,7 +38,7 @@ export function createFwdView(): FwdView {
   root.innerHTML = `
     <div class="fwd-bar">
       <div class="fwd-new">
-        <button class="fwd-new-main">＋ New forwarding</button>
+        <button class="fwd-new-main">${tr("fwd.newCta")}</button>
         <button class="fwd-new-caret" title="More">⌄</button>
       </div>
       <span style="flex:1"></span>
@@ -59,8 +60,8 @@ export function createFwdView(): FwdView {
       body.innerHTML = `
         <div class="fwd-empty">
           <div class="fwd-empty-ico">⇥</div>
-          <h3>Set up port forwarding</h3>
-          <p>Save port forwarding to access databases, web apps, and other services.</p>
+          <h3>${tr("fwd.setupTitle")}</h3>
+          <p>${tr("fwd.setupDesc")}</p>
         </div>`;
       return;
     }
@@ -95,7 +96,7 @@ export function createFwdView(): FwdView {
       editBtn.textContent = "Edit";
       editBtn.dataset.ruleId = r.id;
       editBtn.disabled = st.state === "running" || st.state === "starting"; // 运行中改端口没有意义
-      editBtn.title = editBtn.disabled ? "Stop the rule before editing" : "Edit rule";
+      editBtn.title = editBtn.disabled ? tr("fwd.stopBeforeEdit") : tr("fwd.editRule");
       editBtn.addEventListener("click", () => openWizard(r));
 
       const toggle = document.createElement("button");
@@ -146,10 +147,10 @@ export function createFwdView(): FwdView {
     back.className = "fwd-wiz-backdrop";
     back.innerHTML = `<div class="fwd-wiz">
         <div class="fwd-wiz-head"><span class="crumb"></span><span style="flex:1"></span>
-          <button class="btn wiz-skip">Skip wizard</button></div>
+          <button class="btn wiz-skip">${tr("fwd.skipWizard")}</button></div>
         <div class="fwd-wiz-body"></div>
-        <div class="fwd-wiz-foot"><button class="btn wiz-back">Back</button><span style="flex:1"></span>
-          <button class="btn primary wiz-next">Continue</button></div>
+        <div class="fwd-wiz-foot"><button class="btn wiz-back">${tr("fwd.back")}</button><span style="flex:1"></span>
+          <button class="btn primary wiz-next">${tr("fwd.continue")}</button></div>
       </div>`;
     document.body.append(back);
 
@@ -182,10 +183,10 @@ export function createFwdView(): FwdView {
 
     function draw(): void {
       btnBack.disabled = step === 1;
-      btnNext.textContent = step === 4 ? "Save" : "Continue";
+      btnNext.textContent = step === 4 ? "Save" : tr("fwd.continue");
       crumb.textContent = step === 1
-        ? (editing ? "Edit rule" : "Port Forwarding")
-        : `${KIND_LABEL[draft.kind]} Rule${editing ? " · editing" : ""}`;
+        ? (editing ? tr("fwd.editRule") : tr("fwd.title"))
+        : `${KIND_LABEL[draft.kind]} Rule${editing ? tr("fwd.editing") : ""}`;
       bodyEl.replaceChildren();
 
       const title = (t: string): void => {
@@ -201,8 +202,8 @@ export function createFwdView(): FwdView {
       };
 
       if (step === 1) {
-        title("New Port Forwarding");
-        hint("Select the port forwarding type:");
+        title(tr("fwd.newTitle"));
+        hint(tr("fwd.selectType"));
         const group = document.createElement("div");
         group.className = "fwd-kinds";
         for (const k of ["local", "remote", "dynamic"] as ForwardKind[]) {
@@ -219,31 +220,31 @@ export function createFwdView(): FwdView {
 
       if (step === 2) {
         const isRemote = draft.kind === "remote";
-        title(isRemote ? "Remote Port Forwarding" : draft.kind === "dynamic" ? "Dynamic Port Forwarding" : "Local Port Forwarding");
+        title(isRemote ? tr("fwd.typeRemote") : draft.kind === "dynamic" ? tr("fwd.typeDynamic") : tr("fwd.typeLocal"));
         hint(isRemote
-          ? "Set the remote port and binding address: This port will be open on the remote machine."
+          ? tr("fwd.remoteDesc")
           : draft.kind === "dynamic"
-            ? "Set the local port and binding address: This port will run the SOCKS proxy."
+            ? tr("fwd.dynamicDesc")
             : "Set the local port and binding address: This port will be open on the local (current) machine to forward traffic to the remote host.");
         bodyEl.append(
-          field(isRemote ? "Remote port number" : "Local port number", "", true, () => draft.port ? String(draft.port) : "", (v) => { draft.port = Number(v) || 0; }, "port"),
-          field("Bind address", "0.0.0.0", false, () => draft.bindAddress, (v) => { draft.bindAddress = v; }, "bind"),
+          field(isRemote ? tr("fwd.remotePort") : tr("fwd.localPort"), "", true, () => draft.port ? String(draft.port) : "", (v) => { draft.port = Number(v) || 0; }, "port"),
+          field(tr("fwd.bindAddress"), "0.0.0.0", false, () => draft.bindAddress, (v) => { draft.bindAddress = v; }, "bind"),
         );
         return;
       }
 
       if (step === 3) {
-        title("Intermediate host");
-        hint("This device is used as an intermediate host to access the remote host.");
+        title(tr("fwd.intermediateHost"));
+        hint(tr("fwd.intermediateDesc"));
         const btn = document.createElement("button");
         btn.className = "btn";
-        btn.textContent = draft.hostId ? (hosts.find((h) => h.id === draft.hostId)?.name ?? "Select a host") : "Select a host";
+        btn.textContent = draft.hostId ? (hosts.find((h) => h.id === draft.hostId)?.name ?? tr("fwd.selectHost")) : tr("fwd.selectHost");
         btn.addEventListener("click", () => {
           const menu = document.createElement("div");
           menu.className = "fwd-hostmenu";
           const vault = document.createElement("div");
           vault.className = "fwd-hostgroup";
-          vault.textContent = "Personal vault";
+          vault.textContent = tr("fwd.personalVault");
           menu.append(vault);
           for (const h of hosts) {
             const item = document.createElement("button");
@@ -260,11 +261,11 @@ export function createFwdView(): FwdView {
         return;
       }
 
-      title("Destination host");
+      title(tr("fwd.destHost"));
       hint("IP address/hostname and the port number of the remote host where the intermediate host will direct the traffic.");
       bodyEl.append(
-        field("Destination address", "", true, () => draft.destinationAddress, (v) => { draft.destinationAddress = v; }, "dest"),
-        field("Destination port number", "", true, () => draft.destinationPort ? String(draft.destinationPort) : "", (v) => { draft.destinationPort = Number(v) || 0; }, "destport"),
+        field(tr("fwd.destAddress"), "", true, () => draft.destinationAddress, (v) => { draft.destinationAddress = v; }, "dest"),
+        field(tr("fwd.destPort"), "", true, () => draft.destinationPort ? String(draft.destinationPort) : "", (v) => { draft.destinationPort = Number(v) || 0; }, "destport"),
       );
     }
 
