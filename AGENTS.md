@@ -153,3 +153,19 @@ node bench/drive.mjs --port 9223 --key "Meta+,"
 3. 渲染层与主进程日志无新增错误;
 4. 与原版对照的界面改动有**实测依据**(`bench/FINDINGS.md` 里的条目或新测量值),不是凭印象;
 5. 已提交,信息能让人看懂"为什么"。
+
+### 测试不得依赖管理员权限(2026-10-21 补)
+
+**铁律**:单测/集成测试禁止做"需要管理员或特殊系统权限"的操作,否则只有真实用户能踩到,
+CI 永远绿。已知踩过的坑与替代做法:
+
+| 禁止 | 原因 | 替代 |
+|---|---|---|
+| `fs.symlinkSync` | Windows 非管理员无 `SeCreateSymbolicLinkPrivilege`(需开发者模式/管理员)→ `EPERM` | stub `fs.readdir`/`fs.stat`,直接构造"悬挂链接"的返回 |
+| 绑定 <1024 特权端口 | 非 root/非管理员无权 | 一律 `listen(0)` 取随机端口 |
+| 写入 `C:\`、`ProgramData`、`Program Files` | 需管理员 | 只用 `mkdtemp()` 的临时目录 |
+| `chmod` 后断言权限位 | Windows 上 mode 语义不同 | 只断言 SFTP 协议里返回的 mode 数值 |
+
+**为什么 CI 抓不到**:GitHub Actions 的 Windows runner 以管理员(`runneradmin`)运行,
+macOS/Linux runner 也有 sudo —— 所以"权限不足"这一类缺陷只能在真实用户机器上复现。
+改动测试时若必须触碰系统能力,先问一句"非管理员能跑吗"。

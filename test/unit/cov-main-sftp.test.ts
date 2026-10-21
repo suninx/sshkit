@@ -183,12 +183,22 @@ describe("列表与目录操作失败路径", () => {
 
   it("listLocal 跳过拿不到 stat 的坏条目(悬挂软链),其余照常列出", async () => {
     fs.writeFileSync(path.join(dir, "ok.txt"), "hello");
-    fs.symlinkSync(path.join(dir, "does-not-exist"), path.join(dir, "dangling"));
+    /* 制造一个"存在但 stat 拿不到"的条目:
+       - POSIX:普通符号链接指向不存在的目标;
+       - Windows:**目录联接(junction)** —— 普通用户即可创建,而 fs.symlinkSync 默认
+         (文件软链)需要 SeCreateSymbolicLinkPrivilege(开发者模式/管理员),
+         非管理员会 EPERM。GitHub 的 Windows runner 是管理员,所以 CI 抓不到这个坑,
+         只有真实用户机器会红(2026-10-21 用户反馈"非管理员跑测试不能全过")。 */
+    const linkPath = path.join(dir, "dangling");
+    const target = path.join(dir, "does-not-exist");
+    if (process.platform === "win32") fs.symlinkSync(target, linkPath, "junction");
+    else fs.symlinkSync(target, linkPath);
     const ctrl = new SftpController(() => undefined, () => undefined);
     const r = await ctrl.listLocal(dir);
     expect(r.entries.map((e) => e.name)).toContain("ok.txt");
     expect(r.entries.map((e) => e.name)).not.toContain("dangling");
   });
+
 
   it("removeLocal 目录用 rmdir 删除", async () => {
     const sub = path.join(dir, "sub");
