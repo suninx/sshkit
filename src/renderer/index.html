@@ -870,7 +870,9 @@
       color: #141728; }   /* 颜色也要显式给:某处的 .sp-title{color:var(--fg-dim)} 会漏进来,文字发灰 */
     .sftp .sp-head { padding: 7px 10px; }
     /* ---- 原版对齐补丁(放样式表最后,规避前面重复定义互相覆盖)---- */
-    #host-tools { background: transparent; }                     /* 带子本身不画底,靠输入框自己的 #3e4356 区分 */
+    /* 定位祖先必须是它自己:给 #host-tools 显式 position:relative,
+       否则 .btn-connect 的 absolute 会相对更外层容器定位(实测跑到 x=1350,窗口外)。 */
+    #host-tools { background: transparent; position: relative; }                     /* 带子本身不画底,靠输入框自己的 #3e4356 区分 */
     #host-toolbar .tb-icon { background: transparent; }          /* 右侧是纯图标,hover 才出浅底 */
     #host-toolbar .tb-icon:hover { background: rgba(255,255,255,.06); }
     /* "连接"按钮在原版里是嵌在搜索框**内部**右侧的(框 194..1189,Connect 靠右内嵌)。
@@ -880,7 +882,7 @@
     /* right 要算上带子的 10px 内边距,否则按钮右缘会探出输入框(实测 1264 > 1260) */
     /* 原版结构:输入框(浅 #3e4356)+ 右侧**独立的深色连接区**(#323749,实测 1189..1272),
        而不是把"连接"压在输入框填充上。整条规则一次写全,避免后面的 background:transparent 覆盖。 */
-    #host-tools #btn-connect { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    #host-tools #btn-connect { position: absolute; right: 10px; top: 0;   /* 不用 top:50%:#host-tools 有 8px 下内边距,会低 4px */
       height: 36px; padding: 0 14px; border: 0; border-radius: 0 8px 8px 0;
       background: #323749; color: var(--disabled); font-size: 13px; cursor: default; }
 
