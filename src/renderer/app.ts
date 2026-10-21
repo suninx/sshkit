@@ -158,7 +158,7 @@ async function renderSidePanel(): Promise<void> {
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "sp-sub";
-    empty.textContent = "No snippets yet";
+    empty.textContent = tr("panel.noSnippets");
     snips.replaceChildren(empty);
   } else {
     snips.replaceChildren(
