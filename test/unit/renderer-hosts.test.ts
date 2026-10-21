@@ -433,16 +433,16 @@ describe("主机列表", () => {
     const list = $("#host-list") as HTMLElement;
     const btn = $("#host-layout") as HTMLButtonElement;
     expect(list.classList.contains("grid")).toBe(false);
-    expect(btn.textContent).toBe("▤");
+    expect(btn.innerHTML).toContain("M4 6h16");   // 列表态:三横线 SVG
 
     btn.click();
     expect(list.classList.contains("grid")).toBe(true);
-    expect(btn.textContent).toBe("▦");
+    expect(btn.innerHTML).toContain("rx=\"2.2\""); // 网格态:四个圆角方块
     expect(localStorage.getItem("sshkit.hostLayout")).toBe("grid");
 
     btn.click();
     expect(list.classList.contains("grid")).toBe(false);
-    expect(btn.textContent).toBe("▤");
+    expect(btn.innerHTML).toContain("M4 6h16");   // 列表态:三横线 SVG
     expect(localStorage.getItem("sshkit.hostLayout")).toBe("list");
   });
 
@@ -450,7 +450,7 @@ describe("主机列表", () => {
     hosts = [HOST({ id: "h1", name: "alpha" })];
     await mount({ storage: { "sshkit.hostLayout": "grid" } });
     expect(($("#host-list") as HTMLElement).classList.contains("grid")).toBe(true);
-    expect(($("#host-layout") as HTMLButtonElement).textContent).toBe("▦");
+    expect(($("#host-layout") as HTMLButtonElement).innerHTML).toContain('rx="2.2"');
   });
 
   it("点排序/标签按钮后点页面其它地方会收起菜单", async () => {

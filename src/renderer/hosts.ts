@@ -264,7 +264,8 @@ const SORT_LABEL: Record<SortMode, string> = {
   });
   function applyLayout(): void {
     listEl.classList.toggle("grid", layout === "grid");
-    layoutBtn.textContent = layout === "grid" ? "▦" : "▤";
+    /* 用 SVG 而不是 unicode 方块字形:▦/▤ 在 16px 下会渲染成黑块(与原版对齐) */
+    layoutBtn.innerHTML = layout === "grid" ? "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><rect x=\"3\" y=\"3\" width=\"8\" height=\"8\" rx=\"2.2\"/><rect x=\"13\" y=\"3\" width=\"8\" height=\"8\" rx=\"2.2\"/><rect x=\"3\" y=\"13\" width=\"8\" height=\"8\" rx=\"2.2\"/><rect x=\"13\" y=\"13\" width=\"8\" height=\"8\" rx=\"2.2\"/></svg>" : "<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\"><path d=\"M4 6h16M4 12h16M4 18h16\"/></svg>";
   }
   applyLayout();
 

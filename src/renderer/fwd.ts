@@ -43,8 +43,8 @@ export function createFwdView(): FwdView {
       </div>
       <span style="flex:1"></span>
       <button class="fwd-icon" title="Search">🔍</button>
-      <button class="fwd-icon" title="View">▦</button>
-      <button class="fwd-icon" title="Panel">▤</button>
+      <button class="fwd-icon" title="View" data-i18n-title="common.view"><svg width='16' height='16' viewBox='0 0 24 24' fill='currentColor'><rect x='3' y='3' width='8' height='8' rx='2.2'/><rect x='13' y='3' width='8' height='8' rx='2.2'/><rect x='3' y='13' width='8' height='8' rx='2.2'/><rect x='13' y='13' width='8' height='8' rx='2.2'/></svg></button>
+      <button class="fwd-icon" title="Panel" data-i18n-title="common.panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4.5" width="18" height="15" rx="2.2"/><path d="M15 4.5v15"/></svg></button>
     </div>
     <div class="fwd-body"></div>`;
   const body = root.querySelector(".fwd-body")! as HTMLElement;
