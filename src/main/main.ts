@@ -15,8 +15,18 @@ import type { HostInput } from "../shared/host";
 
 /** macOS 专属窗口 chrome:原版没有原生标题栏,红绿灯浮在内容上。
  *  **纯函数**(平台由调用方传入),便于在任意平台覆盖两个分支。 */
-export function windowChrome(platform: NodeJS.Platform): { titleBarStyle?: "hiddenInset" } {
-  return platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {};
+export type WindowChrome = {
+  titleBarStyle?: "hiddenInset";
+  trafficLightPosition?: { x: number; y: number };
+};
+
+/* macOS 的交通灯位置:原版实测三个圆点中心 y≈25(顶栏高 53,即垂直居中),左侧约 14 起。
+   Electron 的 hiddenInset 默认把它们放得更靠上(实测中心 y≈18),看上去"飘"在顶栏上方,
+   所以显式给位置。trafficLightPosition 指的是整组按钮的**左上角**。 */
+export function windowChrome(platform: NodeJS.Platform): WindowChrome {
+  return platform === "darwin"
+    ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 14, y: 19 } }
+    : {};
 }
 
 /* 应用菜单。默认菜单里 Edit 的 copy/paste/selectAll 角色会**在 OS 层吃掉 Cmd+C/V/A**,

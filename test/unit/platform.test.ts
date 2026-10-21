@@ -62,7 +62,12 @@ describe("resolveCwd:显式 → HOME → USERPROFILE → 主目录", () => {
 
 describe("windowChrome:仅 macOS 加 hiddenInset 标题栏", () => {
   it("darwin 加 titleBarStyle,其它平台返回空对象", () => {
-    expect(windowChrome("darwin")).toEqual({ titleBarStyle: "hiddenInset" });
+    /* 交通灯必须显式给位置:hiddenInset 的默认位置比原版更靠上(实测中心 y≈18 vs 原版 25),
+       用户一眼看出"飘着"。这里锁住精确值(x/y 是按钮组左上角)。 */
+    expect(windowChrome("darwin")).toEqual({
+      titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 14, y: 19 },
+    });
     expect(windowChrome("win32")).toEqual({});
     expect(windowChrome("linux")).toEqual({});
   });
