@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { $, flush, installBridge, loadRendererDom, type BridgeCalls } from "../helpers/renderer";
+import { setLocale, tr } from "../../src/shared/i18n";
 import type { HostInput, HostRecord } from "../../src/shared/host";
 
 /**
@@ -18,6 +19,7 @@ let hosts: HostRecord[];
 let calls: BridgeCalls;
 let onConnect: ReturnType<typeof vi.fn>;
 let seq: number;
+let panel: { refresh: () => Promise<void> };
 
 const HOST = (over: Partial<HostRecord> = {}): HostRecord => ({
   id: "h_alpha",
@@ -72,7 +74,7 @@ async function mount(opts: { storage?: Record<string, string> } = {}): Promise<v
   installFake(opts.storage);
   const { initHostPanel } = await import("../../src/renderer/hosts");
   onConnect = vi.fn();
-  initHostPanel(onConnect as (h: HostRecord | null) => void);
+  panel = initHostPanel(onConnect as (h: HostRecord | null) => void);
   await waitFor(
     () => !!document.querySelector("#host-list .empty-hint, #host-list .host-item"),
     "first render",
@@ -858,5 +860,22 @@ describe("表单快照 · 字段容器缺项", () => {
     const opts = [...document.querySelectorAll<HTMLOptionElement>("#tag-suggest option")].map((o) => o.value);
     expect(opts).toEqual(["db", "dev", "prod"]);
     expect(document.getElementById("f-tags")!.getAttribute("list")).toBe("tag-suggest");
+  });
+});
+
+/* ---------- 回归:空态文案跟着语言走 ---------- */
+describe("空态文案随语言切换(回归)", () => {
+  it("空态用 i18n 表的值,而不是写死的英文", async () => {
+    /* 背景:boot 里主机面板比语言加载更早渲染,空态文案被定死在默认英文,
+       切语言后也不重建 —— 中文界面里冒出 "No SSH hosts yet."(对比原版时发现)。
+       修法 = 语言加载提前到面板渲染之前 + setLanguage 里重建面板;
+       这里锁住文案的来源(表格值),真实渲染由 app 手工验证 + e2e 覆盖。 */
+    setLocale("zh");
+    expect(tr("hosts.emptyTitle")).toBe("还没有 SSH 主机。");
+    expect(tr("hosts.emptyHint")).toBe("点右上角 ＋ 添加一台。");
+    setLocale("en");
+    expect(tr("hosts.emptyTitle")).toBe("No SSH hosts yet.");
+    expect(tr("hosts.emptyHint")).toBe("Click ＋ to add one.");
+    setLocale("zh");
   });
 });

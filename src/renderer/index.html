@@ -573,7 +573,7 @@
       width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
     .top-icon:hover { background: rgba(255,255,255,.07); color: var(--fg); }
     #shell { display: flex; flex: 1; min-height: 0; }
-    #rail { width: 184px; flex: none; background: var(--bg2); padding: 12px 8px;
+    #rail { width: 185px; flex: none; background: var(--bg2); padding: 12px 10px;
       display: flex; flex-direction: column; gap: 8px; }
     .rail-item { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px;
       border: 0; border-radius: 9px; background: transparent; color: var(--fg);
@@ -876,8 +876,8 @@
         <button class="rail-item" data-nav="keychain"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="6.8" r="4.2"/><circle cx="12" cy="6.8" r="1.3"/><path d="M12 11v9M12 16.4h3.3M12 18.6h2.4"/></svg></span><span class="rl" data-i18n="rail.keychain">Keychain</span></button>
         <button class="rail-item" data-nav="forwarding"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 15.6h9.6l-3.1-3.1M20 8.4h-9.6l3.1 3.1"/></svg></span><span class="rl" data-i18n="rail.forwarding">Port Forwarding</span></button>
         <button class="rail-item" data-nav="snippets"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg></span><span class="rl" data-i18n="rail.snippets">Snippets</span></button>
-        <button class="rail-item" data-nav="knownhosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8.3" cy="15.7" r="3.6"/><circle cx="8.3" cy="15.7" r="1.1"/><path d="M11 13L20.2 3.8M15.2 8.6l2.3 2.3M17.7 6.1l2.3 2.3"/></svg></span><span class="rl" data-i18n="rail.knownhosts">Known Hosts</span></button>
-        <button class="rail-item" data-nav="logs"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7.2v5.2l3.4 2" fill="none" stroke="var(--bg2)" stroke-width="2" stroke-linecap="round"/></svg></span><span class="rl" data-i18n="rail.logs">Logs</span></button>
+        <button class="rail-item" data-nav="knownhosts"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3.6c-4.1 0-7.4 3.2-7.4 7.2v2.6"/><path d="M12 6.6c-2.4 0-4.4 2-4.4 4.4v3.2"/><path d="M19.4 10.8c0-3.5-3.3-6.6-7.4-6.6"/><path d="M16.4 12.4v2.4a8 8 0 0 1-.8 3.5"/><path d="M12 9.6c-.9 0-1.6.8-1.6 1.7v3.1c0 1.9-.6 3.4-1.6 4.5"/><path d="M12 12.6v2.6c0 2.1-.8 3.9-2 5"/></svg></span><span class="rl" data-i18n="rail.knownhosts">Known Hosts</span></button>
+        <button class="rail-item" data-nav="logs"><span class="ri"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="2.2"/><path d="M8 8.5h8M8 12h8M8 15.5h5"/></svg></span><span class="rl" data-i18n="rail.logs">Logs</span></button>
       </nav>
     <section id="main">
       <div id="banner"></div>
@@ -885,8 +885,8 @@
         <span id="status-dot"></span>
         <span id="term-title">no session</span>
         <span style="flex:1"></span>
-        <button id="btn-panel" class="btn" title="Show terminal side-panel" data-i18n-title="top.panel">▤</button>
-        <button id="btn-tabview" class="btn" title="Workspace view" data-i18n-title="top.workspaceView">▥</button>
+        <button id="btn-panel" class="btn" title="Show terminal side-panel" data-i18n-title="top.panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2.2"/><path d="M15 4.5v15"/></svg></button>
+        <button id="btn-tabview" class="btn" title="Workspace view" data-i18n-title="top.workspaceView"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="7" height="15" rx="1.6"/><rect x="13.5" y="4.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="14" width="7" height="5.5" rx="1.6"/></svg></button>
         <button id="btn-prefs" class="btn" title="Preferences (⌘,)" data-i18n-title="top.preferences"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 14.6a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.97z"/></svg></button>
         <button id="btn-sftp" class="btn" disabled title="SFTP browser (ssh session required)" data-i18n-title="top.sftp">⇄ SFTP</button>
       </div>

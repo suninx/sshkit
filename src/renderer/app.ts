@@ -1222,6 +1222,10 @@ function setFontSize(next: number): void {
   if (v) v.textContent = `${fontSize}px`;
 }
 
+/* 主机面板的句柄:语言/主题变化后要重建它 —— 面板里的空态文案是渲染时定死的,
+   不重建就会停在旧语言(实测:中文界面里出现英文 "No SSH hosts yet.")。 */
+let hostsView!: { refresh: () => Promise<void> };
+
 /** 当前语言偏好(与主进程 settings.json 同步;启动时由 boot 填入) */
 let LOCALE_PREF: LocalePref = "system";
 
@@ -1233,6 +1237,7 @@ async function setLanguage(pref: LocalePref): Promise<void> {
     setI18nLocale(resolveLocale(r.pref, r.system));
     applyDom();                       // 静态标记(侧栏/工具条/占位符/提示)
     renderTabs();                     // tab 标题也随语言
+    void hostsView.refresh();         // 主机面板(空态/分组标题/排序菜单)是动态渲染的,必须重建
     const cur = tabs.find((x) => x.id === active);
     cur?.view?.relabel?.();           // SFTP 双栏的表头/列名/空态
     /* 面板本身也是用 tr() 一次性渲染的:语言变了要重建,否则"界面/语言/字号"仍是旧语言 */
@@ -1807,7 +1812,17 @@ new ResizeObserver(() => {
 
 void (async () => {
   /* hosts.ts 的列表项只可能是有记录的主机(没有 "Local shell" 伪条目),故只会以 ssh 打开会话。 */
-  initHostPanel((host) => void openSession("ssh", host));
+  /* 语言:与主进程共用 settings.json,必须在任何界面渲染之前决定(主机面板在下面几行就渲染了) */
+  try {
+    const loc = await bridge.settings.getLocale();
+    LOCALE_PREF = loc.pref;
+    setI18nLocale(resolveLocale(loc.pref, loc.system));
+    applyDom();
+    const missing = audit();
+    if (missing.length) console.warn("[i18n] 缺少文案:", missing.join(", "));
+  } catch (err) { console.warn("[i18n] 语言初始化失败:", err); }
+
+  hostsView = initHostPanel((host) => void openSession("ssh", host));
   /* 新建:左导航栏(184px,6 项)。原版这 6 项是一级导航,点击后主区切到对应分区
      (Hosts 分区就是原版的 `Vaults` tab;转发/Known Hosts 等各自成为主区视图)。 */
   document.getElementById("btn-panel-top")?.addEventListener("click", () => togglePanel());
@@ -1838,15 +1853,6 @@ void (async () => {
      所以 querySelectorAll 恒为空,该块永远不会执行 —— 属于死代码而非分支。 */
   // T8:reload/关窗时收掉本次界面开的会话(否则主进程留孤儿)
   window.addEventListener("beforeunload", () => { try { bridge.disposeAllSessions(); } catch { /* ignore */ } });
-  /* 语言:与主进程共用 settings.json,必须先于任何界面渲染决定 */
-  try {
-    const loc = await bridge.settings.getLocale();
-    LOCALE_PREF = loc.pref;
-    setI18nLocale(resolveLocale(loc.pref, loc.system));
-    applyDom();
-    const missing = audit();
-    if (missing.length) console.warn("[i18n] 缺少文案:", missing.join(", "));
-  } catch (err) { console.warn("[i18n] 语言初始化失败:", err); }
   applyAppearance();
   applyUiTheme();   // T5:恢复界面主题(深色 / 浅色)
   applyTabView();   // T2:恢复上次的 tab 视图模式(横排 / 工作区竖排)

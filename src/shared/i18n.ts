@@ -17,6 +17,8 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "hosts.emptyTitle": "No SSH hosts yet.",
+  "hosts.emptyHint": "Click ＋ to add one.",
   /* ---- 侧栏 ---- */
   "rail.hosts": "Hosts",
   "rail.keychain": "Keychain",
@@ -201,6 +203,8 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "hosts.emptyTitle": "还没有 SSH 主机。",
+  "hosts.emptyHint": "点右上角 ＋ 添加一台。",
   "rail.hosts": "主机",
   "rail.keychain": "钥匙串",
   "rail.forwarding": "端口转发",

@@ -1,5 +1,5 @@
 import type { HostInput, HostRecord } from "../shared/host";
-import { tr } from "../shared/i18n";
+import { applyDom, tr } from "../shared/i18n";
 import type { ForwardRule, ForwardStatus } from "../shared/forward";
 import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
 import type { SftpEntry, TransferProgress } from "../shared/sftp";
@@ -87,7 +87,7 @@ export type { SshkitBridge };
 
 let editingHostId: string | null = null;
 
-export function initHostPanel(onConnect: (host: HostRecord) => void): void {
+export function initHostPanel(onConnect: (host: HostRecord) => void): { refresh: () => Promise<void> } {
   const listEl = document.getElementById("host-list")!;
   const backdrop = document.getElementById("form-backdrop")!;
 
@@ -329,7 +329,10 @@ const SORT_LABEL: Record<SortMode, string> = {
     if (hosts.length === 0) {
       const hint = document.createElement("div");
       hint.className = "empty-hint";
-      hint.innerHTML = "No SSH hosts yet.<br>Click ＋ to add one.";
+      /* 用 data-i18n 标记,由 applyDom() 翻译 —— 这是**已在用**的机制,切语言时会重刷整棵子树;
+         直接 tr() 只在渲染那一刻取值,语言后到(boot 里面板比语言加载早)就会永远停在旧语言。 */
+      hint.innerHTML = '<span data-i18n="hosts.emptyTitle"></span><br><span data-i18n="hosts.emptyHint"></span>';
+      applyDom(hint);
       listEl.appendChild(hint);
       return;
     }
@@ -516,6 +519,9 @@ const SORT_LABEL: Record<SortMode, string> = {
   }
 
   void refresh();
+
+  /* 语言/主题变化后要能重建:面板里的空态文案是渲染时定死的,不重建会停在旧语言 */
+  return { refresh };
 }
 
 export function markActiveHost(hostId: string | null): void {
