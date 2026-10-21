@@ -59,6 +59,18 @@
     /* 键盘用户把焦点移进按钮时同样显形(纯 hover 才能看到操作是可达性缺陷) */
     .host-item:focus-within .btn { visibility: visible; }
     .empty-hint { color: var(--fg-dim); padding: 12px 10px; }
+    /* 空态:居中的"创建主机"卡片(对齐原版实测:卡片宽 383、图标 50×50、蓝色 Continue) */
+    .hosts-empty { display: flex; justify-content: center; padding-top: 132px; }
+    .he-inner { width: 383px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .he-ico { width: 50px; height: 50px; border-radius: 13px; background: var(--panel);
+      display: flex; align-items: center; justify-content: center; color: var(--fg); margin-bottom: 26px; }
+    .he-title { font-size: 19px; font-weight: 600; color: var(--fg); margin-bottom: 10px; }
+    .he-sub { font-size: 13px; color: var(--fg-dim); margin-bottom: 22px; line-height: 1.5; }
+    .he-addr { width: 100%; height: 38px; border-radius: 8px; background: var(--bg2);
+      border: 1px solid #3a6df0; color: var(--fg); padding: 0 12px; font-size: 13px; outline: none; }
+    .he-cta { width: 100%; height: 38px; margin-top: 14px; border: 0; border-radius: 8px;
+      background: #2f6bff; color: #fff; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .he-cta:hover { background: #3d78ff; }
 
     /* buttons */
     .btn { border: 1px solid var(--wire); background: var(--bg3); color: var(--fg);

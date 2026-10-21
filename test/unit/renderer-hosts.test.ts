@@ -76,7 +76,7 @@ async function mount(opts: { storage?: Record<string, string> } = {}): Promise<v
   onConnect = vi.fn();
   panel = initHostPanel(onConnect as (h: HostRecord | null) => void);
   await waitFor(
-    () => !!document.querySelector("#host-list .empty-hint, #host-list .host-item"),
+    () => !!document.querySelector("#host-list .hosts-empty, #host-list .empty-hint, #host-list .host-item"),
     "first render",
   );
 }
@@ -139,11 +139,56 @@ beforeEach(() => {
 /* ================= 列表渲染 ================= */
 
 describe("主机列表", () => {
-  it("空列表显示引导空态(而不是空白面板)", async () => {
+  it("空列表显示引导空态卡片(标题/说明/地址输入/主按钮),而不是空白面板", async () => {
     await mount();
-    expect(emptyHint()).toBe("No SSH hosts yet.Click ＋ to add one.");
+    const card = document.querySelector("#host-list .hosts-empty")!;
+    expect(card).not.toBeNull();
+    /* 结构对齐原版:图标 + 标题 + 说明 + 地址输入 + Continue(而不是一行提示文字) */
+    expect(card.querySelector(".he-title")!.textContent).toBe("Create host");
+    expect(card.querySelector(".he-sub")!.textContent).toMatch(/Save your connection details/);
+    expect((card.querySelector(".he-addr") as HTMLInputElement).placeholder).toBe("Type IP or Hostname");
+    expect(card.querySelector(".he-cta")!.textContent).toBe("Continue");
     expect(items()).toHaveLength(0);
     expect(calls["hosts.list"]!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("空态卡片:地址留空点 Continue 也能新建(表单地址为空)", async () => {
+    await mount();
+    const card = document.querySelector("#host-list .hosts-empty")!;
+    (card.querySelector(".he-cta") as HTMLButtonElement).click();
+    await flush();
+    expect(formVisible()).toBe(true);
+    expect((document.getElementById("f-host") as HTMLInputElement).value).toBe("");
+  });
+
+  it("空态卡片:输入框里按其它键不会误触发新建", async () => {
+    await mount();
+    const card = document.querySelector("#host-list .hosts-empty")!;
+    const addr = card.querySelector(".he-addr") as HTMLInputElement;
+    addr.dispatchEvent(new window.KeyboardEvent("keydown", { key: "a", bubbles: true }));
+    await flush();
+    expect(formVisible()).toBe(false);
+  });
+
+  it("空态卡片:地址输入框里按 Enter 等同于点 Continue", async () => {
+    await mount();
+    const card = document.querySelector("#host-list .hosts-empty")!;
+    const addr = card.querySelector(".he-addr") as HTMLInputElement;
+    addr.value = "example.internal";
+    addr.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(formVisible()).toBe(true);
+    expect((document.getElementById("f-host") as HTMLInputElement).value).toBe("example.internal");
+  });
+
+  it("空态卡片:填地址后点 Continue 会打开新建表单并带上该地址", async () => {
+    await mount();
+    const card = document.querySelector("#host-list .hosts-empty")!;
+    (card.querySelector(".he-addr") as HTMLInputElement).value = "10.1.2.3";
+    (card.querySelector(".he-cta") as HTMLButtonElement).click();
+    await flush();
+    expect(formVisible()).toBe(true);
+    expect((document.getElementById("f-host") as HTMLInputElement).value).toBe("10.1.2.3");
   });
 
   it("按分组渲染,分组名排序,组内按名称排序,副标题是 `类型, 用户名`", async () => {
@@ -871,11 +916,11 @@ describe("空态文案随语言切换(回归)", () => {
        修法 = 语言加载提前到面板渲染之前 + setLanguage 里重建面板;
        这里锁住文案的来源(表格值),真实渲染由 app 手工验证 + e2e 覆盖。 */
     setLocale("zh");
-    expect(tr("hosts.emptyTitle")).toBe("还没有 SSH 主机。");
-    expect(tr("hosts.emptyHint")).toBe("点右上角 ＋ 添加一台。");
+    expect(tr("hosts.emptyTitle")).toBe("创建主机");
+    expect(tr("hosts.emptyHint")).toBe("把连接信息保存成主机,之后一键连接。");
     setLocale("en");
-    expect(tr("hosts.emptyTitle")).toBe("No SSH hosts yet.");
-    expect(tr("hosts.emptyHint")).toBe("Click ＋ to add one.");
+    expect(tr("hosts.emptyTitle")).toBe("Create host");
+    expect(tr("hosts.emptyHint")).toBe("Save your connection details as hosts to connect in one click.");
     setLocale("zh");
   });
 });

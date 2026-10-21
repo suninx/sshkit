@@ -329,11 +329,29 @@ const SORT_LABEL: Record<SortMode, string> = {
     if (hosts.length === 0) {
       const hint = document.createElement("div");
       hint.className = "empty-hint";
-      /* 用 data-i18n 标记,由 applyDom() 翻译 —— 这是**已在用**的机制,切语言时会重刷整棵子树;
-         直接 tr() 只在渲染那一刻取值,语言后到(boot 里面板比语言加载早)就会永远停在旧语言。 */
-      hint.innerHTML = '<span data-i18n="hosts.emptyTitle"></span><br><span data-i18n="hosts.emptyHint"></span>';
-      applyDom(hint);
-      listEl.appendChild(hint);
+      /* 与原版一致:空态是**居中的创建卡片**(图标 / 标题 / 说明 / 地址输入 / Continue 按钮),
+         不是一行提示文字。输入框里的地址会带进新建表单的 Address。
+         文案走 data-i18n + applyDom:这是已在用的翻译机制,首次渲染即翻译,切语言时也会重刷。 */
+      const card = document.createElement("div");
+      card.className = "hosts-empty";
+      card.innerHTML = `
+        <div class="he-inner">
+          <span class="he-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><circle cx="7.5" cy="7.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="7.5" cy="16.5" r="1.1" fill="currentColor" stroke="none"/></svg></span>
+          <div class="he-title" data-i18n="hosts.emptyTitle"></div>
+          <div class="he-sub" data-i18n="hosts.emptyHint"></div>
+          <input class="he-addr" data-i18n-placeholder="hosts.emptyAddrPlaceholder" />
+          <button class="he-cta" data-i18n="hosts.emptyCta"></button>
+        </div>`;
+      applyDom(card);
+      const addrEl = card.querySelector(".he-addr") as HTMLInputElement;
+      const goNew = (): void => {
+        openForm(null);
+        const addr = addrEl.value.trim();
+        if (addr) setVal("f-host", addr);
+      };
+      card.querySelector(".he-cta")!.addEventListener("click", goNew);
+      addrEl.addEventListener("keydown", (e) => { if (e.key === "Enter") goNew(); });
+      listEl.appendChild(card);
       return;
     }
     // T7:先按搜索词过滤(名称 / 主机名 / 用户名),再按所选方式排序

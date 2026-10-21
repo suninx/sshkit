@@ -17,8 +17,10 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
-  "hosts.emptyTitle": "No SSH hosts yet.",
-  "hosts.emptyHint": "Click ＋ to add one.",
+  "hosts.emptyTitle": "Create host",
+  "hosts.emptyHint": "Save your connection details as hosts to connect in one click.",
+  "hosts.emptyAddrPlaceholder": "Type IP or Hostname",
+  "hosts.emptyCta": "Continue",
   /* ---- 侧栏 ---- */
   "rail.hosts": "Hosts",
   "rail.keychain": "Keychain",
@@ -203,8 +205,10 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
-  "hosts.emptyTitle": "还没有 SSH 主机。",
-  "hosts.emptyHint": "点右上角 ＋ 添加一台。",
+  "hosts.emptyTitle": "创建主机",
+  "hosts.emptyHint": "把连接信息保存成主机,之后一键连接。",
+  "hosts.emptyAddrPlaceholder": "输入 IP 或主机名",
+  "hosts.emptyCta": "继续",
   "rail.hosts": "主机",
   "rail.keychain": "钥匙串",
   "rail.forwarding": "端口转发",
