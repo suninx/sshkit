@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
@@ -42,6 +43,11 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
       send: (...args: unknown[]) => { sent.push(args as [string, ...unknown[]]); },
       once: () => undefined,
       on: () => undefined,
+      /* 编辑菜单项点击会调这些(菜单挂 click 不挂 accelerator,快捷键留给渲染层) */
+      cut: vi.fn(),
+      copy: vi.fn(),
+      paste: vi.fn(),
+      selectAll: vi.fn(),
       openDevTools: notStubbed("webContents.openDevTools"),
       setWindowOpenHandler: () => undefined,
     };
@@ -68,7 +74,11 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
       getPreferredSystemLanguages: () => ["zh-CN"],
       whenReady: () => Promise.resolve(),
       on: (ev: string, cb: unknown) => { onHandlers.set(`app:${ev}`, cb as never); },
-      quit: () => undefined,
+      /* 这些用 vi.fn:菜单/关于面板/关窗退出的断言要检查调用 */
+      quit: vi.fn(),
+      setName: vi.fn(),
+      setAboutPanelOptions: vi.fn(),
+      dock: { setIcon: vi.fn() },
       isPackaged: false,
     },
     BrowserWindow: FakeBrowserWindow,
@@ -89,7 +99,7 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
       showMessageBox: async () => ({ response: 0 }),
     },
     screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1440, height: 900 } }) },
-    shell: { openExternal: notStubbed("shell.openExternal") },
+    shell: { openExternal: vi.fn(async () => undefined) },
     nativeImage: { createFromPath: notStubbed("nativeImage.createFromPath") },
   };
 

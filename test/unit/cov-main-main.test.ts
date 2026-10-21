@@ -362,6 +362,19 @@ describe("应用菜单", () => {
     expect(template.find((x: any) => x.role === "windowMenu")).toBeTruthy();
   });
 
+  it("菜单项可点击:偏好设置 / 编辑动作 / 帮助外链都不炸", async () => {
+    await ensureWindow();
+    const template = T.menu.built[T.menu.built.length - 1] as any[];
+    const appItem = template[0];
+    appItem.submenu.find((i: any) => i.accelerator === "Cmd+,").click();
+    const edit = template.find((m: any) => m.label === "Edit");
+    for (const item of edit.submenu.filter((i: any) => typeof i.click === "function")) item.click();
+    const help = template.find((m: any) => m.label === "Help");
+    help.submenu[0].click();
+    /* 没有窗口时的分支:click 不能抛 */
+    appItem.submenu.find((i: any) => i.accelerator === "Cmd+,").click();
+  });
+
   it("点偏好设置把 prefs:open 发给当前窗口", async () => {
     await ensureWindow();
     const before = prefsSent();
@@ -823,6 +836,17 @@ describe("app 生命周期", () => {
     const before = T.quitCalls();
     em.fire("app:window-all-closed");
     expect(T.quitCalls()).toBe(before);
+  });
+
+  it("onAllWindowsClosed:darwin 不退出,win32/linux 退出(两平台分支)", async () => {
+    const mod = await import("../../src/main/main");
+    const before = T.quitCalls();
+    mod.onAllWindowsClosed("darwin");
+    expect(T.quitCalls()).toBe(before);
+    mod.onAllWindowsClosed("win32");
+    expect(T.quitCalls()).toBe(before + 1);
+    mod.onAllWindowsClosed("linux");
+    expect(T.quitCalls()).toBe(before + 2);
   });
 
   it("before-quit 收掉 pty、ssh 会话与端口转发", async () => {

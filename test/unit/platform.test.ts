@@ -27,12 +27,16 @@ vi.mock("electron", async () => {
 let installAppMenu: typeof import("../../src/main/main").installAppMenu;
 let windowChrome: typeof import("../../src/main/main").windowChrome;
 let shouldQuitOnAllClosed: typeof import("../../src/main/main").shouldQuitOnAllClosed;
+let installAboutPanel: typeof import("../../src/main/main").installAboutPanel;
+let setDockIcon: typeof import("../../src/main/main").setDockIcon;
 
 beforeAll(async () => {
   const mod = await import("../../src/main/main");
   installAppMenu = mod.installAppMenu;
   windowChrome = mod.windowChrome;
   shouldQuitOnAllClosed = mod.shouldQuitOnAllClosed;
+  installAboutPanel = mod.installAboutPanel;
+  setDockIcon = mod.setDockIcon;
 });
 
 describe("resolveShell:按平台选默认 shell", () => {
@@ -105,5 +109,53 @@ describe("关窗口是否退出应用", () => {
     expect(shouldQuitOnAllClosed("darwin")).toBe(false);
     expect(shouldQuitOnAllClosed("win32")).toBe(true);
     expect(shouldQuitOnAllClosed("linux")).toBe(true);
+  });
+});
+
+
+describe("关于面板", () => {
+  it("darwin:写入应用名/版本/Electron/Chromium/Node 与图标路径", () => {
+    const app = (em as unknown as { module: { app: { setAboutPanelOptions: { mock: { calls: Array<[Record<string, unknown>]> } } } } }).module.app;
+    installAboutPanel("darwin");
+    const opts = app.setAboutPanelOptions.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(opts).toEqual(expect.objectContaining({
+      applicationName: expect.any(String),
+      applicationVersion: expect.any(String),
+      version: expect.stringContaining("Electron"),
+      credits: expect.stringMatching(/Chromium .* Node /),
+      iconPath: expect.stringContaining("icon-1024.png"),
+    }));
+  });
+  it("非 darwin:不做任何事(Windows/Linux 没有这个原生面板)", () => {
+    const app = (em as unknown as { module: { app: { setAboutPanelOptions: { mock: { calls: unknown[] } } } } }).module.app;
+    const before = app.setAboutPanelOptions.mock.calls.length;
+    installAboutPanel("win32");
+    installAboutPanel("linux");
+    expect(app.setAboutPanelOptions.mock.calls.length).toBe(before);
+  });
+});
+
+describe("dev 模式 Dock 图标", () => {
+  it("darwin:传入图标路径;非 darwin 不调用", () => {
+    const calls: string[] = [];
+    setDockIcon("darwin", (f) => calls.push(f));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("icon-1024.png");
+    setDockIcon("win32", (f) => calls.push(f));
+    setDockIcon("linux", (f) => calls.push(f));
+    expect(calls).toHaveLength(1);
+  });
+  it("setIcon 抛错时只告警、不影响启动", () => {
+    const warns: unknown[] = [];
+    expect(() => setDockIcon("darwin", () => { throw new Error("no dock"); },
+      (_m, e) => warns.push(e))).not.toThrow();
+    expect(warns).toHaveLength(1);
+  });
+  it("不传 warn 时走 console.warn 默认值(不静默吞错)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      setDockIcon("darwin", () => { throw new Error("no dock"); });
+      expect(warn).toHaveBeenCalled();
+    } finally { warn.mockRestore(); }
   });
 });

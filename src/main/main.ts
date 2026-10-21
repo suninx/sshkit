@@ -97,6 +97,17 @@ export function installAppMenu(platform: NodeJS.Platform = process.platform): vo
 }
 
 /** macOS 的"关于"面板:原生面板 + 版本/Electron/Chromium/Node 信息(与原版一致的信息密度)。 */
+/** dev 模式 Dock 图标。setIcon 作为参数传入,成功/抛错两条路径都能单测。 */
+export function setDockIcon(platform: NodeJS.Platform, setIcon: (file: string) => void,
+                             warn: (msg: string, err: unknown) => void = console.warn): void {
+  if (platform !== "darwin") return;
+  try {
+    setIcon(path.join(__dirname, "..", "..", "build", "icon-1024.png"));
+  } catch (err) {
+    warn("[app] 设置 Dock 图标失败:", err);
+  }
+}
+
 export function installAboutPanel(platform: NodeJS.Platform = process.platform): void {
   if (platform !== "darwin") return;
   app.setAboutPanelOptions({
@@ -104,6 +115,7 @@ export function installAboutPanel(platform: NodeJS.Platform = process.platform):
     applicationVersion: app.getVersion(),
     version: `Electron ${process.versions.electron}`,
     copyright: "MIT License · Local-first SSH client",
+    iconPath: path.join(__dirname, "..", "..", "build", "icon-1024.png"),
     credits: `Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
   });
 }
@@ -329,7 +341,12 @@ ipcMain.handle("local:mkdir", (_e, dir: string) => sftpController.mkdirLocal(dir
 ipcMain.handle("local:remove", (_e, target: string) => sftpController.removeLocal(target));
 ipcMain.handle("local:rename", (_e, from: string, to: string) => sftpController.renameLocal(from, to));
 
+/* dev 模式下进程名/图标都来自 Electron 自己的 bundle(菜单栏会显示 "Electron")。
+   显式设置应用名与 Dock 图标,让开发时的表现接近打包后的样子。 */
+app.setName("sshkit");
+
 app.whenReady().then(() => {
+  setDockIcon(process.platform, (file) => app.dock?.setIcon(file));
   installAppMenu();
   createWindow();
   app.on("activate", () => {
@@ -345,9 +362,12 @@ export function shouldQuitOnAllClosed(platform: NodeJS.Platform = process.platfo
   return platform !== "darwin";
 }
 
-app.on("window-all-closed", () => {
-  if (shouldQuitOnAllClosed()) app.quit();
-});
+/** 关窗事件处理(抽出来是为了两个平台分支都能被单测覆盖)。 */
+export function onAllWindowsClosed(platform: NodeJS.Platform = process.platform): void {
+  if (shouldQuitOnAllClosed(platform)) app.quit();
+}
+
+app.on("window-all-closed", () => onAllWindowsClosed());
 app.on("before-quit", () => {
   forwardService.stopAll();
   ptyService.disposeAll();
