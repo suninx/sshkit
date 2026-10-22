@@ -366,6 +366,9 @@ ipcMain.handle("sftp:transfer", (_e, sid: number, dir: "up" | "down", localPath:
   policy?: "overwrite" | "skip" | "rename") =>
   sftpController.transferTree(sid, dir, localPath, remotePath, { policy }));
 ipcMain.handle("sftp:cancel", (_e, jobId: number) => sftpController.cancelJob(jobId));
+/* 改权限:mode 用八进制数字位(0o644)。本地与远端走同一条通道,由 dir 决定 */
+ipcMain.handle("sftp:chmod", (_e, sid: number, target: string, mode: number) => sftpController.chmodRemote(sid, target, mode));
+ipcMain.handle("local:chmod", (_e, target: string, mode: number) => sftpController.chmodLocal(target, mode));
 /* 拖到 Finder:原生拖拽需要一个图标(32px 即可) */
 ipcMain.on("sftp:startDrag", (e, filePath: string) => {
   const icon = nativeImage.createFromPath(path.join(__dirname, "..", "..", "build", "icon-1024.png"));

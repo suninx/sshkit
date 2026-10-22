@@ -49,6 +49,13 @@ class FakeSftp extends EventEmitter {
     this.files.delete(p); cb();
   }
 
+  chmod(p: string, mode: number, cb: (e?: ErrBox) => void): void {
+    if (!this.files.has(p) && !this.dirs.has(p)) { cb(new Error("ENOENT")); return; }
+    this.modes.set(p, mode); cb();
+  }
+
+  modes = new Map<string, number>();
+
   rename(from: string, to: string, cb: (e?: ErrBox) => void): void {
     const f = this.files.get(from);
     if (!f) { cb(new Error("ENOENT")); return; }
@@ -398,5 +405,26 @@ describe("失败重试", () => {
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-retry2-"));
     await expect(ctl.transferTree(1, "down", path.join(dest, "o"), "/rt", { retries: 2 })).rejects.toThrow("always");
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("改权限", () => {
+  it("远端:成功路径把 mode 交给 sftp.chmod;失败原样抛出", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.files.set("/x.txt", Buffer.from("x"));
+    await ctl.chmodRemote(1, "/x.txt", 0o600);
+    expect(sftp.modes.get("/x.txt")).toBe(0o600);
+    vi.spyOn(sftp, "chmod").mockImplementation((_p: string, _m: number, cb: (e?: ErrBox) => void) => cb(new Error("perm denied")));
+    await expect(ctl.chmodRemote(1, "/x.txt", 0o644)).rejects.toThrow("perm denied");
+  });
+
+  it("本地:成功改真实文件的可执行位", async () => {
+    const { ctl } = makeCtl();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-chmod-"));
+    const f = path.join(dir, "a.sh");
+    fs.writeFileSync(f, "#!/bin/sh\n");
+    await ctl.chmodLocal(f, 0o755);
+    const mode = fs.statSync(f).mode & 0o777;
+    expect(mode).toBe(0o755);
   });
 });

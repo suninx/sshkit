@@ -408,13 +408,66 @@ export function createSftpView(
         }
         render(st);
       });
-      row.addEventListener("dblclick", () => {
-        if (!e.isDir) return;
-        st.dir = joinPath(st.dir, e.name);
-        void refresh(st);
+      row.addEventListener("dblclick", () => enterDir(st, e));
+      /* 右键菜单:删除 / 重命名 / 改权限 都在这里(用户反馈"没法右键删除/改权限/重命名") */
+      row.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        if (!st.selSet.has(e.name)) { st.selSet = new Set([e.name]); st.anchor = e.name; }
+        st.sel = e;
+        render(st);
+        rowMenu(st, row, e);
       });
       st.rowsEl.append(row);
     }
+  }
+
+  /** 进入目录(双击与右键"打开"共用) */
+  function enterDir(st: PaneState, e: SftpEntry): void {
+    if (!e.isDir) return;
+    st.dir = joinPath(st.dir, e.name);
+    void refresh(st);
+  }
+
+  /** 改权限:弹输入框(预填当前八进制权限),校验 3-4 位八进制后逐项应用 */
+  async function chmodOp(st: PaneState): Promise<void> {
+    const s = session();
+    if (st.which === "remote" && !s) { banner(tr("sftp.notBound")); return; }
+    /* 目标 = 当前选中集合 ∪ 当前焦点行(右键会先把行放进选中集合,所以两者通常一致) */
+    const targets = st.entries.filter((e) => st.selSet.has(e.name) || e === st.sel);
+    if (targets.length === 0) { banner(tr("sftp.selectItemFirst")); return; }
+    const cur = (targets[0].mode & 0o7777).toString(8).padStart(3, "0");
+    const input = await dialogs().prompt(tr("sftp.permTitle"), cur);
+    if (input === null) return;
+    const clean = input.trim();
+    if (!/^[0-7]{3,4}$/.test(clean)) { banner(tr("sftp.permInvalid")); return; }
+    const mode = parseInt(clean, 8);
+    try {
+      for (const t of targets) {
+        const rel = joinPath(st.dir, t.name);
+        if (st.which === "local") await bridge.local.chmod(rel, mode);
+        else await bridge.sftp.chmod(s!.sid, rel, mode);
+      }
+      await refresh(st);
+    } catch (err) { banner(pick(String((err as Error).message ?? err))); }
+  }
+
+  /** 行内右键菜单 */
+  function rowMenu(st: PaneState, anchor: HTMLElement, entry: SftpEntry): void {
+    const n = st.selSet.size;
+    const items: Array<[string, () => void]> = [];
+    if (n > 1) {
+      items.push([tr("sftp.removeN", { n }), () => void opMany(st, "remove")]);
+      items.push([tr("sftp.permN", { n }), () => void chmodOp(st)]);
+      items.push([tr("common.clearSelection"), () => { st.selSet.clear(); st.sel = null; render(st); }]);
+    } else {
+      if (entry.isDir) items.push([tr("sftp.openEntry"), () => enterDir(st, entry)]);
+      else items.push([st.which === "local" ? tr("sftp.upload") : tr("sftp.download"),
+        () => void transfer(st.which === "local" ? "up" : "down")]);
+      items.push([tr("common.rename"), () => void op(st, "rename")]);
+      items.push([tr("sftp.permTitle"), () => void chmodOp(st)]);
+      items.push([tr("common.delete"), () => void op(st, "remove")]);
+    }
+    menuAt(anchor, items, entry.name);
   }
 
   /* ---------- Actions 菜单(把原有操作收进原版的 IA) ---------- */
@@ -450,16 +503,17 @@ export function createSftpView(
     ];
     if (n > 1) {
       // 多选态:动作作用于全部选中项
-      items.push([`Delete ${n} items`, () => void opMany(st, "remove")]);
+      items.push([tr("sftp.removeN", { n }), () => void opMany(st, "remove")]);
       items.push([tr("common.clearSelection"), () => { st.selSet.clear(); st.sel = null; render(st); }]);
     } else {
       items.push([tr("common.rename"), () => void op(st, "rename")]);
       items.push([tr("common.delete"), () => void op(st, "remove")]);
     }
     items.push([st.showHidden ? tr("sftp.hideHidden") : tr("sftp.showHidden"), () => { st.showHidden = !st.showHidden; render(st); }]);
-    if (n > 1) items.push([st.which === "local" ? `Upload ${n} items →` : `← Download ${n} items`, () => void transferMany(st)]);
+    if (n > 1) items.push([st.which === "local" ? tr("sftp.uploadN", { n }) : tr("sftp.downloadN", { n }), () => void transferMany(st)]);
     else if (st.which === "local") items.push([tr("sftp.upload"), () => void transfer("up")]);
-    else items.push(["← Download", () => void transfer("down")]);
+    else items.push([tr("sftp.download"), () => void transfer("down")]);
+    items.push([tr("sftp.permTitle"), () => void chmodOp(st)]);
     items.push([tr("sftp.conflictMode", { mode: policyLabel() }), () => cyclePolicy()]);
     menuAt(anchor, items);
   }

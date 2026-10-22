@@ -82,6 +82,8 @@ interface SshkitBridge {
     cancel(jobId: number): Promise<boolean>;
     /** 拖到 Finder(仅本地文件) */
     startDrag(filePath: string): void;
+    /** 改权限(八进制位,如 0o644) */
+    chmod(sid: number, target: string, mode: number): Promise<void>;
     onProgress(cb: (p: TransferProgress) => void): () => void;
   };
   /** Finder 拖入:File → 真实路径 */
@@ -92,6 +94,7 @@ interface SshkitBridge {
     mkdir(dir: string): Promise<void>;
     remove(target: string): Promise<void>;
     rename(from: string, to: string): Promise<void>;
+    chmod(target: string, mode: number): Promise<void>;
   };
 }
 

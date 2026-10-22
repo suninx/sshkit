@@ -946,3 +946,16 @@ describe("sftp 树传输接线", () => {
     await expect(em.invoke("sftp:transfer", 4321, "up", "/tmp/nope", "/dst", "skip")).rejects.toThrow();
   });
 });
+
+describe("chmod 接线", () => {
+  it("sftp:chmod 无会话时报错(说明确实走到引擎)", async () => {
+    await expect(em.invoke("sftp:chmod", 12345, "/tmp/x", 0o600)).rejects.toThrow();
+  });
+
+  it("local:chmod 改真实文件权限", async () => {
+    const f = path.join(HOME, "chmod-target.txt");
+    fs.writeFileSync(f, "x");
+    await em.invoke("local:chmod", f, 0o600);
+    expect(fs.statSync(f).mode & 0o777).toBe(0o600);
+  });
+});

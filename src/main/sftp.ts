@@ -166,6 +166,16 @@ export class SftpController {
 
   async renameLocal(from: string, to: string): Promise<void> { await fsp.rename(from, to); }
 
+  /** 改权限(远端)。mode 是八进制数字位,例如 0o644 */
+  async chmodRemote(sid: number, target: string, mode: number): Promise<void> {
+    const sftp = await this.sftp(sid);
+    await new Promise<void>((resolve, reject) =>
+      sftp.chmod(target, mode, (e: ErrBox) => (e ? reject(e) : resolve())));
+  }
+
+  /** 改权限(本地)。Windows 上 fsp.chmod 只能改只读位 —— 由调用方按平台说明,不假装成功 */
+  async chmodLocal(target: string, mode: number): Promise<void> { await fsp.chmod(target, mode); }
+
   /* ---------- transfers (single file, fastPut/fastGet) ---------- */
 
   async upload(sid: number, localPath: string, remotePath: string): Promise<number> {

@@ -36,6 +36,8 @@ let pathForFile: ReturnType<typeof vi.fn>;
 let transferPolicies: string[];
 let progressCbs: Array<(p: unknown) => void>;
 let cancelJob: ReturnType<typeof vi.fn>;
+let chmodRemote: ReturnType<typeof vi.fn>;
+let chmodLocal: ReturnType<typeof vi.fn>;
 
 /**
  * 忠实替身:严格按 preload 里真实暴露的 API 实现(签名/返回值一致)。
@@ -50,6 +52,7 @@ function fakeBridge(): unknown {
       mkdir: (dir: string) => mkLocal(dir),
       remove: (t: string) => rmLocal(t),
       rename: (a: string, b: string) => renLocal(a, b),
+      chmod: (target: string, mode: number) => chmodLocal(target, mode),
     },
     sftp: {
       list: (sid: number, dir: string) => listRemote(sid, dir),
@@ -63,6 +66,7 @@ function fakeBridge(): unknown {
         return dir === "up" ? uploadRemote(sid, a, b) : downloadRemote(sid, a, b);
       },
       cancel: (jobId: number) => cancelJob(jobId),
+      chmod: (sid: number, target: string, mode: number) => chmodRemote(sid, target, mode),
       startDrag: (filePath: string) => startDrag(filePath),
       /** 真实签名返回"取消订阅"函数 */
       onProgress: (cb: (p: unknown) => void) => { progressCbs.push(cb); return () => { progressCbs = progressCbs.filter((x) => x !== cb); }; },
@@ -166,6 +170,8 @@ beforeEach(() => {
   downloadRemote = vi.fn(async () => ({ ...treeOk }));
   transferPolicies = [];
   cancelJob = vi.fn(async () => true);
+  chmodRemote = vi.fn(async () => undefined);
+  chmodLocal = vi.fn(async () => undefined);
   startDrag = vi.fn();
   pathForFile = vi.fn(() => "/tmp/dropped.bin");
   progressCbs = [];
@@ -1595,5 +1601,236 @@ describe("SFTP 视图 · 拖入时的非标准错误", () => {
     ev.dataTransfer = { files: [new File(["a"], "raw.bin")] };
     pane("remote").querySelector(".sp-body")!.dispatchEvent(ev);
     await vi.waitFor(() => expect(lastBanner()).toBe("raw-drop-error"));
+  });
+});
+
+/* ================= 行内右键菜单 + 改权限 ================= */
+
+describe("SFTP 视图 · 行内右键菜单", () => {
+  const rightClick = (which: "local" | "remote", name: string): void => {
+    const row = rowByName(which, name);
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+  };
+
+  it("右键文件:弹出菜单(下载/重命名/改权限/删除)", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 100)] });
+    const view = await mountView({ sid: 41, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    rightClick("remote", "x.bin");
+    const labels = [...document.querySelectorAll(".sp-menu button")].map((b) => b.textContent?.trim());
+    expect(labels).toContain("← Download");
+    expect(labels).toContain("Rename");
+    expect(labels).toContain("Change permissions");
+    expect(labels).toContain("Delete");
+  });
+
+  it("右键目录:给出打开而不是下载", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [DIR("pkg")] });
+    const view = await mountView({ sid: 42, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("pkg"));
+    rightClick("remote", "pkg");
+    const labels = [...document.querySelectorAll(".sp-menu button")].map((b) => b.textContent?.trim());
+    expect(labels).toContain("Open");
+    expect(labels).not.toContain("← Download");
+  });
+
+  it("右键菜单删除:确认后调桥并刷新", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 100)] });
+    const view = await mountView({ sid: 43, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    rightClick("remote", "x.bin");
+    click([...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "Delete")!);
+    await openPromptDialog();
+    answerConfirm(true);
+    await vi.waitFor(() => expect(rmRemote).toHaveBeenCalledWith(43, "/root/x.bin"));
+  });
+
+  it("右键菜单重命名:输入新名字后调桥", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 100)] });
+    const view = await mountView({ sid: 44, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    rightClick("remote", "x.bin");
+    click([...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "Rename")!);
+    await openPromptDialog();
+    answerPrompt("y.bin");
+    await vi.waitFor(() => expect(renRemote).toHaveBeenCalledWith(44, "/root/x.bin", "/root/y.bin"));
+  });
+
+  it("改权限:预填当前 644,改 600 后调桥(远端与本地各一条)", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 100)] });
+    const view = await mountView({ sid: 45, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    rightClick("remote", "x.bin");
+    click([...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "Change permissions")!);
+    await vi.waitFor(() => expect(document.querySelector(".prompt-dlg")).toBeTruthy());
+    const input = document.querySelector(".prompt-dlg .pd-input") as HTMLInputElement;
+    expect(input.value).toBe("644");
+    input.value = "600";
+    click(document.querySelector(".prompt-dlg .dd-ok")!);
+    await vi.waitFor(() => expect(chmodRemote).toHaveBeenCalledWith(45, "/root/x.bin", 0o600));
+
+    /* 本地栏同样支持(本地文件走 local.chmod) */
+    rightClick("local", "a.txt");
+    click([...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "Change permissions")!);
+    await vi.waitFor(() => expect(document.querySelector(".prompt-dlg")).toBeTruthy());
+    (document.querySelector(".prompt-dlg .pd-input") as HTMLInputElement).value = "640";
+    click(document.querySelector(".prompt-dlg .dd-ok")!);
+    await vi.waitFor(() => expect(chmodLocal).toHaveBeenCalledWith("/home/u/a.txt", 0o640));
+  });
+
+  it("权限输入非法 → 提示且不调桥", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 100)] });
+    const view = await mountView({ sid: 46, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    rightClick("remote", "x.bin");
+    click([...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "Change permissions")!);
+    await vi.waitFor(() => expect(document.querySelector(".prompt-dlg")).toBeTruthy());
+    answerPrompt("abc");
+    await vi.waitFor(() => expect(lastBanner()).toBe("Permissions must be 3–4 octal digits, e.g. 644"));
+    expect(chmodRemote).not.toHaveBeenCalled();
+  });
+
+  it("多选时右键:删除/改权限作用于全部选中项", async () => {
+    listLocal.mockResolvedValue({ path: "/home/u", entries: [FILE("a.txt"), FILE("b.txt")] });
+    const view = await mountView({ sid: 47, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("a.txt"));
+    /* click() 助手不带修饰键,多选要用真实 MouseEvent(metaKey) */
+    rowByName("local", "a.txt").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    rowByName("local", "b.txt").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
+    rightClick("local", "b.txt");
+    const labels = [...document.querySelectorAll(".sp-menu button")].map((b) => b.textContent?.trim());
+    expect(labels).toContain("Delete 2 items");
+    expect(labels).toContain("Change permissions for 2 items");
+    click([...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "Change permissions for 2 items")!);
+    await vi.waitFor(() => expect(document.querySelector(".prompt-dlg")).toBeTruthy());
+    (document.querySelector(".prompt-dlg .pd-input") as HTMLInputElement).value = "600";
+    click(document.querySelector(".prompt-dlg .dd-ok")!);
+    await vi.waitFor(() => expect(chmodLocal).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("SFTP 视图 · 右键菜单各动作与 chmod 边界", () => {
+  const rightClick = (which: "local" | "remote", name: string): void => {
+    rowByName(which, name).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+  };
+  const menuClick = (label: string): void => {
+    const btn = [...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === label);
+    if (!btn) throw new Error("menu item not found: " + label);
+    click(btn);
+  };
+  const actionsClick = (label: string): void => {
+    actionsMenu("local");
+    menuClick(label);
+  };
+
+  it("目录右键 Open:进入该目录并刷新", async () => {
+    const view = await mountView({ sid: 51, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("docs"));
+    rightClick("local", "docs");
+    menuClick("Open");
+    await vi.waitFor(() => expect(listLocal).toHaveBeenCalledWith("/home/u/docs"));
+  });
+
+  it("文件右键 Upload →:走传输", async () => {
+    const view = await mountView({ sid: 52, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("a.txt"));
+    rightClick("local", "a.txt");
+    menuClick("Upload →");
+    await vi.waitFor(() => expect(uploadRemote).toHaveBeenCalledWith(52, "/home/u/a.txt", "/root/a.txt"));
+  });
+
+  it("多选右键:删除 N 项 / 清除选择 都能用", async () => {
+    listLocal.mockResolvedValue({ path: "/home/u", entries: [FILE("a.txt"), FILE("b.txt")] });
+    const view = await mountView({ sid: 53, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("a.txt"));
+    rowByName("local", "a.txt").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    rowByName("local", "b.txt").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
+    rightClick("local", "b.txt");
+    menuClick("Delete 2 items");
+    /* 批量删除不弹确认(与 Actions 菜单里的行为一致),删完给横幅 */
+    await vi.waitFor(() => expect(rmLocal).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(lastBanner()).toBe("Deleted 2/2 items"));
+
+    rowByName("local", "a.txt").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    rowByName("local", "b.txt").dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
+    rightClick("local", "b.txt");
+    menuClick("Clear selection");
+    expect(document.querySelectorAll(".sp-row.sel").length).toBe(0);
+  });
+
+  it("Actions 菜单里的「修改权限」在没有选中项时只提示", async () => {
+    const view = await mountView({ sid: 54, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("a.txt"));
+    actionsMenu("local");
+    menuClick("Change permissions");
+    await vi.waitFor(() => expect(lastBanner()).toBe("Select an item in the pane first"));
+    expect(chmodLocal).not.toHaveBeenCalled();
+  });
+
+  it("远端未绑定会话时改权限:提示而不是报错", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(document.querySelector(".sftp-empty")).toBeTruthy());
+    actionsMenu("remote");
+    menuClick("Change permissions");
+    await vi.waitFor(() => expect(lastBanner()).toBe("Remote pane is not bound to a session"));
+  });
+
+  it("取消权限输入框 / 权限服务报错:都不改东西", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 100)] });
+    const view = await mountView({ sid: 55, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    rightClick("remote", "x.bin");
+    menuClick("Change permissions");
+    await openPromptDialog();
+    answerPrompt(null);
+    await flushView();
+    expect(chmodRemote).not.toHaveBeenCalled();
+
+    chmodRemote.mockRejectedValueOnce(new Error("perm denied"));
+    rightClick("remote", "x.bin");
+    menuClick("Change permissions");
+    await openPromptDialog();
+    answerPrompt("600");
+    await vi.waitFor(() => expect(lastBanner()).toContain("perm denied"));
+  });
+});
+
+describe("SFTP 视图 · 右键下载与错误文本", () => {
+  it("远端文件右键 ← Download:走下载", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 100)] });
+    const view = await mountView({ sid: 61, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    rowByName("remote", "x.bin").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    const btn = [...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "← Download");
+    expect(btn).toBeTruthy();
+    click(btn!);
+    await vi.waitFor(() => expect(downloadRemote).toHaveBeenCalledWith(61, "/root/x.bin", "/home/u/x.bin"));
+  });
+
+  it("改权限失败且错误没有 message:横幅显示原始值", async () => {
+    listRemote.mockResolvedValue({ path: "/root", entries: [FILE("x.bin", 100)] });
+    const view = await mountView({ sid: 62, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("remote")).toContain("x.bin"));
+    chmodRemote.mockRejectedValueOnce("raw-chmod-error");
+    rowByName("remote", "x.bin").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    click([...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "Change permissions")!);
+    await openPromptDialog();
+    answerPrompt("600");
+    await vi.waitFor(() => expect(lastBanner()).toBe("raw-chmod-error"));
   });
 });

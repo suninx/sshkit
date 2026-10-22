@@ -121,6 +121,8 @@ const api = {
     cancel: (jobId: number) => ipcRenderer.invoke("sftp:cancel", jobId) as Promise<boolean>,
     /* 拖到 Finder:走原生 startDrag(仅本地文件,远端文件请先下载) */
     startDrag: (filePath: string) => ipcRenderer.send("sftp:startDrag", filePath),
+    /* 改权限(八进制位,如 0o644) */
+    chmod: (sid: number, target: string, mode: number) => ipcRenderer.invoke("sftp:chmod", sid, target, mode),
     onProgress: (callback: (p: { sid: number; jobId: number; dir: string; file: string; bytes: number; total: number; state: string; error?: string }) => void) => {
       const handler = (_e: unknown, p: unknown) => callback(p as never);
       ipcRenderer.on("sftp:progress", handler);
@@ -138,6 +140,7 @@ const api = {
     mkdir: (dir: string) => ipcRenderer.invoke("local:mkdir", dir),
     remove: (target: string) => ipcRenderer.invoke("local:remove", target),
     rename: (from: string, to: string) => ipcRenderer.invoke("local:rename", from, to),
+    chmod: (target: string, mode: number) => ipcRenderer.invoke("local:chmod", target, mode),
   },
 };
 

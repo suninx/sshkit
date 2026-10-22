@@ -17,6 +17,14 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "sftp.download": "← Download",
+  "sftp.uploadN": "Upload {n} items →",
+  "sftp.downloadN": "← Download {n} items",
+  "sftp.removeN": "Delete {n} items",
+  "sftp.permN": "Change permissions for {n} items",
+  "sftp.permTitle": "Change permissions",
+  "sftp.permInvalid": "Permissions must be 3–4 octal digits, e.g. 644",
+  "sftp.openEntry": "Open",
   "sftp.cancelled": "cancelled",
   "sftp.conflictMode": "On conflict: {mode}",
   "sftp.conflictOverwrite": "overwrite",
@@ -301,6 +309,14 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "sftp.download": "← 下载",
+  "sftp.uploadN": "上传 {n} 项 →",
+  "sftp.downloadN": "← 下载 {n} 项",
+  "sftp.removeN": "删除 {n} 项",
+  "sftp.permN": "修改 {n} 项权限",
+  "sftp.permTitle": "修改权限",
+  "sftp.permInvalid": "权限必须是 3–4 位八进制数字,例如 644",
+  "sftp.openEntry": "打开",
   "sftp.cancelled": "已取消",
   "sftp.conflictMode": "冲突时:{mode}",
   "sftp.conflictOverwrite": "覆盖",
