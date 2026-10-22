@@ -1214,7 +1214,7 @@ describe("分区屏", () => {
     expect(nav("hosts").classList.contains("on")).toBe(true);
   });
 
-  it("Keychain:空态文案 + 按钮给出明确提示(不假装实现)", async () => {
+  it("Keychain:空态文案 + 存留按钮给出明确提示;密钥生成入口已移除", async () => {
     await boot();
     click(nav("keychain"));
     await waitFor(() => document.querySelector(".tab-pane.active .sec-empty-title")?.textContent === "Add credentials");
@@ -1224,8 +1224,8 @@ describe("分区屏", () => {
       if (!el) throw new Error(`keychain button not found: ${label}`);
       return el;
     };
-    click(btn("New key"));
-    expect(lastToast()).toBe("New key: importing a private key is enough; not wired up yet");
+    /* "新建密钥"已按产品决策移除(密钥生成/导入 UI 不做)—— 按钮不该再存在 */
+    expect(() => btn("New key")).toThrow();
     click(btn("Touch ID"));
     expect(lastToast()).toBe("Touch ID needs system biometric authorization; not wired up yet");
     click(btn("Certificate"));

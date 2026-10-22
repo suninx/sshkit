@@ -80,6 +80,11 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
   (或在"新建主机"里填 Host/HostName/Port/User/keyPath 四项)。
   注意:Known Hosts 页的 `Import` 是**导入 known_hosts 文件**,与本条无关,**保留**。
 
+- **SSH 密钥生成 / 导入 UI**:2026-10-22 用户决定**不做**。已移除钥匙串页的「新建密钥」按钮
+  (它原来只是个 toast 假按钮)与相关 i18n。**保留**的是:主机表单里的 `keyPath` 字段
+  (已有私钥直接填路径即可),认证仍支持 密码 / 私钥(+passphrase)/ ssh-agent。
+  需要新密钥请在系统终端 `ssh-keygen -t ed25519` 生成后填路径。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。

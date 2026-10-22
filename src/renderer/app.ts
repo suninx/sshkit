@@ -842,8 +842,8 @@ function openKeychainTab(): void {
       }));
     })();
   }, [
-    { label: tr("chip.newKey"), icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>', caret: true,
-      onClick: () => toast(tr("toast.keyNew")) },
+    /* 密钥生成/导入 UI:2026-10-22 用户决定不做,入口已移除(见 HANDOVER §4.5)。
+       主机表单的 keyPath 字段保留 —— 已有私钥仍可直接填路径使用。 */
     { label: tr("chip.certificate"), icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
       onClick: () => toast(tr("toast.certUnsupported")) },
     { label: tr("chip.touchId"), chip: true, onClick: () => toast(tr("toast.touchId")) },
