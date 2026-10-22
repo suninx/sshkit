@@ -66,15 +66,18 @@ describe("resolveCwd:显式 → HOME → USERPROFILE → 主目录", () => {
   });
 });
 
-describe("windowChrome:仅 macOS 加 hiddenInset 标题栏", () => {
-  it("darwin 加 titleBarStyle,其它平台返回空对象", () => {
+describe("windowChrome:macOS 用 hiddenInset,Windows 用无边框", () => {
+  it("darwin 加 titleBarStyle;win32 去掉原生边框(frame:false);linux 暂不改动", () => {
     /* 交通灯必须显式给位置:hiddenInset 的默认位置比原版更靠上(实测中心 y≈18 vs 原版 25),
        用户一眼看出"飘着"。这里锁住精确值(x/y 是按钮组左上角)。 */
     expect(windowChrome("darwin")).toEqual({
       titleBarStyle: "hiddenInset",
       trafficLightPosition: { x: 14, y: 19 },
     });
-    expect(windowChrome("win32")).toEqual({});
+    /* 期望变更(2026-10-22):原来这里期望 `{}` 是错的。原版 Termius 的 app.asar 里主窗口
+       创建参数是 `frame: !1`(三平台一致),Windows 上保留系统边框会多出一条原生标题栏;
+       正确语义是无边框 + 渲染层自绘窗口按钮,依据见 src/main/main.ts 的 windowChrome 注释。 */
+    expect(windowChrome("win32")).toEqual({ frame: false });
     expect(windowChrome("linux")).toEqual({});
   });
 });

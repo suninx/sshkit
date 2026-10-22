@@ -128,6 +128,11 @@ export const en = {
   "top.newTab": "New Tab (⌘T)",
   "top.panel": "Terminal side-panel (⌘.)",
   "top.notifications": "Notifications",
+  /* ---- Windows 无边框窗口的自绘窗口按钮 ---- */
+  "win.minimize": "Minimize",
+  "win.maximize": "Maximize",
+  "win.restore": "Restore",
+  "win.close": "Close",
   "top.workspaceView": "Workspace view",
   "top.appearance": "Appearance — theme / font",
   "top.preferences": "Preferences (⌘,)",
@@ -407,6 +412,11 @@ export const zh: Record<MsgKey, string> = {
   "top.newTab": "新建标签页(⌘T)",
   "top.panel": "终端侧栏(⌘.)",
   "top.notifications": "通知",
+  /* ---- Windows 无边框窗口的自绘窗口按钮 ---- */
+  "win.minimize": "最小化",
+  "win.maximize": "最大化",
+  "win.restore": "还原",
+  "win.close": "关闭",
   "top.workspaceView": "工作区视图",
   "top.appearance": "外观 — 主题 / 字体",
   "top.preferences": "设置(⌘,)",

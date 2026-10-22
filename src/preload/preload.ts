@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { HostInput, HostRecord } from "../shared/host";
 
 const api = {
+  /* 平台:Windows 的无边框窗口需要渲染层决定"红绿灯让位 / 自绘窗口按钮"这类平台差异
+     (sandbox 下的 preload 仍然能拿到 process.platform) */
+  platform: process.platform,
   /* terminal pipeline (local pty + ssh share ids, channels, and semantics) */
   createLocal: (opts: { cols: number; rows: number }) => ipcRenderer.invoke("terminal:create", opts),
   write: (id: number, data: string) => ipcRenderer.send("terminal:write", id, data),
@@ -58,6 +61,16 @@ const api = {
 
   window: {
     create: () => ipcRenderer.invoke("window:new") as Promise<boolean>,
+    /* 无边框窗口(frameless)的自绘窗口按钮 */
+    minimize: (): void => ipcRenderer.send("window:minimize"),
+    toggleMaximize: (): void => ipcRenderer.send("window:toggleMaximize"),
+    close: (): void => ipcRenderer.send("window:close"),
+    /** 主进程在 maximize/unmaximize 时推状态,用于切换 □ / ❐ 图标 */
+    onMaximized: (callback: (maximized: boolean) => void): (() => void) => {
+      const handler = (_e: unknown, maximized: boolean): void => callback(maximized);
+      ipcRenderer.on("window:maximized", handler);
+      return () => { ipcRenderer.off("window:maximized", handler); };
+    },
   },
   snippets: {
     list: () => ipcRenderer.invoke("snippets:list") as Promise<Array<{ id: string; name: string; command: string }>>,

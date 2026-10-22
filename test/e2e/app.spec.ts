@@ -130,3 +130,21 @@ test("标签页:会话标签可新建(本地 shell 落地页),关闭后消失", 
   await extra.locator(".tab-close").first().click();   // 真实类名:tab-close
   await expect.poll(() => page.locator("#tabs .tab-btn").count()).toBe(before);
 });
+
+test("回归:主机页搜索框与工具条左缘对齐,Connect 距框右缘 8px(不再双重缩进)", async () => {
+  /* 这个 bug 只在真实布局里看得见:jsdom 没有排版,单测断言不到。
+     #host-tools 曾经自带 padding:0 10px,而父容器 .sec-band 已有 10px → 输入框被推到
+     205(原版实测 194),与下方工具条(195)错位。这里锁"两者左缘相等" + Connect 内边距。 */
+  const { page } = ctx;
+  const g = await page.evaluate(() => {
+    const box = (sel: string) => document.querySelector(sel)!.getBoundingClientRect();
+    return {
+      searchLeft: box("#host-search").left,
+      toolbarLeft: box("#host-toolbar").left,
+      searchRight: box("#host-search").right,
+      connectRight: box("#btn-connect").right,
+    };
+  });
+  expect(g.searchLeft).toBe(g.toolbarLeft);
+  expect(g.searchRight - g.connectRight).toBe(8);
+});

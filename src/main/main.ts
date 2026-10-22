@@ -18,15 +18,24 @@ import type { HostInput } from "../shared/host";
 export type WindowChrome = {
   titleBarStyle?: "hiddenInset";
   trafficLightPosition?: { x: number; y: number };
+  /** 无边框窗口:原生标题栏与窗口按钮都不要,改由渲染层自绘(原版主窗口就是 frame:false) */
+  frame?: boolean;
 };
 
 /* macOS 的交通灯位置:原版实测三个圆点中心 y≈25(顶栏高 53,即垂直居中),左侧约 14 起。
    Electron 的 hiddenInset 默认把它们放得更靠上(实测中心 y≈18),看上去"飘"在顶栏上方,
    所以显式给位置。trafficLightPosition 指的是整组按钮的**左上角**。 */
 export function windowChrome(platform: NodeJS.Platform): WindowChrome {
-  return platform === "darwin"
-    ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 14, y: 19 } }
-    : {};
+  if (platform === "darwin") {
+    return { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 14, y: 19 } };
+  }
+  /* 原版 Termius 的 app.asar 里,主窗口创建参数就是 `frame:!1`(三平台一致),窗口按钮由它
+     自己的界面画。Windows 上返回 {} 会保留系统边框 —— 顶栏上方多出一整条原生标题栏,
+     左侧 78px 的红绿灯让位(见 index.html 的 --tl-inset)也变成空白。改成无边框后,
+     最小化/最大化/关闭由渲染层顶栏右端的按钮走 IPC(window:* 通道)完成。
+     Linux 本轮不动(没有实测依据,保持现状)。 */
+  if (platform === "win32") return { frame: false };
+  return {};
 }
 
 /* 应用菜单。默认菜单里 Edit 的 copy/paste/selectAll 角色会**在 OS 层吃掉 Cmd+C/V/A**,
@@ -144,7 +153,7 @@ function benchBounds(): { x?: number; y?: number; width?: number; height?: numbe
 }
 
 function createWindow(): void {
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1280,          // 与原版对照窗口同尺寸,便于逐像素比对
     height: 800,
     minWidth: 720,
@@ -152,7 +161,8 @@ function createWindow(): void {
     backgroundColor: "#1d2033",
     title: "sshkit",
     /* 原版没有原生标题栏:红绿灯直接浮在内容上,整条顶栏都是 tab 区。
-       hiddenInset 保留红绿灯、去掉标题栏;顶栏左端预留出红绿灯的位置(见 index.html 的 --tl-inset)。 */
+       macOS 用 hiddenInset 保留红绿灯;Windows 用 frame:false,窗口按钮由渲染层自绘
+       (见 index.html 的 --tl-inset 与 #wincontrols)。 */
     ...windowChrome(process.platform),
     ...benchBounds(),
     webPreferences: {
@@ -163,9 +173,13 @@ function createWindow(): void {
       spellcheck: false,
     },
   });
+  mainWindow = win;
 
-  mainWindow.on("closed", () => { mainWindow = null; });
-  mainWindow.webContents.on("console-message", (...args: unknown[]) => {
+  win.on("closed", () => { mainWindow = null; });
+  /* 自绘的最大化按钮要在 □ / ❐ 之间切换:窗口状态变化时推给渲染层 */
+  win.on("maximize", () => win.webContents.send("window:maximized", true));
+  win.on("unmaximize", () => win.webContents.send("window:maximized", false));
+  win.webContents.on("console-message", (...args: unknown[]) => {
     const ev = args[0] as { message?: string; lineNumber?: number; sourceId?: string } | undefined;
     const legacy = args.slice(1) as [number, string, number | undefined, string | undefined];
     const message = ev?.message ?? legacy[1] ?? "";
@@ -173,7 +187,7 @@ function createWindow(): void {
     const sourceId = ev?.sourceId ?? legacy[3];
     console.log("[renderer]", String(message).replace(/\s+/g, " ").slice(0, 300), sourceId ? `${sourceId}:${line ?? ""}` : "");
   });
-  void mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+  void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
 }
 
 /* ---------- local terminal ---------- */
@@ -312,6 +326,16 @@ ipcMain.handle("settings:setLocale", (_e, pref: LocalePref) => {
 ipcMain.handle("app:info", () => ({
   versions: { app: app.getVersion(), electron: process.versions.electron, node: process.versions.node },
 }));
+
+/* ---------- 无边框窗口的窗口按钮(Windows:渲染层自绘,见 index.html #wincontrols) ----------
+   走 BrowserWindow.fromWebContents(发送方),不依赖全局 mainWindow —— 将来多窗口也不会点错。 */
+ipcMain.on("window:minimize", (e) => { BrowserWindow.fromWebContents(e.sender)?.minimize(); });
+ipcMain.on("window:toggleMaximize", (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (!w) return;
+  if (w.isMaximized()) w.unmaximize(); else w.maximize();
+});
+ipcMain.on("window:close", (e) => { BrowserWindow.fromWebContents(e.sender)?.close(); });
 
 /* ---------- SFTP (remote side rides the active ssh session) + local fs ---------- */
 

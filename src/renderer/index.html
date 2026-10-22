@@ -252,8 +252,11 @@
     .tag-menu-item { display: flex; align-items: center; gap: 7px; }
     .tag-menu-item input { margin: 0; }
 
-    /* T7 复刻 —— 主机簿搜索与排序(占位符与排序项取自原版实测,见 F20) */
-    #host-tools { display: flex; gap: 6px; padding: 0 10px 8px; }
+    /* T7 复刻 —— 主机簿搜索与排序(占位符与排序项取自原版实测,见 F20)
+       内边距只留底部 8px:横向不再自己加 10px —— 父容器 .sec-band 已经有 10px,
+       再加一层会把输入框推到 x=205,比下方工具条(x=195)多缩进 10px,
+       与原版"搜索框 194..1271、与工具条左对齐"的实测不符。 */
+    #host-tools { display: flex; gap: 6px; padding: 0 0 8px; }
     #host-search { flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--wire);
       border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; }
     #host-search:focus { border-color: var(--accent); }
@@ -593,6 +596,20 @@
     #topbar { display: flex; align-items: center; gap: 6px; height: 49px; flex: none;
       padding: 0 10px 0 var(--tl-inset); background: var(--bg3); -webkit-app-region: drag; }
     #topbar button, #topbar .tab-btn { -webkit-app-region: no-drag; }
+    /* Windows:窗口是无边框的(frame:false,与原版一致),没有红绿灯,
+       所以 78px 的让位必须归零;窗口按钮由渲染层自绘在右端(原版同样自绘)。 */
+    body[data-platform="win32"] { --tl-inset: 10px; }
+    body[data-platform="win32"] #topbar { padding-right: 0; }
+    #wincontrols { display: none; align-items: center; height: 49px; margin-left: 4px;
+      -webkit-app-region: no-drag; }
+    body[data-platform="win32"] #wincontrols { display: flex; }
+    .wc-btn { width: 46px; height: 49px; padding: 0; border: 0; background: transparent;
+      color: var(--fg-dim); display: flex; align-items: center; justify-content: center; cursor: default; }
+    .wc-btn:hover { background: rgba(255,255,255,.08); color: var(--fg); }
+    .wc-btn.close:hover { background: #c42b1c; color: #fff; }
+    #wc-max .ico-restore { display: none; }
+    body.win-maximized #wc-max .ico-max { display: none; }
+    body.win-maximized #wc-max .ico-restore { display: block; }
     .top-icon { border: 0; background: transparent; color: var(--fg-dim); cursor: pointer;
       width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
     .top-icon:hover { background: rgba(255,255,255,.07); color: var(--fg); }
@@ -889,13 +906,14 @@
        做法:让搜索带做定位容器,按钮绝对定位到右端,输入框右侧留出按钮宽度。 */
     #host-tools { position: relative; }
     #host-tools #host-search { padding-right: 96px; }
-    /* right 要算上带子的 10px 内边距,否则按钮右缘会探出输入框(实测 1264 > 1260) */
+    /* right 就是相对输入框右缘的距离(带子已无横向内边距):原版 Connect 距框右缘 8px,
+       横向 1189..1263、宽 75。 */
     /* 原版"连接"是一个**内嵌的小圆角块**(像素实测):
          竖向 65..88(height 24,距框顶 6、距框底 6)
          横向 1189..1263(width 75,距框右缘 8)
          四角全圆(radius 8),底色 #323749,文字 #5a5f72 / 12px
        之前做成"贴死的直角块 + 撑满高度",所以看起来歪、颜色也怪。 */
-    #host-tools #btn-connect { position: absolute; right: 18px; top: 6px;
+    #host-tools #btn-connect { position: absolute; right: 8px; top: 6px;
       height: 24px; min-width: 75px; padding: 0 12px; border: 0; border-radius: 8px;
       background: #323749; color: #5a5f72; font-size: 12px; cursor: default; }
 
@@ -917,6 +935,20 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
           <path d="M18 15v-4a6 6 0 1 0-12 0v4l-1.6 3h15.2L18 15Z"/><path d="M10 18a2 2 0 0 0 4 0"/></svg>
       </button>
+      <!-- Windows 无边框窗口的自绘按钮(原版 frame:false 的做法);其它平台由 CSS 隐藏。
+           点击走 preload → IPC(window:minimize / toggleMaximize / close)。 -->
+      <div id="wincontrols">
+        <button id="wc-min" class="wc-btn" title="Minimize" data-i18n-title="win.minimize">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg>
+        </button>
+        <button id="wc-max" class="wc-btn" title="Maximize" data-i18n-title="win.maximize">
+          <svg class="ico-max" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor"/></svg>
+          <svg class="ico-restore" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 2.5h7v7" fill="none" stroke="currentColor"/><rect x=".5" y="2.5" width="7" height="7" fill="none" stroke="currentColor"/></svg>
+        </button>
+        <button id="wc-close" class="wc-btn close" title="Close" data-i18n-title="win.close">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1"/></svg>
+        </button>
+      </div>
     </header>
     <div id="shell">
       <!-- 左侧导航栏:184px,原版 6 项(文案取自原版自身字面量),单色图标 + 活动项药丸 -->

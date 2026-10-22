@@ -17,7 +17,7 @@ export function loadRendererDom(): void {
 
 type Behavior = (...args: unknown[]) => unknown;
 
-export function installBridge(overrides: Record<string, Behavior> = {}): { calls: BridgeCalls } {
+export function installBridge(overrides: Record<string, Behavior> = {}, opts: { platform?: string } = {}): { calls: BridgeCalls } {
   const calls: BridgeCalls = {};
   const record = (name: string, impl: Behavior) => (...args: unknown[]) => {
     (calls[name] ??= []).push(args);
@@ -28,6 +28,9 @@ export function installBridge(overrides: Record<string, Behavior> = {}): { calls
     throw new Error(`not stubbed in bridge mock: ${name}`);
   };
   const base: Record<string, unknown> = {
+    /* preload 暴露的 platform。测试里固定成 win32(覆盖自绘窗口按钮的那条路径);
+       需要 darwin 行为的用例用 installBridge({}, { platform: "darwin" })。 */
+    platform: opts.platform ?? "win32",
     terminal: {
       createLocal: record("terminal.createLocal", overrides["terminal.createLocal"] ?? (async () => 1)),
       write: record("terminal.write", overrides["terminal.write"] ?? noop),
@@ -58,7 +61,14 @@ export function installBridge(overrides: Record<string, Behavior> = {}): { calls
       has: record("creds.has", overrides["creds.has"] ?? (async () => false)),
     },
     ssh: { connect: record("ssh.connect", overrides["ssh.connect"] ?? (async () => ({ ok: true }))) },
-    window: { new: record("window.new", overrides["window.new"] ?? (async () => undefined)) },
+    window: {
+      new: record("window.new", overrides["window.new"] ?? (async () => undefined)),
+      /* 无边框窗口的自绘按钮(preload 同名 API) */
+      minimize: record("window.minimize", overrides["window.minimize"] ?? noop),
+      toggleMaximize: record("window.toggleMaximize", overrides["window.toggleMaximize"] ?? noop),
+      close: record("window.close", overrides["window.close"] ?? noop),
+      onMaximized: record("window.onMaximized", overrides["window.onMaximized"] ?? (() => () => undefined)),
+    },
     snippets: {
       list: record("snippets.list", overrides["snippets.list"] ?? (async () => [])),
       save: record("snippets.save", overrides["snippets.save"] ?? (async (s) => s)),

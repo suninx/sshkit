@@ -91,8 +91,11 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
   const askCancelCbs: AnyFn[] = [];
   const prefsCbs: AnyFn[] = [];
   const fwdStatusCbs: AnyFn[] = [];
+  const maximizedCbs: AnyFn[] = [];
 
   const api: Record<string, any> = {
+    /* preload 暴露的平台:自绘窗口按钮/红绿灯让位按它分支(测试固定 win32) */
+    platform: "win32",
     createLocal: rec("createLocal", o("createLocal", async () => ({ id: newId() }))),
     write: rec("write", o("write", () => undefined)),
     resize: rec("resize", o("resize", () => undefined)),
@@ -126,7 +129,14 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
       put: rec("creds.put", o("creds.put", async () => undefined)),
     },
     ssh: { connect: rec("ssh.connect", o("ssh.connect", async () => ({ id: newId() }))) },
-    window: { create: rec("window.create", o("window.create", async () => true)) },
+    window: {
+      create: rec("window.create", o("window.create", async () => true)),
+      /* 无边框窗口的自绘按钮(preload 同名 API) */
+      minimize: rec("window.minimize", o("window.minimize", () => undefined)),
+      toggleMaximize: rec("window.toggleMaximize", o("window.toggleMaximize", () => undefined)),
+      close: rec("window.close", o("window.close", () => undefined)),
+      onMaximized: rec("window.onMaximized", o("window.onMaximized", (cb: AnyFn) => { maximizedCbs.push(cb); return () => undefined; })),
+    },
     snippets: {
       list: rec("snippets.list", o("snippets.list", async () => [])),
       save: rec("snippets.save", o("snippets.save", async (s: unknown) => s)),
@@ -191,6 +201,7 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
     progress: (p: unknown): void => { for (const cb of progressCbs) cb(p); },
     hostKeyAsk: (req: unknown): void => { for (const cb of askCbs) cb(req); },
     openPrefs: (): void => { for (const cb of prefsCbs) cb(); },
+    maximized: (on: boolean): void => { for (const cb of maximizedCbs) cb(on); },
   };
 
   return { calls, api: guard(api), emit };
@@ -355,6 +366,47 @@ describe("app 自举", () => {
     expect(document.querySelector('#rail .rail-item[data-nav="hosts"] .rl')!.textContent).toBe("主机");
     /* 分区名 Vaults 是固定产品名,不随语言变 */
     expect(title()).toBe("Vaults");
+  });
+});
+
+/* Windows 是无边框窗口(frame:false,与原版一致):窗口按钮由渲染层自绘。
+   这里锁"界面真的把点击交给了主进程"以及"最大化状态会切换图标/tooltip"。 */
+describe("Windows 无边框窗口:自绘窗口按钮", () => {
+  it("启动时把 preload 的平台写到 body,三个按钮都在顶栏里", async () => {
+    await boot();
+    expect(document.body.dataset.platform).toBe("win32");
+    const box = document.querySelector("#topbar #wincontrols");
+    expect(box).toBeTruthy();
+    expect(box!.querySelector("#wc-min")).toBeTruthy();
+    expect(box!.querySelector("#wc-max")).toBeTruthy();
+    expect(box!.querySelector("#wc-close")).toBeTruthy();
+  });
+
+  it("最小化 / 最大化 / 关闭分别走 window.minimize / toggleMaximize / close", async () => {
+    const { calls } = await boot();
+    click(document.querySelector("#wc-min"));
+    click(document.querySelector("#wc-max"));
+    click(document.querySelector("#wc-close"));
+    expect(count(calls, "window.minimize")).toBe(1);
+    expect(count(calls, "window.toggleMaximize")).toBe(1);
+    expect(count(calls, "window.close")).toBe(1);
+  });
+
+  it("最大化状态推送:切 body.win-maximized,并把 tooltip 在最大化/还原之间来回切", async () => {
+    const { emit } = await boot();
+    const max = document.querySelector("#wc-max")!;
+    expect(max.getAttribute("data-i18n-title")).toBe("win.maximize");
+    expect(max.getAttribute("title")).toBe("Maximize");
+
+    emit.maximized(true);
+    expect(document.body.classList.contains("win-maximized")).toBe(true);
+    expect(max.getAttribute("data-i18n-title")).toBe("win.restore");
+    expect(max.getAttribute("title")).toBe("Restore");
+
+    emit.maximized(false);
+    expect(document.body.classList.contains("win-maximized")).toBe(false);
+    expect(max.getAttribute("data-i18n-title")).toBe("win.maximize");
+    expect(max.getAttribute("title")).toBe("Maximize");
   });
 });
 

@@ -20,6 +20,11 @@ const dot = document.getElementById("status-dot")!;
 
 const btnSftp = document.getElementById("btn-sftp")! as HTMLButtonElement;
 
+/* 平台标记:Windows 用无边框窗口(frame:false,与原版一致)—— CSS 据此把「红绿灯让位」归零,
+   并在顶栏右端显示自绘的最小化/最大化/关闭按钮(见 index.html #wincontrols)。
+   放在模块顶层(而不是异步 boot 里),避免首帧先按 macOS 的 78px 缩进闪一下。 */
+document.body.dataset.platform = String(bridge.platform);
+
 /* ---------- T2:标签页模型 ----------
    一个 tab = 一个独立会话(pane 里有自己的 Terminal 与 xterm 会话 id)。
    主进程/桥接层本就按 id 区分会话,故多 tab 主要是渲染层的事。
@@ -1805,6 +1810,24 @@ function installAllShortcuts(): void {
 btnNewTab.addEventListener("click", () => newTabPage());
 btnSftp.addEventListener("click", () => openSftpTab());
 
+/* Windows 无边框窗口:窗口按钮由渲染层自绘,点击交给主进程(IPC window:*);
+   最大化状态由主进程推上来,用来切换 □ / ❐ 图标与 tooltip。 */
+function installWindowControls(): void {
+  const min = document.getElementById("wc-min")!;
+  const max = document.getElementById("wc-max")!;
+  const close = document.getElementById("wc-close")!;
+  min.addEventListener("click", () => bridge.window.minimize());
+  max.addEventListener("click", () => bridge.window.toggleMaximize());
+  close.addEventListener("click", () => bridge.window.close());
+  bridge.window.onMaximized((on) => {
+    document.body.classList.toggle("win-maximized", on);
+    const key = on ? "win.restore" : "win.maximize";
+    max.title = tr(key);
+    /* 同步 data-i18n-title:切换语言时 applyDom() 会按它重刷 title,否则会退回"最大化" */
+    max.dataset.i18nTitle = key;
+  });
+}
+
 new ResizeObserver(() => {
   const t = activeTab();
   if (t?.fit) { try { t.fit.fit(); } catch { /* transient */ } }
@@ -1821,6 +1844,9 @@ void (async () => {
     const missing = audit();
     if (missing.length) console.warn("[i18n] 缺少文案:", missing.join(", "));
   } catch (err) { console.warn("[i18n] 语言初始化失败:", err); }
+
+  /* Windows 自绘窗口按钮:语言已就位,title 能取到正确文案 */
+  installWindowControls();
 
   hostsView = initHostPanel((host) => void openSession("ssh", host));
   /* 新建:左导航栏(184px,6 项)。原版这 6 项是一级导航,点击后主区切到对应分区

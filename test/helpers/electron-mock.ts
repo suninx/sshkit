@@ -61,6 +61,12 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
     on = (ev: string, cb: (...a: unknown[]) => void): this => { super.on(ev, cb); return this; };
     show = (): void => undefined;
     focus = (): void => undefined;
+    /* 无边框窗口的自绘按钮走这些方法(window:* IPC 通道) */
+    minimize = vi.fn();
+    maximize = vi.fn();
+    unmaximize = vi.fn();
+    close = vi.fn();
+    isMaximized = vi.fn((): boolean => false);
     isDestroyed = (): boolean => false;
     static getAllWindows = (): FakeBrowserWindow[] => windows as unknown as FakeBrowserWindow[];
     static fromWebContents = (): FakeBrowserWindow | null => null;
