@@ -999,6 +999,20 @@ const FONT_CHOICES: Array<{ id: string; label: string; bundled?: boolean; generi
   { id: 'ui-monospace, monospace', label: "System monospace", generic: true },
 ];
 
+/* Windows 默认字体:随包的 MesloLGS NF 是**网页字体**,在 canvas 渲染器的字形图集里
+   会被回退(14px 下渲染成细而宽的 Courier New,用户反馈"很难看");系统等宽字体在同一
+   路径下清晰锐利。Cascadia Mono 随 Windows Terminal/VS 提供,Consolas 是系统必备,
+   未装 Cascadia 的机器自动落到 Consolas;补 "Microsoft YaHei" 让中文不落到宋体。
+   Meslo 仍保留在可选清单里(偏好设置 → 字体)。 */
+const WIN_FONT = '"Cascadia Mono", Consolas, "Microsoft YaHei", monospace';
+
+/** 默认终端字体:Windows 用系统等宽字体,其余平台沿用随包 Meslo(纯函数,便于覆盖两个平台分支)。 */
+export function defaultFontFamily(platform: string): string {
+  return platform === "win32" ? WIN_FONT : FONT_CHOICES[0].id;
+}
+
+FONT_CHOICES.push({ id: WIN_FONT, label: "Cascadia Mono", generic: true });
+
 /** 某个字体族在本机是否可用:用 canvas 量一段测试串,与"必然不存在的族"对比宽度。
     (比 document.fonts.check 更可靠:后者对系统已装字体不总是返回 true。) */
 function fontAvailable(family: string): boolean {
@@ -1180,7 +1194,7 @@ if (localStorage.getItem("sshkit.bench") === "1") {
 
 let schemeName = localStorage.getItem("sshkit.scheme") || "Termius Dark";
 let fontSize = Number(localStorage.getItem("sshkit.fontSize") || 14);
-let fontFamily = localStorage.getItem("sshkit.fontFamily") || FONT_CHOICES[0].id;
+let fontFamily = localStorage.getItem("sshkit.fontFamily") || defaultFontFamily(String(bridge.platform));
 
 function scheme(): TermScheme {
   return TERM_SCHEMES.find((s) => s.name === schemeName) ?? TERM_SCHEMES[0];

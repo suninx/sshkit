@@ -919,16 +919,27 @@ describe("外观与设置面板", () => {
     expect([...document.querySelectorAll(".prefs .scheme.on")].map((b) => b.textContent)).toEqual(["Termius Light"]);
   });
 
+  it("默认字体按平台分:Windows 用系统等宽(Cascadia/Consolas),其余平台用随包 Meslo", async () => {
+    const { app } = await boot();
+    /* 期望变更(2026-10-22):原来 Windows 也默认随包 Meslo,是错误的 —— 它作为网页字体
+       在 xterm 的 canvas 字形图集里会回退成细体 Courier New(用户反馈"字体很难看"),
+       系统等宽字体在同一条渲染路径下清晰锐利。 */
+    expect(app.defaultFontFamily("win32")).toContain("Cascadia Mono");
+    expect(app.defaultFontFamily("win32")).toContain("Consolas");
+    expect(app.defaultFontFamily("darwin")).toContain("MesloLGS NF");
+  });
+
   it("字体选择落盘,并同步到已打开终端的 options", async () => {
     const { } = await boot({ storage: { "sshkit.bench": "1" } });
     await openLocal();
     const bench = (window as unknown as { __bench: { tabs: () => Array<Record<string, unknown>> } }).__bench;
     const termFont = (): unknown => bench.tabs().find((t) => t.kind === "session")!.font;
-    expect(String(termFont())).toContain("MesloLGS");
+    /* 测试桥的 platform 是 win32 → 默认系统等宽字体 */
+    expect(String(termFont())).toContain("Cascadia Mono");
     await openPrefs();
     const sel = prefsBtn<HTMLSelectElement>(".ps-font");
     expect(sel.options.length).toBeGreaterThan(3);
-    const target = sel.options[sel.options.length - 1].value;
+    const target = sel.options[0].value;   // MesloLGS NF(随包字体)
     sel.value = target;
     sel.dispatchEvent(new Event("change"));
     await flush(2);
