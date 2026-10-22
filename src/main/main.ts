@@ -361,6 +361,10 @@ ipcMain.handle("sftp:remove", (_e, sid: number, target: string) => sftpControlle
 ipcMain.handle("sftp:rename", (_e, sid: number, from: string, to: string) => sftpController.renameRemote(sid, from, to));
 ipcMain.handle("sftp:upload", (_e, sid: number, localPath: string, remotePath: string) => sftpController.upload(sid, localPath, remotePath));
 ipcMain.handle("sftp:download", (_e, sid: number, remotePath: string, localPath: string) => sftpController.download(sid, remotePath, localPath));
+/* 树传输:递归目录 / 断点续传 / 可取消(见 SftpController.transferTree) */
+ipcMain.handle("sftp:transfer", (_e, sid: number, dir: "up" | "down", localPath: string, remotePath: string) =>
+  sftpController.transferTree(sid, dir, localPath, remotePath));
+ipcMain.handle("sftp:cancel", (_e, jobId: number) => sftpController.cancelJob(jobId));
 
 ipcMain.handle("local:list", (_e, dir: string) => sftpController.listLocal(dir));
 ipcMain.handle("local:mkdir", (_e, dir: string) => sftpController.mkdirLocal(dir));

@@ -93,6 +93,18 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
   Windows Credential Vault / libsecret)保存,主机表单里的 "Password (saved in Keychain)" 照旧生效,
   连接时照旧自动取用。`creds:has` 这个 IPC 通道暂留(后续可用于表单上"已保存凭据"标记)。
 
+以下四条于 2026-10-22 一并决定**不做**(均从未实现,故无代码可删):
+
+- **ProxyJump / 跳板机**:不做。需要绕行时,用已有能力组合:先连跳板机开终端手动 `ssh 目标`,
+  或建一条本地端口转发(规则里目的地址填目标的 22)再连 `127.0.0.1:<port>`。
+- **keyboard-interactive / MFA**:暂不做(注意:这是**功能缺失**而非体验问题 —— 开了 2FA 的服务器
+  目前连不上,只支持 password / key / agent 三条路径)。
+- **mosh**:不做(UDP + 两端安装,受众窄)。
+- **按主机自动挂载转发规则**:不做。规则本身带 `hostId` 归属,但**必须手动点启动**;
+  需要随连接自动起来的场景,用"连接后立刻去转发表点启动"的现有流程。
+
+**唯一保留并要完善的是 SFTP**:递归目录传输 / 断点续传 / 拖拽 / 进度。见 §8 计划。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。

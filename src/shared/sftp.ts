@@ -21,6 +21,24 @@ export interface TransferProgress {
   file: string;
   bytes: number;
   total: number;
-  state: "active" | "done" | "error";
+  state: "active" | "done" | "error" | "cancelled";
   error?: string;
+}
+
+/** 树(目录)传输:在单文件进度之上叠加"第几个文件 / 整体字节",渲染层据此画队列 */
+export interface TreeProgress extends TransferProgress {
+  /** 树内相对路径(posix 风格,不含根名) */
+  relPath: string;
+  /** 第几个文件,1 基 */
+  index: number;
+  count: number;
+  overallBytes: number;
+  overallTotal: number;
+}
+
+export interface TreeResult {
+  jobId: number;
+  files: number;
+  bytes: number;
+  cancelled: boolean;
 }

@@ -856,6 +856,12 @@ describe("app 生命周期", () => {
     expect(T.quitCalls()).toBe(before + 2);
   });
 
+  it("sftp:transfer / sftp:cancel 已接线(无会话时报错而不是静默)", async () => {
+    /* 树传输:没有活动会话时 transferTree 第一步就抛,取消未知任务返回 false */
+    await expect(em.invoke("sftp:transfer", 9999, "up", "/tmp/sshkit-nope", "/dst")).rejects.toThrow();
+    expect(await em.invoke("sftp:cancel", 9999)).toBe(false);
+  });
+
   it("before-quit 收掉 pty、ssh 会话与端口转发", async () => {
     await ensureWindow();
     const created = (await em.invoke("terminal:create", { cols: 80, rows: 24 })) as { id: number };

@@ -115,6 +115,9 @@ const api = {
     rename: (sid: number, from: string, to: string) => ipcRenderer.invoke("sftp:rename", sid, from, to),
     upload: (sid: number, localPath: string, remotePath: string) => ipcRenderer.invoke("sftp:upload", sid, localPath, remotePath),
     download: (sid: number, remotePath: string, localPath: string) => ipcRenderer.invoke("sftp:download", sid, remotePath, localPath),
+    /* 树传输:传目录或单文件,内部支持断点续传;返回 {jobId, files, bytes, cancelled} */
+    transfer: (sid: number, dir: "up" | "down", localPath: string, remotePath: string) => ipcRenderer.invoke("sftp:transfer", sid, dir, localPath, remotePath),
+    cancel: (jobId: number) => ipcRenderer.invoke("sftp:cancel", jobId) as Promise<boolean>,
     onProgress: (callback: (p: { sid: number; jobId: number; dir: string; file: string; bytes: number; total: number; state: string; error?: string }) => void) => {
       const handler = (_e: unknown, p: unknown) => callback(p as never);
       ipcRenderer.on("sftp:progress", handler);
