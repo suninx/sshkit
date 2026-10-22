@@ -75,6 +75,11 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
   (Cmd+Alt+S)、侧栏 Serial 分区说明与相关 i18n 文案。原版有、我们没有,这是**产品决策**不是缺失。
   需要连 Console 的场景,用"本地终端"跑 `screen /dev/tty.usbserial-XXXX 115200` 即可。
 
+- **`~/.ssh/config` 导入**:2026-10-22 用户决定**不做**(代码里从未实现过,故无移除动作)。
+  主机的权威来源是应用自己的存储(`userData/hosts.json`);从 ssh config 迁过来请手动新建
+  (或在"新建主机"里填 Host/HostName/Port/User/keyPath 四项)。
+  注意:Known Hosts 页的 `Import` 是**导入 known_hosts 文件**,与本条无关,**保留**。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。
