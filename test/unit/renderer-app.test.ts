@@ -1995,7 +1995,9 @@ describe("生命周期竞态", () => {
   });
 
   /* 501 次真实"掉线→自动重连"才能验证环形缓冲上限,单条用例耗时数秒,故单独放宽超时 */
-  it("Logs 环形缓冲只保留最近 500 条(第 501 条挤掉最旧一条)", { timeout: 30000 }, async () => {
+  /* Windows runner 上 501 次假定时器推进实测会超过 30s(annotations 里就是 Test timed out in 30000ms),
+     放宽到 120s;断言本身不变。 */
+  it("Logs 环形缓冲只保留最近 500 条(第 501 条挤掉最旧一条)", { timeout: 120000 }, async () => {
     const { calls, emit } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
     await openSsh();
     vi.useFakeTimers();

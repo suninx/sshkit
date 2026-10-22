@@ -115,13 +115,14 @@ describe("walkLocalTree", () => {
         ];
       }
       return [{ name: "b.txt", isDirectory: () => false, isFile: () => true }];
-    }, async () => 7);
+    }, async () => 7, (a, b) => `${a}/${b}`);
     expect(out.entries).toEqual([
       { rel: "a.txt", size: 7, isDir: false },
       { rel: "sub", size: 0, isDir: true },
       { rel: "sub/b.txt", size: 7, isDir: false },
     ]);
     expect(out.skipped).toBe(1);
+    /* 注入 POSIX 拼接:遍历器拿到的绝对路径在 Windows 上是反斜杠,不能用 POSIX 字符串比较 */
     expect(calls).toEqual(["/root", "/root/sub"]);
   });
 
@@ -418,13 +419,21 @@ describe("改权限", () => {
     await expect(ctl.chmodRemote(1, "/x.txt", 0o644)).rejects.toThrow("perm denied");
   });
 
-  it("本地:成功改真实文件的可执行位", async () => {
+  /* Windows 的 fs.chmod 只实现"只读"这一位(其余位一律被忽略,读回来是 666),
+     所以本地改权限的断言必须按平台写 —— 在 Windows 上验"只读位"才是真行为。 */
+  it("本地:改真实文件的权限(POSIX 验完整位,Windows 验只读位)", async () => {
     const { ctl } = makeCtl();
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-chmod-"));
     const f = path.join(dir, "a.sh");
     fs.writeFileSync(f, "#!/bin/sh\n");
-    await ctl.chmodLocal(f, 0o755);
-    const mode = fs.statSync(f).mode & 0o777;
-    expect(mode).toBe(0o755);
+    if (process.platform === "win32") {
+      await ctl.chmodLocal(f, 0o444);
+      expect(fs.statSync(f).mode & 0o200).toBe(0);      // 只读:写位被清掉
+      await ctl.chmodLocal(f, 0o666);
+      expect(fs.statSync(f).mode & 0o200).not.toBe(0);  // 可写:恢复
+    } else {
+      await ctl.chmodLocal(f, 0o755);
+      expect(fs.statSync(f).mode & 0o777).toBe(0o755);
+    }
   });
 });

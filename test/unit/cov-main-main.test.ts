@@ -952,10 +952,17 @@ describe("chmod 接线", () => {
     await expect(em.invoke("sftp:chmod", 12345, "/tmp/x", 0o600)).rejects.toThrow();
   });
 
-  it("local:chmod 改真实文件权限", async () => {
+  it("local:chmod 改真实文件权限(POSIX 验完整位,Windows 只实现只读位)", async () => {
     const f = path.join(HOME, "chmod-target.txt");
     fs.writeFileSync(f, "x");
-    await em.invoke("local:chmod", f, 0o600);
-    expect(fs.statSync(f).mode & 0o777).toBe(0o600);
+    if (process.platform === "win32") {
+      await em.invoke("local:chmod", f, 0o444);
+      expect(fs.statSync(f).mode & 0o200).toBe(0);
+      await em.invoke("local:chmod", f, 0o666);
+      expect(fs.statSync(f).mode & 0o200).not.toBe(0);
+    } else {
+      await em.invoke("local:chmod", f, 0o600);
+      expect(fs.statSync(f).mode & 0o777).toBe(0o600);
+    }
   });
 });
