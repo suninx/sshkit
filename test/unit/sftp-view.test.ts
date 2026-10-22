@@ -1853,3 +1853,44 @@ describe("SFTP 视图 · Actions 菜单的刷新", () => {
     await vi.waitFor(() => expect(listRemote.mock.calls.length).toBe(beforeR + 1));
   });
 });
+
+describe("SFTP 视图 · 右键菜单定位(回归:曾弹到窗口左上角)", () => {
+  const rightClickAt = (which: "local" | "remote", name: string, x: number, y: number): void => {
+    const row = rowByName(which, name);
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+  };
+
+  it("菜单出现在鼠标位置,而不是 (0,0)", async () => {
+    const view = await mountView({ sid: 81, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("a.txt"));
+    rightClickAt("local", "a.txt", 420, 330);
+    const menu = document.querySelector(".sp-menu") as HTMLElement;
+    expect(menu).toBeTruthy();
+    expect(menu.style.left).toBe("420px");
+    expect(menu.style.top).toBe("330px");
+    /* 关键回归:如果还用"先 render 再量 row",这里会是 8px(视口下限) */
+    expect(menu.style.left).not.toBe("8px");
+  });
+
+  it("贴右下边缘右键:菜单被收敛进视口", async () => {
+    const view = await mountView({ sid: 82, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("a.txt"));
+    rightClickAt("local", "a.txt", 10_000, 10_000);
+    const menu = document.querySelector(".sp-menu") as HTMLElement;
+    const left = parseFloat(menu.style.left), top = parseFloat(menu.style.top);
+    expect(left).toBeLessThanOrEqual(window.innerWidth - 8);
+    expect(top).toBeLessThanOrEqual(window.innerHeight - 8);
+  });
+
+  it("贴左上边缘右键:不会小于 8px", async () => {
+    const view = await mountView({ sid: 83, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("a.txt"));
+    rightClickAt("local", "a.txt", -50, -50);
+    const menu = document.querySelector(".sp-menu") as HTMLElement;
+    expect(menu.style.left).toBe("8px");
+    expect(menu.style.top).toBe("8px");
+  });
+});

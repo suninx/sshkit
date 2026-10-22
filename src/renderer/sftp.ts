@@ -412,10 +412,14 @@ export function createSftpView(
       /* 右键菜单:删除 / 重命名 / 改权限 都在这里(用户反馈"没法右键删除/改权限/重命名") */
       row.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
-        if (!st.selSet.has(e.name)) { st.selSet = new Set([e.name]); st.anchor = e.name; }
+        const wasSelected = st.selSet.has(e.name);
+        if (!wasSelected) { st.selSet = new Set([e.name]); st.anchor = e.name; }
         st.sel = e;
+        /* 注意:先记住鼠标坐标再 render —— render 会重建行 DOM,之后量 row 的 rect 全是 0
+           (踩过:菜单弹出到窗口左上角)。 */
+        const point = { x: ev.clientX, y: ev.clientY };
         render(st);
-        rowMenu(st, row, e);
+        rowMenu(st, row, e, point);
       });
       st.rowsEl.append(row);
     }
@@ -452,7 +456,7 @@ export function createSftpView(
   }
 
   /** 行内右键菜单 */
-  function rowMenu(st: PaneState, anchor: HTMLElement, entry: SftpEntry): void {
+  function rowMenu(st: PaneState, anchor: HTMLElement, entry: SftpEntry, point: { x: number; y: number }): void {
     const n = st.selSet.size;
     const items: Array<[string, () => void]> = [];
     if (n > 1) {
@@ -467,12 +471,15 @@ export function createSftpView(
       items.push([tr("sftp.permTitle"), () => void chmodOp(st)]);
       items.push([tr("common.delete"), () => void op(st, "remove")]);
     }
-    menuAt(anchor, items, entry.name);
+    menuAt(anchor, items, entry.name, point);
   }
 
   /* ---------- Actions 菜单(把原有操作收进原版的 IA) ---------- */
 
-  function menuAt(anchor: HTMLElement, items: Array<[string, () => void]>, title?: string): void {
+  /** 弹出菜单。point 存在时按鼠标坐标定位(右键),否则挂在 anchor 下方(操作按钮)。
+      定位必须在 append 之后做:菜单要先有真实尺寸,才能收敛到视口内。 */
+  function menuAt(anchor: HTMLElement, items: Array<[string, () => void]>, title?: string,
+                  point?: { x: number; y: number }): void {
     document.querySelectorAll(".sp-menu").forEach((n) => n.remove());
     const menu = document.createElement("div");
     menu.className = "sp-menu";
@@ -488,10 +495,21 @@ export function createSftpView(
       b.addEventListener("click", () => { menu.remove(); fn(); });
       menu.append(b);
     }
-    const r = anchor.getBoundingClientRect();
-    menu.style.left = `${Math.round(r.left)}px`;
-    menu.style.top = `${Math.round(r.bottom + 4)}px`;
+    if (point) {
+      menu.style.left = `${Math.round(point.x)}px`;
+      menu.style.top = `${Math.round(point.y)}px`;
+    } else {
+      const r = anchor.getBoundingClientRect();
+      menu.style.left = `${Math.round(r.left)}px`;
+      menu.style.top = `${Math.round(r.bottom + 4)}px`;
+    }
     document.body.append(menu);
+    /* 视口收敛:贴近右/下边缘右键时不要溢出到窗口外 */
+    const box = menu.getBoundingClientRect();
+    const maxLeft = window.innerWidth - box.width - 8;
+    const maxTop = window.innerHeight - box.height - 8;
+    menu.style.left = `${Math.max(8, Math.min(Math.round(parseFloat(menu.style.left)), Math.round(maxLeft)))}px`;
+    menu.style.top = `${Math.max(8, Math.min(Math.round(parseFloat(menu.style.top)), Math.round(maxTop)))}px`;
     setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
   }
 
