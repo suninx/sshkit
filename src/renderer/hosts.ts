@@ -5,6 +5,8 @@ import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
 import type { SftpEntry, TransferProgress } from "../shared/sftp";
 
 interface SshkitBridge {
+  /** 运行平台(由 preload 暴露):Windows 用无边框窗口 + 自绘窗口按钮 */
+  platform?: string;
   createLocal(opts: { cols: number; rows: number }): Promise<{ id: number }>;
   write(id: number, data: string): void;
   resize(id: number, cols: number, rows: number): void;
@@ -39,6 +41,11 @@ interface SshkitBridge {
   window: {
     /** 注意:这里不能叫 new() —— 对象类型里的 new() 是构造签名,会被 TS 当成构造函数。 */
     create(): Promise<boolean>;
+    /* 无边框窗口(frameless)的自绘窗口按钮(Windows) */
+    minimize(): void;
+    toggleMaximize(): void;
+    close(): void;
+    onMaximized(callback: (maximized: boolean) => void): () => void;
   };
   snippets: {
     list(): Promise<Array<{ id: string; name: string; command: string }>>;

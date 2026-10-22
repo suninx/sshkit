@@ -880,3 +880,47 @@ describe("app 生命周期", () => {
     expect(sid).toBeGreaterThan(0);
   });
 });
+
+/* ======================= Windows 无边框窗口:自绘窗口按钮 ======================= */
+
+describe("window:minimize / toggleMaximize / close(对应 #wincontrols 三个按钮)", () => {
+  it("有窗口时按通道调用窗口方法;已最大化时再点最大化走还原", async () => {
+    const win = await ensureWindow();
+    BrowserWin.fromWebContents = () => win;
+    try {
+      em.fire("window:minimize");
+      expect(win.minimize).toHaveBeenCalledTimes(1);
+
+      win.isMaximized.mockReturnValue(false);
+      em.fire("window:toggleMaximize");
+      expect(win.maximize).toHaveBeenCalledTimes(1);
+      expect(win.unmaximize).not.toHaveBeenCalled();
+
+      win.isMaximized.mockReturnValue(true);
+      em.fire("window:toggleMaximize");
+      expect(win.unmaximize).toHaveBeenCalledTimes(1);
+      expect(win.maximize).toHaveBeenCalledTimes(1);
+
+      em.fire("window:close");
+      expect(win.close).toHaveBeenCalledTimes(1);
+    } finally {
+      BrowserWin.fromWebContents = () => null;
+    }
+  });
+
+  it("窗口已不存在(fromWebContents 返回 null)时三个通道都安全忽略(不抛错)", () => {
+    BrowserWin.fromWebContents = () => null;
+    expect(() => em.fire("window:minimize")).not.toThrow();
+    expect(() => em.fire("window:toggleMaximize")).not.toThrow();
+    expect(() => em.fire("window:close")).not.toThrow();
+  });
+
+  it("最大化/还原事件把状态推给渲染层,用于切换 □ / ❐ 图标", async () => {
+    const win = await ensureWindow();
+    const before = em.webContents.sent.length;
+    win.emit("maximize");
+    win.emit("unmaximize");
+    const pushed = em.webContents.sent.slice(before).filter(([ch]) => ch === "window:maximized");
+    expect(pushed).toEqual([["window:maximized", true], ["window:maximized", false]]);
+  });
+});
