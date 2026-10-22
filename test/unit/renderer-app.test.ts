@@ -27,7 +27,17 @@ const searchCalls = vi.hoisted(() => [] as SearchCall[]);
    与真实环境里 canvas 插件不可用时产品的容错路径一致(产品会退回 DOM 渲染器)。 */
 vi.mock("@xterm/addon-canvas", () => ({
   CanvasAddon: class {
-    constructor() { throw new Error("canvas addon unavailable under jsdom"); }
+    disposed = false;
+    constructor() {
+      /* 默认构造即失败:jsdom 没有 canvas 2D,产品必须优雅退回 DOM 渲染。
+         __canvasOk 时构造成功并把实例记到 globalThis(模块会被 resetModules 重建,
+         用全局数组才能跨 boot 观察 dispose/再次挂载)。 */
+      if (!(globalThis as { __canvasOk?: boolean }).__canvasOk) throw new Error("canvas addon unavailable under jsdom");
+      const g = globalThis as { __canvasInstances?: unknown[] };
+      (g.__canvasInstances ??= []).push(this);
+    }
+    activate(): void {}
+    dispose(): void { this.disposed = true; }
   },
 }));
 /* 搜索插件用真实实现对 jsdom 无害;但产品对"插件加载失败"有容错分支需要可注入失败 */
@@ -800,6 +810,14 @@ describe("会话与分屏", () => {
     expect(fromSplit.length).toBe(2);
     expect(new Set(fromSplit.map((a) => a[0])).size).toBe(2);
 
+    /* 外观变化要同步到分屏那格(此前 applyAppearance 只改了主终端):
+       ⌘= 改字号后,分屏终端的 fontSize 必须一起变。 */
+    expect(sessionTab.splitSize).toBe(14);
+    key(document, { code: "Equal", key: "=", metaKey: true });
+    await flush(2);
+    expect(localStorage.getItem("sshkit.fontSize")).toBe("15");
+    expect(bench.tabs().find((t) => t.kind === "session")!.splitSize).toBe(15);
+
     click(document.querySelector(".split-close"));
     await waitFor(() => !document.querySelector(".split-pane"));
     expect(calls["dispose"]?.length).toBe(1);
@@ -945,6 +963,46 @@ describe("外观与设置面板", () => {
     await flush(2);
     expect(localStorage.getItem("sshkit.fontFamily")).toBe(target);
     expect(termFont()).toBe(target);
+  });
+
+  it("渲染器判定:随包网页字体强制 DOM,系统字体可用 canvas,用户可强制 dom", async () => {
+    const { app } = await boot();
+    const MESLO = '"MesloLGS NF", "MesloLGS Nerd Font Mono", monospace';
+    const SYS = '"Cascadia Mono", Consolas, "Microsoft YaHei", monospace';
+    expect(app.isBundledWebFont(MESLO)).toBe(true);
+    expect(app.isBundledWebFont(SYS)).toBe(false);
+    expect(app.useCanvasRenderer(SYS, null)).toBe(true);
+    expect(app.useCanvasRenderer(SYS, "dom")).toBe(false);
+    expect(app.useCanvasRenderer(MESLO, null)).toBe(false);
+  });
+
+  it("切到随包 Meslo 时 dispose canvas(退回 DOM),切回系统字体再挂上 canvas", async () => {
+    const g = globalThis as { __canvasOk?: boolean; __canvasInstances?: Array<{ disposed: boolean }> };
+    g.__canvasOk = true;
+    g.__canvasInstances = [];
+    try {
+      await boot();
+      await openLocal();
+      /* win32 默认系统字体 → 终端挂 canvas */
+      expect(g.__canvasInstances).toHaveLength(1);
+      await openPrefs();
+      const sel = prefsBtn<HTMLSelectElement>(".ps-font");
+      sel.value = '"MesloLGS NF", "MesloLGS Nerd Font Mono", monospace';
+      sel.dispatchEvent(new Event("change"));
+      await flush(2);
+      /* 网页字体在 canvas 图集里会回退 → 必须退回 DOM 渲染 */
+      expect(g.__canvasInstances![0].disposed).toBe(true);
+
+      sel.value = '"Cascadia Mono", Consolas, "Microsoft YaHei", monospace';
+      sel.dispatchEvent(new Event("change"));
+      await flush(2);
+      /* 系统字体 → 重新挂一个 canvas 渲染器 */
+      expect(g.__canvasInstances).toHaveLength(2);
+      expect(g.__canvasInstances![1].disposed).toBe(false);
+    } finally {
+      g.__canvasOk = false;
+      g.__canvasInstances = undefined;
+    }
   });
 
   it("⌘= 放大终端字号并落盘", async () => {

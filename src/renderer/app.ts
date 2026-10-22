@@ -47,6 +47,8 @@ type Tab = {
   view?: SftpView; // sftp tab 用
   search?: SearchAddon;   // T4:终端内搜索(Cmd+F)
   searchBar?: HTMLElement;
+  /** 已挂上的 canvas 渲染器(切到随包网页字体时要 dispose 掉,退回 DOM 渲染) */
+  canvasAddon?: CanvasAddon;
   /** T8:断线重连要能重建同一台主机的会话 */
   host?: HostRecord;
   /** T8:该 tab 当前的断开状态(用于全局断开条) */
@@ -61,6 +63,7 @@ type Tab = {
     host?: HostRecord;
     broadcast: boolean;
     disposers: Array<() => void>;
+    canvasAddon?: CanvasAddon;
   };
   /** T8:重连日志。原版有 `Attempting reconnection to server with ID …` 这类提示,这里逐条记录并展示 */
   recLog?: string[];
@@ -456,17 +459,15 @@ function splitTab(tab: Tab): void {
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
-  /* 渲染器可选:canvas 更快,但它不支持 xterm 的 lineHeight(实测格高恒为 16,
-     而原版是 18)。localStorage["sshkit.renderer"]==="dom" 时退回 DOM 渲染器。 */
-  if (localStorage.getItem("sshkit.renderer") !== "dom") {
-    try { term.loadAddon(new CanvasAddon()); } catch { /* 见 T1 说明 */ }
-  }
+  /* 渲染器跟着字体走(见 syncRenderer):网页字体必须 DOM;用户可用
+     localStorage["sshkit.renderer"]==="dom" 强制 DOM。 */
+  const split = { pane, term, fit, termId: null as number | null, host: undefined as HostRecord | undefined,
+    broadcast: false, disposers: [] as Array<() => void>, canvasAddon: undefined as CanvasAddon | undefined };
+  syncRenderer(term, split);
   const body = pane.querySelector(".split-body")! as HTMLElement;
   term.open(body);
   try { fit.fit(); } catch { /* 布局未稳 */ }
 
-  const split = { pane, term, fit, termId: null as number | null, host: undefined as HostRecord | undefined,
-    broadcast: false, disposers: [] as Array<() => void> };
   tab.split = split;
 
   const bcBox = pane.querySelector(".split-bc input")! as HTMLInputElement;
@@ -1029,6 +1030,36 @@ function fontAvailable(family: string): boolean {
   }
 }
 let TERM_FONT = FONT_CHOICES[0].id;
+
+/** 随包附带的 MesloLGS NF 是网页字体(@font-face)。canvas 渲染器的字形图集拿不到网页字体,
+    Windows 上会静默回退成细体 Courier New —— 选中它时必须改用 DOM 渲染器。 */
+export function isBundledWebFont(family: string): boolean {
+  return family.includes("MesloLGS NF");
+}
+
+/** 是否该用 canvas 渲染器:用户没强制 dom,且当前字体不是随包网页字体。 */
+export function useCanvasRenderer(family: string, rendererPref: string | null): boolean {
+  return rendererPref !== "dom" && !isBundledWebFont(family);
+}
+
+/** 让终端渲染器跟随字体:网页字体 → dispose canvas 退回 DOM;系统字体 → 重新挂上 canvas。
+    holder 存着当前 CanvasAddon(主终端在 tab 上,分屏在自己的对象上)。 */
+function syncRenderer(term: Terminal, holder: { canvasAddon?: CanvasAddon }): void {
+  const want = useCanvasRenderer(TERM_FONT, localStorage.getItem("sshkit.renderer"));
+  if (want && !holder.canvasAddon) {
+    try {
+      const addon = new CanvasAddon();
+      term.loadAddon(addon);
+      holder.canvasAddon = addon;
+    } catch (e) { /* 插件不可用:保持 DOM 渲染 */
+      console.warn("[term] canvas 插件不可用,退回 DOM 渲染:", e);
+    }
+  } else if (!want && holder.canvasAddon) {
+    /* CanvasAddon.dispose() 会把 renderer 恢复成默认(DOM) */
+    holder.canvasAddon.dispose();
+    holder.canvasAddon = undefined;
+  }
+}
 let TERM_FONT_SIZE = 14; // 原版 defaultFontSize=14,实机同;可选范围 4–40
 /* 目标格高 18px(原版实测格 8×18)。注意 xterm 会对"字体量出高 × lineHeight"取整,
    14px MesloLGS 的自然高约 15.5-16,所以 1.05 推不上一行(实测仍 16)。可用
@@ -1186,7 +1217,9 @@ if (localStorage.getItem("sshkit.bench") === "1") {
     tabs: () => tabs.map((t) => ({ id: t.id, kind: t.kind, label: t.customLabel ?? t.label,
       termId: t.termId, splitTermId: t.split?.termId ?? null, broadcast: t.split?.broadcast ?? null,
       cols: t.term?.cols ?? null, rows: t.term?.rows ?? null,
-      font: t.term?.options.fontFamily ?? null })),
+      font: t.term?.options.fontFamily ?? null,
+      splitFont: t.split?.term.options.fontFamily ?? null,
+      splitSize: t.split?.term.options.fontSize ?? null })),
   };
 }
 
@@ -1221,11 +1254,17 @@ function applyAppearance(): void {
      否则界面切浅色时(tab 条仍是终端底色)会变成"深字黑底",标签几乎看不见。实测踩到过。 */
   document.documentElement.style.setProperty("--term-fg", pickOnColor(sc.background));
   for (const tab of tabs) {
-    const term = tab.term;
-    if (!term) continue;
-    term.options.theme = TERM_THEME;
-    term.options.fontFamily = TERM_FONT;
-    term.options.fontSize = TERM_FONT_SIZE;
+    if (!tab.term) continue;
+    /* 主终端与分屏都要跟着改(此前漏了分屏:改字号/字体后分屏那格不更新) */
+    const apply = (t: Terminal, holder: { canvasAddon?: CanvasAddon }): void => {
+      t.options.theme = TERM_THEME;
+      t.options.fontFamily = TERM_FONT;
+      t.options.fontSize = TERM_FONT_SIZE;
+      /* 字体决定渲染器:选回/切走随包网页字体时,已打开的终端要跟着换渲染器 */
+      syncRenderer(t, holder);
+    };
+    apply(tab.term, tab);
+    if (tab.split) apply(tab.split.term, tab.split);
     try { tab.fit?.fit(); } catch { /* transient */ }
   }
 }
@@ -1617,14 +1656,10 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
   });
   t.loadAddon(fit);
   /* 原版终端用 canvas 渲染(四层 text/selection/link/cursor,格宽量化为整数 8px);
-     我方默认 DOM 渲染保留小数格宽(8.429)。这里尝试同款 canvas 插件 ——
      但 @xterm/addon-canvas 0.7.0 的 peer 是 xterm ^5(我们是 6.0.0),故必须容错:
-     失败就退回 DOM 渲染,不能让终端起不来。 */
-  try {
-    t.loadAddon(new CanvasAddon());
-  } catch (e) {
-    console.warn("[term] canvas 插件不可用,退回 DOM 渲染:", e);
-  }
+     失败就退回 DOM 渲染,不能让终端起不来。
+     另外随包 Meslo 是网页字体、canvas 图集用不了 → 选它时走 DOM(见 syncRenderer)。 */
+  syncRenderer(t, tab);
   t.open(hostWrap);
   tab.term = t;
   tab.fit = fit;
