@@ -671,10 +671,10 @@ const ICON_LAYOUT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="curre
 const ICON_PANEL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 9h18"/></svg>';
 const ICON_CARET = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>';
 
-function secToolbar(host: HTMLElement, buttons: Array<{ label: string; icon?: string; caret?: boolean; chip?: boolean; onClick: () => void }>): void {
+function secToolbar(host: HTMLElement, buttons: Array<{ label: string; icon?: string; caret?: boolean; onClick: () => void }>): void {
   for (const b of buttons) {
     const el = document.createElement("button");
-    el.className = b.chip ? "sec-chip" : "tb-btn";
+    el.className = "tb-btn";   /* chip 样式随"证书/触控 ID/FIDO2"一起下线 */
     el.innerHTML = (b.icon ?? "") + `<span>${b.label}</span>`;
     if (b.caret) {
       const c = document.createElement("span");
@@ -719,7 +719,7 @@ const SEC_ICONS = {
 
 /** 打开一个分区屏(单行工具条带版) */
 function openSection(kind: TabKind, label: string, build: (body: HTMLElement) => void,
-                     buttons: Array<{ label: string; icon?: string; caret?: boolean; chip?: boolean; onClick: () => void }> = []): void {
+                     buttons: Array<{ label: string; icon?: string; caret?: boolean; onClick: () => void }> = []): void {
   const existing = tabs.find((t) => t.kind === kind);
   if (existing) { activateTab(existing.id); return; }
   const pane = makePane();
@@ -730,8 +730,11 @@ function openSection(kind: TabKind, label: string, build: (body: HTMLElement) =>
   secToolbar(band, buttons);
   const body = document.createElement("div");
   body.className = "sec-body";
-  /* 必须先挂进文档再 build:build 里的 getElementById 需要元素已在文档中(踩过) */
-  sec.append(band, body);
+  /* 没按钮就不渲染工具条带:钥匙串页现在只有只读列表(假按钮全删了),
+     再留一条空白带子会显得像加载失败。日志页同样受益。
+     注意顺序:波段要么带按钮一起挂,要么不挂 —— body 仍必须先挂进文档再 build(踩过)。 */
+  if (buttons.length > 0) sec.append(band);
+  sec.append(body);
   pane.append(sec);
   build(body);
   const t: Tab = { id: `t${++seq}`, kind, label, state: "idle", pane,
@@ -844,10 +847,8 @@ function openKeychainTab(): void {
   }, [
     /* 密钥生成/导入 UI:2026-10-22 用户决定不做,入口已移除(见 HANDOVER §4.5)。
        主机表单的 keyPath 字段保留 —— 已有私钥仍可直接填路径使用。 */
-    { label: tr("chip.certificate"), icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
-      onClick: () => toast(tr("toast.certUnsupported")) },
-    { label: tr("chip.touchId"), chip: true, onClick: () => toast(tr("toast.touchId")) },
-    { label: tr("chip.fido2"), chip: true, onClick: () => toast(tr("toast.fido2")) },
+    /* 证书 / Touch ID / FIDO2:2026-10-22 用户决定不做(与串口、密钥 UI 同类),
+       三个假按钮一并移除。钥匙串页现在只剩"哪些主机存了凭据"的只读概览。 */
   ]);
 }
 

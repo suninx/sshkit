@@ -1214,24 +1214,16 @@ describe("分区屏", () => {
     expect(nav("hosts").classList.contains("on")).toBe(true);
   });
 
-  it("Keychain:空态文案 + 存留按钮给出明确提示;密钥生成入口已移除", async () => {
+  it("Keychain:空态文案 + 工具栏不再有假按钮(密钥/证书/TouchID/FIDO2 均已移除)", async () => {
     await boot();
     click(nav("keychain"));
     await waitFor(() => document.querySelector(".tab-pane.active .sec-empty-title")?.textContent === "Add credentials");
-    const btn = (label: string): HTMLElement => {
-      const el = [...document.querySelectorAll<HTMLElement>(".tab-pane.active .sec-band .tb-btn, .tab-pane.active .sec-band .sec-chip")]
-        .find((b) => b.textContent === label);
-      if (!el) throw new Error(`keychain button not found: ${label}`);
-      return el;
-    };
-    /* "新建密钥"已按产品决策移除(密钥生成/导入 UI 不做)—— 按钮不该再存在 */
-    expect(() => btn("New key")).toThrow();
-    click(btn("Touch ID"));
-    expect(lastToast()).toBe("Touch ID needs system biometric authorization; not wired up yet");
-    click(btn("Certificate"));
-    expect(lastToast()).toBe("Certificate: not supported yet");
-    click(btn("FIDO2"));
-    expect(lastToast()).toBe("FIDO2 needs a hardware key; not wired up yet");
+    /* 这一页现在只有只读的凭据概览:工具栏不该残留任何"点了只弹提示"的按钮 */
+    const labels = [...document.querySelectorAll<HTMLElement>(".tab-pane.active .sec-band .tb-btn, .tab-pane.active .sec-band .sec-chip")]
+      .map((b) => b.textContent?.trim());
+    for (const gone of ["New key", "Certificate", "Touch ID", "FIDO2"]) {
+      expect(labels).not.toContain(gone);
+    }
   });
 
   it("Snippets 分区:无会话时提示,有会话时把命令写进会话;删除走桥", async () => {

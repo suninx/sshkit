@@ -206,9 +206,6 @@ export const en = {
   "toast.shellHistory": "Shell History needs per-session recording; not supported yet",
   "toast.noActiveSession": "No active session to send to",
   "toast.sentTo": "Sent to {target}",
-  "toast.certUnsupported": "Certificate: not supported yet",
-  "toast.touchId": "Touch ID needs system biometric authorization; not wired up yet",
-  "toast.fido2": "FIDO2 needs a hardware key; not wired up yet",
   "term.connectFailed": "Connection failed: {msg}",
 
   /* ---- 主机表单 ---- */
@@ -261,9 +258,6 @@ export const en = {
   "empty.keyDesc": "Store your credentials to quick and securely access your servers.",
   "empty.logsTitle": "No logs yet",
   "empty.logsDesc": "Connection and disconnect events will appear here.",
-  "chip.certificate": "Certificate",
-  "chip.touchId": "Touch ID",
-  "chip.fido2": "FIDO2",
 
   /* ---- 弹窗 ---- */
   "dlg.discardTitle": "Do you want to discard changes?",
@@ -482,9 +476,6 @@ export const zh: Record<MsgKey, string> = {
   "toast.shellHistory": "Shell History 需要按会话记录历史,暂未支持",
   "toast.noActiveSession": "没有活动会话可发送",
   "toast.sentTo": "已发送到 {target}",
-  "toast.certUnsupported": "Certificate:暂未支持",
-  "toast.touchId": "Touch ID:需要系统生物识别授权,暂未接入",
-  "toast.fido2": "FIDO2:需要硬件密钥,暂未接入",
   "term.connectFailed": "连接失败:{msg}",
 
   "form.newHost": "新建主机",
@@ -534,9 +525,6 @@ export const zh: Record<MsgKey, string> = {
   "empty.keyDesc": "保存凭据,以便快速、安全地访问服务器。",
   "empty.logsTitle": "暂无日志",
   "empty.logsDesc": "连接与断开事件会显示在这里。",
-  "chip.certificate": "证书",
-  "chip.touchId": "触控 ID",
-  "chip.fido2": "FIDO2",
 
   "dlg.discardTitle": "要放弃这些修改吗?",
   "dlg.discardDesc": "必填项还没填完。要结束编辑并放弃所有修改吗?",

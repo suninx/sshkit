@@ -85,6 +85,10 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
   (已有私钥直接填路径即可),认证仍支持 密码 / 私钥(+passphrase)/ ssh-agent。
   需要新密钥请在系统终端 `ssh-keygen -t ed25519` 生成后填路径。
 
+- **证书 / Touch ID / FIDO2**:2026-10-22 用户决定**不做**。钥匙串页这三个按钮与「新建密钥」
+  同为"点了只弹提示"的假按钮,已一并移除。该页现在只做**只读的凭据概览**
+  (哪些主机在钥匙串里存了凭据),不再提供任何编辑入口。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。
