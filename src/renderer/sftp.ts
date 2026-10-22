@@ -680,15 +680,15 @@ export function createSftpView(
       : (p.state === "done" || p.state === "skipped" ? 100 : 0);
     (row.querySelector(".jfill")! as HTMLElement).style.width = `${pct}%`;
     const stat = row.querySelector(".jstat")! as HTMLElement;
-    const done = (text: string): void => {
-      row!.className = "job done";
+    const done = (text: string, cls = "done"): void => {
+      row!.className = `job ${cls}`;
       stat.textContent = text;
       row!.querySelector(".jx")?.remove();
       setTimeout(() => { row!.remove(); jobEls.delete(p.jobId); }, 4000);
     };
     if (p.state === "error") { row.className = "job err"; stat.textContent = p.error ?? "failed"; }
     else if (p.state === "skipped") done(tr("sftp.skippedOne"));
-    else if (p.state === "cancelled") done(tr("sftp.cancelled"));
+    else if (p.state === "cancelled") done(tr("sftp.cancelled"), "cancelled");
     else if (p.state === "done") done(`${fmtSize(base.bytes)} done`);
     else stat.textContent = `${fmtSize(base.bytes)} / ${fmtSize(base.total)}`;
   });

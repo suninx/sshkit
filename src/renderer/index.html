@@ -149,12 +149,6 @@
     .toast.out { opacity: 0; }
 
     /* T4 —— Cmd+K 命令面板 */
-    /* 传输队列:每行一个任务,可取消(tree 传输还有 i/n 与总体进度) */
-    .job { display: flex; align-items: center; gap: 8px; padding: 4px 8px; }
-    .job .jx { width: 18px; height: 18px; border: 0; border-radius: 5px; padding: 0; background: transparent;
-      color: var(--fg-dim); font-size: 10px; cursor: pointer; flex: 0 0 auto; }
-    .job .jx:hover { background: rgba(255,255,255,.1); color: var(--fg); }
-    .job.done .jfill { background: #3ecf8e; }
 
     .palette-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex;
       align-items: flex-start; justify-content: center; padding-top: 90px; z-index: 55; }
@@ -489,16 +483,29 @@
       padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
     .sp-menu-item:hover { background: var(--h09); }
     .sp-menu-item.danger { color: var(--danger); }
-    .sftp-queue { position: absolute; right: 14px; bottom: 14px; width: 340px;
+    /* 传输队列:每个任务一张小卡片。
+       两行式布局 —— 第一行"文件名(可省略号) + 取消",第二行"进度条 + 字节数"。
+       以前是单行 flex:名字固定 45%、字节数固定 88px,导致 "124 MB / 3.0 GB" 折成两行、
+       进度条被挤成一小截(见 2026-10-22 用户反馈的截图)。 */
+    .sftp-queue { position: absolute; right: 14px; bottom: 14px; width: 320px;
       display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
-    .job { display: flex; align-items: center; gap: 8px; font-size: 12px; background: var(--bg2);
-      border: 1px solid var(--wire); border-radius: 7px; padding: 5px 8px; }
-    .job .jname { flex: 0 0 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .job .jbar { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+    .job { pointer-events: auto; display: grid; font-size: 12px; background: var(--bg2);
+      border: 1px solid var(--wire); border-radius: 7px; padding: 6px 8px; row-gap: 5px;
+      grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name x" "bar stat";
+      column-gap: 8px; }
+    .job .jname { grid-area: name; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; }
+    .job .jx { grid-area: x; align-self: center; width: 18px; height: 18px; border: 0; border-radius: 5px;
+      padding: 0; background: transparent; color: var(--fg-dim); font-size: 10px; line-height: 1; cursor: pointer; }
+    .job .jx:hover { background: var(--h09); color: var(--fg); }
+    .job .jbar { grid-area: bar; align-self: center; height: 6px; min-width: 0;
+      background: var(--bg3); border-radius: 3px; overflow: hidden; }
     .job .jfill { height: 100%; background: var(--accent); width: 0%; }
-    .job.done .jfill { background: #a3be8c; width: 100%; }
+    .job.done .jfill { background: #a3be8c; }        /* 宽度一律由 JS 按字节算,不在这里硬写 100% */
+    .job.cancelled .jfill { background: var(--fg-dim); }
     .job.err .jfill { background: var(--danger); }
-    .job .jstat { width: 88px; text-align: right; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+    .job .jstat { grid-area: stat; align-self: center; white-space: nowrap; text-align: right;
+      color: var(--fg-dim); font-variant-numeric: tabular-nums; font-size: 11px; }
     .job.err .jstat { color: var(--danger); }
   
     /* ---- 分屏布局修正(放在样式表末尾,确保压过前面的规则)----

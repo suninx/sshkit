@@ -1516,6 +1516,8 @@ describe("SFTP 视图 · 拖入与队列边界", () => {
     progressCbs.forEach((cb) => cb({ ...base, jobId: 72, state: "cancelled" }));
     await flushView();
     expect(document.body.textContent).toContain("cancelled");
+    /* 取消态用独立 class:进度条保留实际比例(不能画成 100% 像已完成) */
+    expect(document.querySelector(".sftp-queue .job.cancelled")).toBeTruthy();
   });
 });
 
