@@ -107,8 +107,8 @@ function setSftpSession(s: CurrentSession | null): void {
 }
 
 /* T4:终端侧栏(原版 `Show terminal side-panel`,动作 toggleSidepanel)。
-   已确认的三块内容里,这里实现两块:`Jump to`(把当前终端切到某台主机)与 `Snippets`(把片段发到终端);
-   `Serial` 需要串口原生依赖,记为硬桩(不假装实现)。 */
+   实现 `Jump to`(把当前终端切到某台主机)与 `Snippets`(把片段发到终端)。
+   原版还有 `Serial` 分区 —— 本项目**不做串口**(2026-10-22 决定并移除全部入口)。 */
 let PANEL_OPEN = localStorage.getItem("sshkit.sidePanel") === "1";
 
 function applyPanel(): void {
@@ -1848,8 +1848,6 @@ function installAllShortcuts(): void {
        (否则 focusPanelSection 找不到元素,表现为"按了没反应")。 */
     snippets: () => showPanelSection("Snippets"),
     jumpTo: () => showPanelSection("Jump to"),
-    /* 串口是硬桩(见 PROTOCOL T4):这里给出**说清原因**的提示,而不是笼统的"尚未实现" */
-    serialConnection: () => toast(tr("toast.serialUnsupported")),
   };
   installShortcuts(shortcuts, (def: ShortcutDef) => {
     toast(tr("toast.featureNotImplemented", { name: def.name }));
@@ -1902,9 +1900,6 @@ void (async () => {
      (Hosts 分区就是原版的 `Vaults` tab;转发/Known Hosts 等各自成为主区视图)。 */
   document.getElementById("btn-panel-top")?.addEventListener("click", () => togglePanel());
   document.getElementById("btn-quick-term")?.addEventListener("click", () => { void openSession("local"); });
-  document.getElementById("btn-quick-serial")?.addEventListener("click", () => {
-    toast(tr("toast.serialUnsupported"));
-  });
   document.getElementById("btn-appearance")?.addEventListener("click", () => openPrefs());
   document.getElementById("btn-new-host-caret")?.addEventListener("click", () => {
     document.getElementById("btn-new-host")?.click();

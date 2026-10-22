@@ -22,7 +22,6 @@ export const MAC_SHORTCUTS: ShortcutDef[] = [
   { id: "localTerminal", name: "Open Local Terminal", accel: "Cmd+L" },
   { id: "toggleSplitViewBroadcastMode", name: "Switch the Broadcast Mode", accel: "Cmd+B" },
   { id: "toggleWorkspaceViewMode", name: "Toggle Workspace View Mode", accel: "Cmd+Shift+M" },
-  { id: "serialConnection", name: "Open Serial Connection", accel: "Cmd+Alt+S" },
   { id: "clearTerminalBuffer", name: "Clear Terminal Buffer", accel: null },
   { id: "openTerminalSearch", name: "Open Terminal Search", accel: "Cmd+F" },
   { id: "terminals", name: "Open Hosts Page", accel: null },

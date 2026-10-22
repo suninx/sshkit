@@ -1137,11 +1137,12 @@ describe("终端侧栏与提示条", () => {
       .some((e) => e.textContent === "Snippets"));
   });
 
-  it("toast:立即出现、2.6s 后淡出、3.2s 后移除;串口按钮给出明确原因", async () => {
+  it("toast:立即出现、2.6s 后淡出、3.2s 后移除", async () => {
     await boot();
     vi.useFakeTimers();
-    click(document.querySelector("#btn-quick-serial"));
-    expect(lastToast()).toBe("Serial is not supported: it needs a native serial dependency and a real device");
+    /* 串口功能已移除,改用仍然存在的"未实现"快捷键(Cmd+S 保存工作区模板)触发 toast */
+    key(document, { code: "KeyS", key: "s", metaKey: true });
+    expect(lastToast()).toBe("\"Save Workspace Template\" is not implemented yet");
     await vi.advanceTimersByTimeAsync(2700);
     expect(document.querySelector(".toast")!.classList.contains("out")).toBe(true);
     await vi.advanceTimersByTimeAsync(600);
@@ -1471,8 +1472,10 @@ describe("快捷键矩阵与边界路径", () => {
 
     key(document, { code: "KeyS", key: "s", metaKey: true });
     expect(lastToast()).toBe("\"Save Workspace Template\" is not implemented yet");
+    /* Cmd+Alt+S(原版"打开串口连接")已移除绑定:不该再产生任何 toast(回归保护) */
+    const toastBefore = lastToast();
     key(document, { code: "KeyS", key: "s", metaKey: true, altKey: true });
-    expect(lastToast()).toBe("Serial is not supported: it needs a native serial dependency and a real device");
+    expect(lastToast()).toBe(toastBefore);
 
     /* 剪贴板:有读无写(无选中文本时不写回) */
     key(document, { code: "KeyV", key: "v", metaKey: true });
@@ -2313,7 +2316,7 @@ describe("防御守卫", () => {
     await boot({
       mutateDom: () => {
         /* 这几个是可选的顶栏/工具条按钮;移除后 boot 里的 ?.addEventListener 应安静跳过 */
-        for (const id of ["btn-panel-top", "btn-quick-term", "btn-quick-serial", "btn-appearance", "btn-new-host-caret"]) {
+        for (const id of ["btn-panel-top", "btn-quick-term", "btn-appearance", "btn-new-host-caret"]) {
           document.getElementById(id)?.remove();
         }
       },

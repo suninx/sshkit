@@ -88,11 +88,11 @@ describe("parseAccel", () => {
 });
 
 describe("快捷键表", () => {
-  it("保留原版 Mac 方案 20 条,顺序/id/默认键位一致", () => {
+  it("保留 Mac 方案 19 条(串口连接已移除),顺序/id/默认键位一致", () => {
     expect(MAC_SHORTCUTS.map((s) => s.id)).toEqual([
       "copyFromTerminal", "pasteToTerminal", "selectAllInTerminal", "toggleSidepanel",
       "saveWorkspaceTemplate", "localTerminal", "toggleSplitViewBroadcastMode", "toggleWorkspaceViewMode",
-      "serialConnection", "clearTerminalBuffer", "openTerminalSearch", "terminals", "close",
+      "clearTerminalBuffer", "openTerminalSearch", "terminals", "close",
       "snippets", "forwarding", "commandPalette", "jumpTo", "newTab", "bottom", "top",
     ]);
     const byId = new Map(MAC_SHORTCUTS.map((s) => [s.id, s]));

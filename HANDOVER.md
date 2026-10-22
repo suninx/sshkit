@@ -69,6 +69,12 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 # 排障:renderer console 已转发到主进程 stdout(见 main.ts console-message 段);探针法=M0 用法
 ```
 
+## 4.5 明确不做的功能(别再加回来)
+
+- **串口 / Serial**:2026-10-22 用户决定**不做**,已移除工具栏按钮、`serialConnection` 快捷键
+  (Cmd+Alt+S)、侧栏 Serial 分区说明与相关 i18n 文案。原版有、我们没有,这是**产品决策**不是缺失。
+  需要连 Console 的场景,用"本地终端"跑 `screen /dev/tty.usbserial-XXXX 115200` 即可。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。
@@ -129,7 +135,7 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 - B. wakaru 恢复树“拼装自证失败”实验(约 1 天,预期不通,价值=实证)。
 - **C. M2.5 端口转发**(`ssh2.forwardOut` 本体小;真工作量在挂载点=**Tab 系统**;建议与 M3 一起):多 Tab + 主题/字体/快捷键 + 转发表 × 每主机规则。
   ⚠️ 按 §7 更正:Tab/转发/快捷键**目前无蓝图** → 第一件事是用对照台测出规格、补蓝图,再写代码。
-  - M4 mosh 桥 + serial(可选)· M5 electron-builder 打包 + GH Releases 更新源。
+  - M4 mosh 桥(可选)· M5 electron-builder 打包 + GH Releases 更新源。
 - 用户
 
 ## 9. 快速接手话术(新会话第一条照这个说)
