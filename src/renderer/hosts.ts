@@ -76,8 +76,17 @@ interface SshkitBridge {
     rename(sid: number, from: string, to: string): Promise<void>;
     upload(sid: number, localPath: string, remotePath: string): Promise<number>;
     download(sid: number, remotePath: string, localPath: string): Promise<number>;
+    /** 树传输:文件或目录,递归 + 断点续传;policy 决定目标已存在时怎么办 */
+    transfer(sid: number, dir: "up" | "down", localPath: string, remotePath: string, policy?: string):
+      Promise<{ jobId: number; files: number; skippedFiles: number; skippedEntries: number; bytes: number; cancelled: boolean }>;
+    cancel(jobId: number): Promise<boolean>;
+    /** 拖到 Finder(仅本地文件) */
+    startDrag(filePath: string): void;
     onProgress(cb: (p: TransferProgress) => void): () => void;
   };
+  /** Finder 拖入:File → 真实路径 */
+  native: { pathForFile(file: File): string };
+
   local: {
     list(dir: string): Promise<{ path: string; entries: SftpEntry[] }>;
     mkdir(dir: string): Promise<void>;

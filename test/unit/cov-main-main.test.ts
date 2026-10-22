@@ -89,6 +89,7 @@ vi.mock("electron", async () => {
   let senderDestroyed = false;
   const testSender = {
     send: (ch: string, ...a: unknown[]) => { senderEvents.push([ch, ...a]); },
+    startDrag: (opts: unknown) => { senderEvents.push(["startDrag", opts]); },
     isDestroyed: () => senderDestroyed,
   };
   base.invoke = async (channel: string, ...args: unknown[]) => {
@@ -928,5 +929,20 @@ describe("window:minimize / toggleMaximize / close(对应 #wincontrols 三个按
     win.emit("unmaximize");
     const pushed = em.webContents.sent.slice(before).filter(([ch]) => ch === "window:maximized");
     expect(pushed).toEqual([["window:maximized", true], ["window:maximized", false]]);
+  });
+});
+
+describe("sftp 树传输接线", () => {
+  it("sftp:startDrag 用 32px 图标调 sender.startDrag", () => {
+    em.fire("sftp:startDrag", "/tmp/sshkit-x.txt");
+    const hit = T.senderEvents.find((e) => e[0] === "startDrag");
+    expect(hit).toBeTruthy();
+    const opts = hit![1] as { file: string; icon: { size: { width: number } } };
+    expect(opts.file).toBe("/tmp/sshkit-x.txt");
+    expect(opts.icon.size.width).toBe(32);
+  });
+
+  it("sftp:transfer 接受 policy 参数(无会话时抛错,说明确实走到引擎)", async () => {
+    await expect(em.invoke("sftp:transfer", 4321, "up", "/tmp/nope", "/dst", "skip")).rejects.toThrow();
   });
 });

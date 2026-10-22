@@ -29,6 +29,21 @@ type SortKey = "name" | "date" | "size" | "kind";
    拖拽源放在模块级:HTML5 的 dragstart/drop 分属两个元素,靠它传递"谁被拖了"。 */
 let dragSrc: { which: "local" | "remote"; entry: SftpEntry } | null = null;
 
+/* 冲突策略:记住上次选择,在菜单里循环切换。默认覆盖(符合大多数人的直觉)。 */
+const CONFLICT_KEY = "sshkit.sftpConflict";
+type ConflictPolicy = "overwrite" | "skip" | "rename";
+const CONFLICT_ORDER: ConflictPolicy[] = ["overwrite", "skip", "rename"];
+function getPolicy(): ConflictPolicy {
+  const v = localStorage.getItem(CONFLICT_KEY);
+  return v === "skip" || v === "rename" ? v : "overwrite";
+}
+const POLICY_MSG = {
+  overwrite: "sftp.conflictOverwrite",
+  skip: "sftp.conflictSkip",
+  rename: "sftp.conflictRename",
+} as const;
+function policyLabel(): string { return tr(POLICY_MSG[getPolicy()]); }
+
 interface PaneState {
   which: "local" | "remote";
   dir: string;
@@ -142,7 +157,8 @@ export function createSftpView(
     // T5:把"对面栏"当放置目标(同栏内拖动不触发传输)
     const bodyEl = host.querySelector(".sp-body")! as HTMLElement;
     bodyEl.addEventListener("dragover", (ev) => {
-      if (!dragSrc || dragSrc.which === st.which) return;
+      const hasFiles = (ev.dataTransfer?.files?.length ?? 0) > 0;
+      if (!hasFiles && (!dragSrc || dragSrc.which === st.which)) return;
       ev.preventDefault();
       bodyEl.classList.add("drop-hot");
     });
@@ -150,6 +166,9 @@ export function createSftpView(
     bodyEl.addEventListener("drop", (ev) => {
       ev.preventDefault();
       bodyEl.classList.remove("drop-hot");
+      /* Finder 拖入优先:带 files 的就是外部文件/目录 */
+      const files = Array.from(ev.dataTransfer?.files ?? []);
+      if (files.length > 0) { void dropFromFinder(st, files); return; }
       if (!dragSrc || dragSrc.which === st.which) return;
       void dropTransfer(st, dragSrc);
     });
@@ -362,6 +381,8 @@ export function createSftpView(
         dragSrc = { which: st.which, entry: e };
         ev.dataTransfer?.setData("text/plain", e.name);
         row.classList.add("dragging");
+        /* ⌥ + 拖 → 交给系统做"拖到 Finder";普通拖 → 对面栏传输(两条路径互不干扰) */
+        if (st.which === "local" && ev.altKey) bridge.sftp.startDrag(joinPath(local.dir, e.name));
       });
       row.addEventListener("dragend", () => {
         dragSrc = null;
@@ -439,6 +460,7 @@ export function createSftpView(
     if (n > 1) items.push([st.which === "local" ? `Upload ${n} items →` : `← Download ${n} items`, () => void transferMany(st)]);
     else if (st.which === "local") items.push([tr("sftp.upload"), () => void transfer("up")]);
     else items.push(["← Download", () => void transfer("down")]);
+    items.push([tr("sftp.conflictMode", { mode: policyLabel() }), () => cyclePolicy()]);
     menuAt(anchor, items);
   }
 
@@ -512,20 +534,45 @@ export function createSftpView(
     } catch (err) { banner(pick(String((err as Error).message ?? err))); }
   }
 
+  /** 传输当前选中项(文件**或目录**)。递归/断点续传/冲突策略都在主进程引擎里。 */
   async function transfer(dir: "up" | "down"): Promise<void> {
     const s = session();
     if (!s) { banner(tr("sftp.notBound")); return; }
     const from = dir === "up" ? local : remote;
     const to = dir === "up" ? remote : local;
     const f = from.sel;
-    if (!f || f.isDir) { banner(tr("sftp.pickFirst")); return; }
+    if (!f) { banner(tr("sftp.pickFirst")); return; }
     const src = joinPath(from.dir, f.name);
     const dst = joinPath(to.dir, f.name);
     try {
-      if (dir === "up") await bridge.sftp.upload(s.sid, src, dst);
-      else await bridge.sftp.download(s.sid, src, dst);
+      const res = await bridge.sftp.transfer(s.sid, dir, src, dst, getPolicy());
+      if (res.skippedFiles > 0) banner(tr("sftp.skippedFiles", { n: res.skippedFiles }));
+      if (res.skippedEntries > 0) banner(tr("sftp.skippedEntries", { n: res.skippedEntries }));
       await refresh(to);
     } catch (err) { banner(pick(String((err as Error).message ?? err))); }
+  }
+
+  /** 循环切换冲突策略并提示当前值 */
+  function cyclePolicy(): void {
+    const next = CONFLICT_ORDER[(CONFLICT_ORDER.indexOf(getPolicy()) + 1) % CONFLICT_ORDER.length];
+    localStorage.setItem(CONFLICT_KEY, next);
+    banner(tr("sftp.conflictMode", { mode: policyLabel() }));
+  }
+
+  /** Finder 拖进来的文件:上传到远端栏(支持目录,引擎递归) */
+  async function dropFromFinder(st: PaneState, files: File[]): Promise<void> {
+    const s = session();
+    if (!s) { banner(tr("sftp.notBound")); return; }
+    if (st.which === "local") { banner(tr("sftp.alreadyLocal")); return; }
+    for (const file of files) {
+      const localPath = bridge.native.pathForFile(file);
+      if (!localPath) continue;
+      const sep = localPath.includes("\\") ? "\\" : "/";
+      const name = localPath.slice(localPath.lastIndexOf(sep) + 1);
+      try { await bridge.sftp.transfer(s.sid, "up", localPath, joinPath(st.dir, name), getPolicy()); }
+      catch (err) { banner(pick(String((err as Error).message ?? err))); }
+    }
+    await refresh(remote);
   }
 
   /* ---------- 传输进度 ---------- */
@@ -607,8 +654,17 @@ export function createSftpView(
     if (!row) {
       row = document.createElement("div");
       row.className = "job";
-      row.innerHTML = `<span class="jname"></span><span class="jbar"><span class="jfill"></span></span><span class="jstat"></span>`;
-      (row.querySelector(".jname")! as HTMLElement).textContent = `${p.dir === "up" ? "⬆" : "⬇"} ${p.file}`;
+      row.innerHTML = `<span class="jname"></span><span class="jbar"><span class="jfill"></span></span><span class="jstat"></span><button class="jx"></button>`;
+      (row.querySelector(".jx")! as HTMLElement).textContent = "✕";
+      (row.querySelector(".jx")! as HTMLElement).title = tr("sftp.cancelTransfer");
+      (row.querySelector(".jx")! as HTMLElement).addEventListener("click", () => {
+        void bridge.sftp.cancel(p.jobId);
+        row!.remove();
+        jobEls.delete(p.jobId);
+      });
+      const tree = p as TransferProgress & { index?: number; count?: number };
+      const step = (tree.count ?? 0) > 1 ? ` (${tree.index}/${tree.count})` : "";
+      (row.querySelector(".jname")! as HTMLElement).textContent = `${p.dir === "up" ? "⬆" : "⬇"} ${p.file}${step}`;
       queueEl.prepend(row);
       jobEls.set(p.jobId, row);
       while (jobEls.size > 8) {
@@ -617,14 +673,24 @@ export function createSftpView(
         oldest[1].remove(); jobEls.delete(oldest[0]);
       }
     }
-    const pct = p.total > 0 ? Math.min(100, Math.round((p.bytes / p.total) * 100)) : (p.state === "done" ? 100 : 0);
+    const tree2 = p as TransferProgress & { overallBytes?: number; overallTotal?: number };
+    /* 树传输带总体字节;单文件任务没有这些字段,回落成文件自身的进度 */
+    const base = { bytes: tree2.overallBytes ?? p.bytes, total: tree2.overallTotal ?? p.total };
+    const pct = base.total > 0 ? Math.min(100, Math.round((base.bytes / base.total) * 100))
+      : (p.state === "done" || p.state === "skipped" ? 100 : 0);
     (row.querySelector(".jfill")! as HTMLElement).style.width = `${pct}%`;
     const stat = row.querySelector(".jstat")! as HTMLElement;
-    if (p.state === "error") { row.className = "job err"; stat.textContent = p.error ?? "failed"; }
-    else if (p.state === "done") {
-      row.className = "job done"; stat.textContent = `${fmtSize(p.bytes)} done`;
+    const done = (text: string): void => {
+      row!.className = "job done";
+      stat.textContent = text;
+      row!.querySelector(".jx")?.remove();
       setTimeout(() => { row!.remove(); jobEls.delete(p.jobId); }, 4000);
-    } else stat.textContent = `${fmtSize(p.bytes)} / ${fmtSize(p.total)}`;
+    };
+    if (p.state === "error") { row.className = "job err"; stat.textContent = p.error ?? "failed"; }
+    else if (p.state === "skipped") done(tr("sftp.skippedOne"));
+    else if (p.state === "cancelled") done(tr("sftp.cancelled"));
+    else if (p.state === "done") done(`${fmtSize(base.bytes)} done`);
+    else stat.textContent = `${fmtSize(base.bytes)} / ${fmtSize(base.total)}`;
   });
 
   function banner(text: string): void {

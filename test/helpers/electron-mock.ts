@@ -107,7 +107,12 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
     },
     screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1440, height: 900 } }) },
     shell: { openExternal: vi.fn(async () => undefined) },
-    nativeImage: { createFromPath: notStubbed("nativeImage.createFromPath") },
+    nativeImage: {
+      createFromPath: (filePath: string) => ({
+        filePath,
+        resize: (size: { width: number; height: number }) => ({ filePath, size }),
+      }),
+    },
   };
 
   return {

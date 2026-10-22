@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { HostInput, HostRecord } from "../shared/host";
 
 const api = {
@@ -115,14 +115,22 @@ const api = {
     rename: (sid: number, from: string, to: string) => ipcRenderer.invoke("sftp:rename", sid, from, to),
     upload: (sid: number, localPath: string, remotePath: string) => ipcRenderer.invoke("sftp:upload", sid, localPath, remotePath),
     download: (sid: number, remotePath: string, localPath: string) => ipcRenderer.invoke("sftp:download", sid, remotePath, localPath),
-    /* 树传输:传目录或单文件,内部支持断点续传;返回 {jobId, files, bytes, cancelled} */
-    transfer: (sid: number, dir: "up" | "down", localPath: string, remotePath: string) => ipcRenderer.invoke("sftp:transfer", sid, dir, localPath, remotePath),
+    /* 树传输(文件或目录):递归 + 断点续传 + 冲突策略 */
+    transfer: (sid: number, dir: "up" | "down", localPath: string, remotePath: string, policy?: string) =>
+      ipcRenderer.invoke("sftp:transfer", sid, dir, localPath, remotePath, policy) as Promise<{ jobId: number; files: number; skippedFiles: number; skippedEntries: number; bytes: number; cancelled: boolean }>,
     cancel: (jobId: number) => ipcRenderer.invoke("sftp:cancel", jobId) as Promise<boolean>,
+    /* 拖到 Finder:走原生 startDrag(仅本地文件,远端文件请先下载) */
+    startDrag: (filePath: string) => ipcRenderer.send("sftp:startDrag", filePath),
     onProgress: (callback: (p: { sid: number; jobId: number; dir: string; file: string; bytes: number; total: number; state: string; error?: string }) => void) => {
       const handler = (_e: unknown, p: unknown) => callback(p as never);
       ipcRenderer.on("sftp:progress", handler);
       return () => { ipcRenderer.off("sftp:progress", handler); };
     },
+  },
+
+  /* Finder → 应用:把 drop 进来的 File 还原成真实路径(Electron 32+ 的 webUtils) */
+  native: {
+    pathForFile: (file: File) => webUtils.getPathForFile(file),
   },
 
   local: {

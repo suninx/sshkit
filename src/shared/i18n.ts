@@ -17,6 +17,17 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "sftp.cancelled": "cancelled",
+  "sftp.conflictMode": "On conflict: {mode}",
+  "sftp.conflictOverwrite": "overwrite",
+  "sftp.conflictSkip": "skip",
+  "sftp.conflictRename": "rename",
+  "sftp.skippedOne": "skipped",
+  "sftp.skippedFiles": "Skipped {n} existing file(s)",
+  "sftp.skippedEntries": "Skipped {n} special entries (symlinks etc.)",
+  "sftp.alreadyLocal": "Those files are already local — drop them on the remote pane to upload",
+  "sftp.cancelTransfer": "Cancel transfer",
+  "sftp.dragOutHint": "Hold ⌥ while dragging a local file to copy it to Finder",
   "menu.services": "Services",
   "menu.edit": "Edit",
   "menu.undo": "Undo",
@@ -176,7 +187,7 @@ export const en = {
   "sftp.noSession": "No session available yet — connect a host from the host list first",
   "sftp.chooseSession": "Select the session to bind",
   "sftp.notBound": "Remote pane is not bound to a session",
-  "sftp.pickFirst": "Select a file first (folder transfer is not supported yet)",
+  "sftp.pickFirst": "Select a file or folder first",
   "sftp.deleted": "Deleted {done}/{total} items",
 
   /* ---- 外观面板 ---- */
@@ -290,6 +301,17 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "sftp.cancelled": "已取消",
+  "sftp.conflictMode": "冲突时:{mode}",
+  "sftp.conflictOverwrite": "覆盖",
+  "sftp.conflictSkip": "跳过",
+  "sftp.conflictRename": "重命名",
+  "sftp.skippedOne": "已跳过",
+  "sftp.skippedFiles": "已跳过 {n} 个已存在的文件",
+  "sftp.skippedEntries": "已跳过 {n} 个特殊项(符号链接等)",
+  "sftp.alreadyLocal": "这些文件已在本地 —— 拖到远端栏才是上传",
+  "sftp.cancelTransfer": "取消传输",
+  "sftp.dragOutHint": "按住 ⌥ 拖本地文件可复制到 Finder",
   "menu.services": "服务",
   "menu.edit": "编辑",
   "menu.undo": "撤销",

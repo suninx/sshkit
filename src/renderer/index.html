@@ -149,6 +149,13 @@
     .toast.out { opacity: 0; }
 
     /* T4 —— Cmd+K 命令面板 */
+    /* 传输队列:每行一个任务,可取消(tree 传输还有 i/n 与总体进度) */
+    .job { display: flex; align-items: center; gap: 8px; padding: 4px 8px; }
+    .job .jx { width: 18px; height: 18px; border: 0; border-radius: 5px; padding: 0; background: transparent;
+      color: var(--fg-dim); font-size: 10px; cursor: pointer; flex: 0 0 auto; }
+    .job .jx:hover { background: rgba(255,255,255,.1); color: var(--fg); }
+    .job.done .jfill { background: #3ecf8e; }
+
     .palette-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex;
       align-items: flex-start; justify-content: center; padding-top: 90px; z-index: 55; }
     .palette { width: min(560px, 88vw); background: var(--bg2); border: 1px solid var(--wire);

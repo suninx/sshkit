@@ -21,7 +21,7 @@ export interface TransferProgress {
   file: string;
   bytes: number;
   total: number;
-  state: "active" | "done" | "error" | "cancelled";
+  state: "active" | "done" | "error" | "cancelled" | "skipped";
   error?: string;
 }
 
@@ -36,9 +36,16 @@ export interface TreeProgress extends TransferProgress {
   overallTotal: number;
 }
 
+/** 目标已存在时的处理策略(由调用方决定,引擎不擅自猜) */
+export type ConflictPolicy = "overwrite" | "skip" | "rename";
+
 export interface TreeResult {
   jobId: number;
   files: number;
+  /** 因"已存在 + skip 策略"而跳过的文件数 */
+  skippedFiles: number;
+  /** 源里被跳过的特殊项(符号链接 / 设备文件等)数量 */
+  skippedEntries: number;
   bytes: number;
   cancelled: boolean;
 }

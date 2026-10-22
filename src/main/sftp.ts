@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Client, SFTPWrapper } from "ssh2";
-import type { SftpEntry, TransferProgress, TreeProgress, TreeResult } from "../shared/sftp";
+import type { ConflictPolicy, SftpEntry, TransferProgress, TreeProgress, TreeResult } from "../shared/sftp";
 
 interface ProgressSink {
   (p: TransferProgress): void;
@@ -17,26 +17,40 @@ type ErrBox = Error | null | undefined;
 export type LocalReader = (dir: string) => Promise<Array<{
   name: string; isDirectory(): boolean; isFile(): boolean }>>;
 
-/** 本地目录清单(相对路径 + 大小 + 是否目录)。符号链接等"既非文件也非目录"的项**跳过**:
- *  远端无法安全跟随,且可能成环。reader 可注入,便于在无符号链接权限的平台(Windows 非管理员)
- *  也能覆盖这条分支。 */
+/** 目录遍历的并发波次:每波同时读 N 个目录,避免上千文件时一层层串行等 RTT */
+const WALK_CONCURRENCY = 4;
+
+/** 本地目录清单(相对路径 + 大小 + 是否目录)。
+ *  符号链接等"既非文件也非目录"的项**跳过并计数**(远端无法安全跟随,且可能成环);
+ *  reader 可注入 —— Windows 非管理员建不了符号链接,靠假 dirent 也能覆盖这条分支。 */
 export async function walkLocalTree(
   root: string,
   reader: LocalReader = (dir) => fsp.readdir(dir, { withFileTypes: true }) as unknown as ReturnType<LocalReader>,
   statSize: (p: string) => Promise<number> = async (p) => (await fsp.stat(p)).size,
   join: (a: string, b: string) => string = path.join,
-): Promise<Array<{ rel: string; size: number; isDir: boolean }>> {
-  const out: Array<{ rel: string; size: number; isDir: boolean }> = [];
-  const walk = async (abs: string, rel: string): Promise<void> => {
-    for (const e of await reader(abs)) {
-      const childAbs = join(abs, e.name);
-      const childRel = rel ? `${rel}/${e.name}` : e.name;
-      if (e.isDirectory()) { out.push({ rel: childRel, size: 0, isDir: true }); await walk(childAbs, childRel); }
-      else if (e.isFile()) out.push({ rel: childRel, size: await statSize(childAbs), isDir: false });
+): Promise<{ entries: Array<{ rel: string; size: number; isDir: boolean }>; skipped: number }> {
+  const entries: Array<{ rel: string; size: number; isDir: boolean }> = [];
+  let skipped = 0;
+  let frontier: Array<{ abs: string; rel: string }> = [{ abs: root, rel: "" }];
+  while (frontier.length > 0) {
+    const wave = frontier.splice(0, WALK_CONCURRENCY);
+    const lists = await Promise.all(wave.map(async (d) => ({ d, list: await reader(d.abs) })));
+    for (const { d, list } of lists) {
+      for (const e of list) {
+        const childAbs = join(d.abs, e.name);
+        const childRel = d.rel ? `${d.rel}/${e.name}` : e.name;
+        if (e.isDirectory()) {
+          entries.push({ rel: childRel, size: 0, isDir: true });
+          frontier.push({ abs: childAbs, rel: childRel });
+        } else if (e.isFile()) {
+          entries.push({ rel: childRel, size: await statSize(childAbs), isDir: false });
+        } else {
+          skipped += 1;
+        }
+      }
     }
-  };
-  await walk(root, "");
-  return out;
+  }
+  return { entries, skipped };
 }
 
 export class SftpController {
@@ -224,19 +238,33 @@ export class SftpController {
       (e ? reject(e) : resolve({ size: a.size, isDir: isDirMode(a.mode) }))));
   }
 
-  /** 远端目录清单(相对路径) */
-  private async walkRemoteTree(sftp: SFTPWrapper, root: string): Promise<Array<{ rel: string; size: number; isDir: boolean }>> {
-    const out: Array<{ rel: string; size: number; isDir: boolean }> = [];
-    const walk = async (abs: string, rel: string): Promise<void> => {
-      for (const e of await this.readdirRemote(sftp, abs)) {
-        const childRel = rel ? `${rel}/${e.filename}` : e.filename;
-        const childAbs = `${abs.replace(/\/$/, "")}/${e.filename}`;
-        if (isDirMode(e.attrs.mode)) { out.push({ rel: childRel, size: 0, isDir: true }); await walk(childAbs, childRel); }
-        else out.push({ rel: childRel, size: e.attrs.size, isDir: false });
+  /** 远端目录清单(相对路径)。同样按波次并发读目录。 */
+  private async walkRemoteTree(sftp: SFTPWrapper, root: string): Promise<{ entries: Array<{ rel: string; size: number; isDir: boolean }>; skipped: number }> {
+    const entries: Array<{ rel: string; size: number; isDir: boolean }> = [];
+    let skipped = 0;
+    let frontier: Array<{ abs: string; rel: string }> = [{ abs: root, rel: "" }];
+    while (frontier.length > 0) {
+      const wave = frontier.splice(0, WALK_CONCURRENCY);
+      const lists = await Promise.all(wave.map(async (d) => ({ d, list: await this.readdirRemote(sftp, d.abs) })));
+      for (const { d, list } of lists) {
+        for (const e of list) {
+          const childRel = d.rel ? `${d.rel}/${e.filename}` : e.filename;
+          const childAbs = `${d.abs.replace(/\/$/, "")}/${e.filename}`;
+          const mode = e.attrs.mode;
+          /* 必须整体比较类型位:位与写法会把符号链接(0o120000)误判成普通文件(0o100000) */
+          const kind = mode & 0o170000;
+          if (kind === 0o040000) {
+            entries.push({ rel: childRel, size: 0, isDir: true });
+            frontier.push({ abs: childAbs, rel: childRel });
+          } else if (kind === 0o100000 || kind === 0) {
+            entries.push({ rel: childRel, size: e.attrs.size, isDir: false });
+          } else {
+            skipped += 1;   /* 远端符号链接 / 设备文件:不跟 */
+          }
+        }
       }
-    };
-    await walk(root, "");
-    return out;
+    }
+    return { entries, skipped };
   }
 
   /** 逐级建远端目录;已存在则跳过(不依赖 mkdir -p,SFTP 没有这个语义)。
@@ -250,80 +278,120 @@ export class SftpController {
     }
   }
 
-  /** 上传单文件,支持断点续传:远端已有部分内容时从断点 append */
-  private async uploadResume(sftp: SFTPWrapper, localPath: string, remotePath: string,
-                             onBytes: (n: number) => void, cancelled: () => boolean): Promise<number> {
+  /** 目标已存在时按策略决定写到哪;返回 null 表示"跳过这个文件" */
+  private async resolveTarget(target: string, policy: ConflictPolicy,
+                               exists: (p: string) => Promise<boolean>): Promise<string | null> {
+    if (!(await exists(target))) return target;
+    if (policy === "skip") return null;
+    if (policy === "overwrite") return target;
+    /* rename:给名字加序号,保留扩展名 */
+    const slash = target.lastIndexOf("/");
+    const dot = target.lastIndexOf(".");
+    const hasExt = dot > slash;
+    const base = hasExt ? target.slice(0, dot) : target;
+    const ext = hasExt ? target.slice(dot) : "";
+    for (let i = 1; i < 100; i += 1) {
+      const cand = `${base} (${i})${ext}`;
+      if (!(await exists(cand))) return cand;
+    }
+    throw new Error("too many conflicting files");
+  }
+
+  /** 上传单个文件:先写 `目标.part`,成功后 rename 成目标 —— 中断时留下的是 .part,
+   *  下次从它的长度续传,不会把半截文件当成完整文件。 */
+  private async uploadOne(sftp: SFTPWrapper, localPath: string, target: string,
+                          onBytes: (n: number) => void, cancelled: () => boolean): Promise<number> {
     const total = (await fsp.stat(localPath)).size;
+    const part = `${target}.part`;
     let offset = 0;
-    try { offset = (await this.statRemote(sftp, remotePath)).size; } catch { offset = 0; }
-    if (offset > total) offset = 0;          /* 远端比本地还大 → 视为脏文件,从头来 */
-    if (offset === total) { onBytes(total); return total; }
-    await new Promise<void>((resolve, reject) => {
-      const rs = fs.createReadStream(localPath, { start: offset });
-      /* 断点续传才 append;从头来(offset=0,例如远端是脏文件)必须覆盖,否则拼出脏内容 */
-      const ws = sftp.createWriteStream(remotePath, { flags: offset > 0 ? "a" : "w" });
-      let sent = offset;
-      rs.on("data", (c: Buffer) => {
-        sent += c.length;
-        onBytes(sent);
-        if (cancelled()) { rs.destroy(); ws.destroy(); }
-      });
-      rs.on("error", reject);
-      ws.on("error", reject);
-      ws.on("close", () => resolve());
-      rs.pipe(ws);
-    });
-    return total;
-  }
-
-  /** 下载单文件,支持断点续传:本地已有部分内容时从断点 append */
-  private async downloadResume(sftp: SFTPWrapper, remotePath: string, localPath: string,
-                               onBytes: (n: number) => void, cancelled: () => boolean): Promise<number> {
-    const total = (await this.statRemote(sftp, remotePath)).size;
-    let offset = 0;
-    try { offset = (await fsp.stat(localPath)).size; } catch { offset = 0; }
+    try { offset = (await this.statRemote(sftp, part)).size; } catch { offset = 0; }
     if (offset > total) offset = 0;
-    if (offset === total) { onBytes(total); return total; }
-    await fsp.mkdir(path.dirname(localPath), { recursive: true });
-    await new Promise<void>((resolve, reject) => {
-      const rs = sftp.createReadStream(remotePath, { start: offset });
-      const ws = fs.createWriteStream(localPath, { flags: offset > 0 ? "a" : "w" });
-      let got = offset;
-      rs.on("data", (c: Buffer) => {
-        got += c.length;
-        onBytes(got);
-        if (cancelled()) { rs.destroy(); ws.destroy(); }
+    if (offset < total) {
+      await new Promise<void>((resolve, reject) => {
+        const rs = fs.createReadStream(localPath, { start: offset });
+        const ws = sftp.createWriteStream(part, { flags: offset > 0 ? "a" : "w" });
+        let sent = offset;
+        rs.on("data", (c: Buffer) => {
+          sent += c.length;
+          onBytes(sent);
+          if (cancelled()) { rs.destroy(); ws.destroy(); }
+        });
+        rs.on("error", reject);
+        ws.on("error", reject);
+        ws.on("close", () => resolve());
+        rs.pipe(ws);
       });
-      rs.on("error", reject);
-      ws.on("error", reject);
-      ws.on("close", () => resolve());
-      rs.pipe(ws);
-    });
+    }
+    if (cancelled()) return offset;
+    /* 完成:覆盖目标(远端 rename 在部分服务端不覆盖已存在文件,先删) */
+    try {
+      await new Promise<void>((resolve, reject) => sftp.unlink(target, (e: ErrBox) => (e ? reject(e) : resolve())));
+    } catch { /* 目标本来不存在:不用删 */ }
+    await new Promise<void>((resolve, reject) => sftp.rename(part, target, (e: ErrBox) => (e ? reject(e) : resolve())));
+    onBytes(total);
     return total;
   }
 
-  /** 递归传输一个文件或目录树(up/down),返回汇总结果 */
-  async transferTree(sid: number, dir: "up" | "down", localPath: string, remotePathRaw: string): Promise<TreeResult> {
+  /** 下载单个文件:同样先写 `.part`,成功后 rename;支持续传。 */
+  private async downloadOne(sftp: SFTPWrapper, remotePath: string, target: string,
+                            onBytes: (n: number) => void, cancelled: () => boolean): Promise<number> {
+    const total = (await this.statRemote(sftp, remotePath)).size;
+    const part = `${target}.part`;
+    let offset = 0;
+    try { offset = (await fsp.stat(part)).size; } catch { offset = 0; }
+    if (offset > total) offset = 0;
+    if (offset < total) {
+      await fsp.mkdir(path.dirname(part), { recursive: true });
+      await new Promise<void>((resolve, reject) => {
+        const rs = sftp.createReadStream(remotePath, { start: offset });
+        const ws = fs.createWriteStream(part, { flags: offset > 0 ? "a" : "w" });
+        let got = offset;
+        rs.on("data", (c: Buffer) => {
+          got += c.length;
+          onBytes(got);
+          if (cancelled()) { rs.destroy(); ws.destroy(); }
+        });
+        rs.on("error", reject);
+        ws.on("error", reject);
+        ws.on("close", () => resolve());
+        rs.pipe(ws);
+      });
+    }
+    if (cancelled()) return offset;
+    await fsp.rm(target, { force: true });
+    await fsp.rename(part, target);
+    onBytes(total);
+    return total;
+  }
+
+  /** 递归传输一个文件或目录树(up/down);返回汇总结果。policy 决定目标已存在时怎么办。 */
+  async transferTree(sid: number, dir: "up" | "down", localPath: string, remotePathRaw: string,
+                     opts: { policy?: ConflictPolicy; retries?: number } = {}): Promise<TreeResult> {
     const sftp = await this.sftp(sid);
-    /* 远端路径统一成绝对形式:listRemote 返回的都是绝对路径,若调用方给了相对路径就补上 "/",
-       否则"建目录"与"写文件"会用两种形式表示同一位置(踩过:./reldst vs reldst)。 */
+    /* 远端路径统一成绝对形式(踩过:./dst 与 dst 会写成两处) */
     const remotePath = remotePathRaw.startsWith("/") ? remotePathRaw : `/${remotePathRaw}`;
+    const policy = opts.policy ?? "overwrite";
+    /* 每个文件最多尝试 retries 次:网络抖动/通道瞬断时自动重试,靠 .part 从断点继续。
+       注意只在"传输失败"上重试,业务错误(rename 失败等)也会重试 —— 都是可恢复的瞬时错误。 */
+    const retries = Math.max(1, opts.retries ?? 3);
     const jobId = this.nextJobId++;
     const job = { cancelled: false };
     this.jobs.set(jobId, job);
     const cancelled = (): boolean => job.cancelled;
 
-    /* 源是文件还是目录 */
     let entries: Array<{ rel: string; size: number; isDir: boolean }>;
+    let skippedEntries = 0;
     let rootIsDir = false;
     if (dir === "up") {
       const st = await fsp.stat(localPath);
       rootIsDir = st.isDirectory();
-      entries = rootIsDir ? await walkLocalTree(localPath) : [{ rel: path.basename(localPath), size: st.size, isDir: false }];
+      if (rootIsDir) { const w = await walkLocalTree(localPath); entries = w.entries; skippedEntries = w.skipped; }
+      else entries = [{ rel: path.basename(localPath), size: st.size, isDir: false }];
     } else {
       const st = await this.statRemote(sftp, remotePath);
       rootIsDir = st.isDir;
-      entries = rootIsDir ? await this.walkRemoteTree(sftp, remotePath) : [{ rel: path.posix.basename(remotePath), size: st.size, isDir: false }];
+      if (rootIsDir) { const w = await this.walkRemoteTree(sftp, remotePath); entries = w.entries; skippedEntries = w.skipped; }
+      else entries = [{ rel: path.posix.basename(remotePath), size: st.size, isDir: false }];
     }
 
     const files = entries.filter((e) => !e.isDir);
@@ -348,22 +416,42 @@ export class SftpController {
       }
     }
 
+    const remoteExists = async (p: string): Promise<boolean> => {
+      try { await this.statRemote(sftp, p); return true; } catch { return false; }
+    };
+    const localExists = async (p: string): Promise<boolean> => {
+      try { await fsp.stat(p); return true; } catch { return false; }
+    };
+
     let done = 0;
+    let skippedFiles = 0;
     let overallBytes = 0;
     try {
       let index = 0;
       for (const f of files) {
         if (cancelled()) break;
         index += 1;
+        const srcPath = dir === "up" ? (rootIsDir ? path.join(localPath, f.rel) : localPath)
+          : (rootIsDir ? `${remotePath}/${f.rel}` : remotePath);
+        const wanted = dir === "up" ? (rootIsDir ? `${remotePath}/${f.rel}` : remotePath)
+          : (rootIsDir ? path.join(localPath, f.rel) : localPath);
+        const target = await this.resolveTarget(wanted, policy, dir === "up" ? remoteExists : localExists);
+        if (target === null) { skippedFiles += 1; emit(index, f.rel, 0, f.size, overallBytes, "skipped"); continue; }
         const base = overallBytes;
         const onBytes = (n: number): void => emit(index, f.rel, n, f.size, base + n, "active");
         emit(index, f.rel, 0, f.size, base, "active");
         try {
-          const moved = dir === "up"
-            ? await this.uploadResume(sftp, localPath.endsWith("/") || rootIsDir ? path.join(localPath, f.rel) : localPath,
-                                      rootIsDir ? `${remotePath}/${f.rel}` : remotePath, onBytes, cancelled)
-            : await this.downloadResume(sftp, rootIsDir ? `${remotePath}/${f.rel}` : remotePath,
-                                        rootIsDir ? path.join(localPath, f.rel) : localPath, onBytes, cancelled);
+          let moved = 0;
+          for (let attempt = 1; ; attempt += 1) {
+            try {
+              moved = dir === "up"
+                ? await this.uploadOne(sftp, srcPath, target, onBytes, cancelled)
+                : await this.downloadOne(sftp, srcPath, target, onBytes, cancelled);
+              break;
+            } catch (err) {
+              if (attempt >= retries || cancelled()) throw err;
+            }
+          }
           overallBytes = base + moved;
           done += 1;
           emit(index, f.rel, moved, f.size, overallBytes, cancelled() ? "cancelled" : "done");
@@ -375,6 +463,6 @@ export class SftpController {
     } finally {
       this.jobs.delete(jobId);
     }
-    return { jobId, files: done, bytes: overallBytes, cancelled: job.cancelled };
+    return { jobId, files: done, skippedFiles, skippedEntries, bytes: overallBytes, cancelled: job.cancelled };
   }
 }

@@ -7,12 +7,13 @@ import { Readable } from "node:stream";
 import { walkLocalTree, SftpController } from "../../src/main/sftp";
 import type { TreeProgress } from "../../src/shared/sftp";
 
-/* ---------- 内存版 SFTP:够真到能跑递归/续传/取消 ---------- */
 type ErrBox = Error | null | undefined;
 
+/* 内存版 SFTP:够真到能跑递归 / 续传 / 冲突 / 取消 */
 class FakeSftp extends EventEmitter {
   dirs = new Set<string>(["/"]);
   files = new Map<string, Buffer>();
+  symlinks = new Set<string>();
 
   mkdir(p: string, cb: (e?: ErrBox) => void): void {
     if (this.dirs.has(p)) { cb(new Error("EEXIST")); return; }
@@ -24,7 +25,7 @@ class FakeSftp extends EventEmitter {
     if (this.dirs.has(p)) { cb(null, { size: 0, mode: 0o040755 }); return; }
     const f = this.files.get(p);
     if (!f) { cb(new Error("ENOENT")); return; }
-    cb(null, { size: f.length, mode: 0o100644 });
+    cb(null, { size: f.length, mode: this.symlinks.has(p) ? 0o120777 : 0o100644 });
   }
 
   readdir(p: string, cb: (e: ErrBox, list?: Array<{ filename: string; attrs: { size: number; mode: number } }>) => void): void {
@@ -38,9 +39,20 @@ class FakeSftp extends EventEmitter {
     for (const [f, buf] of this.files) {
       if (!f.startsWith(prefix)) continue;
       const rest = f.slice(prefix.length);
-      if (!rest.includes("/")) names.set(rest, { size: buf.length, mode: 0o100644 });
+      if (!rest.includes("/")) names.set(rest, { size: buf.length, mode: this.symlinks.has(f) ? 0o120777 : 0o100644 });
     }
     cb(null, [...names].map(([filename, attrs]) => ({ filename, attrs })));
+  }
+
+  unlink(p: string, cb: (e?: ErrBox) => void): void {
+    if (!this.files.has(p)) { cb(new Error("ENOENT")); return; }
+    this.files.delete(p); cb();
+  }
+
+  rename(from: string, to: string, cb: (e?: ErrBox) => void): void {
+    const f = this.files.get(from);
+    if (!f) { cb(new Error("ENOENT")); return; }
+    this.files.delete(from); this.files.set(to, f); cb();
   }
 
   createReadStream(p: string, opts: { start?: number } = {}): Readable {
@@ -56,22 +68,17 @@ class FakeSftp extends EventEmitter {
       if (prev) chunks.push(prev);
     }
     const self = new EventEmitter() as unknown as NodeJS.WritableStream & EventEmitter;
-    (self as unknown as { write: (c: Buffer) => boolean }).write = (c: Buffer): boolean => { chunks.push(c); return true; };
-    (self as unknown as { destroy: () => void }).destroy = (): void => { self.emit("close"); };
-    (self as unknown as { end: () => void }).end = (): void => {
-      this.files.set(p, Buffer.concat(chunks));
-      setTimeout(() => self.emit("close"), 0);
-    };
+    const api = self as unknown as { write: (c: Buffer) => boolean; end: () => void; destroy: () => void };
+    api.write = (c: Buffer): boolean => { chunks.push(c); return true; };
+    api.destroy = (): void => { self.emit("close"); };
+    api.end = (): void => { this.files.set(p, Buffer.concat(chunks)); setTimeout(() => self.emit("close"), 0); };
     return self;
   }
 }
 
 function makeCtl(remote = new FakeSftp()): { ctl: SftpController; events: TreeProgress[]; sftp: FakeSftp } {
   const events: TreeProgress[] = [];
-  const ctl = new SftpController(
-    () => undefined,
-    (p) => events.push(p as TreeProgress),
-  );
+  const ctl = new SftpController(() => undefined, (p) => events.push(p as TreeProgress));
   vi.spyOn(ctl, "sftp").mockResolvedValue(remote as never);
   return { ctl, events, sftp: remote };
 }
@@ -86,48 +93,51 @@ function tmp(layout: Record<string, string>): string {
   return root;
 }
 
-describe("walkLocalTree:目录清单", () => {
-  it("递归列出文件与目录,相对路径用 posix 分隔;符号链接等既非文件也非目录的项跳过", async () => {
+const read = (p: string): string => fs.readFileSync(p, "utf8");
+
+describe("walkLocalTree", () => {
+  it("递归列文件/目录;符号链接等特殊项跳过并计数", async () => {
     const calls: string[] = [];
-    const tree = await walkLocalTree("/root", async (dir) => {
+    const out = await walkLocalTree("/root", async (dir) => {
       calls.push(dir);
       if (dir === "/root") {
         return [
           { name: "a.txt", isDirectory: () => false, isFile: () => true },
           { name: "sub", isDirectory: () => true, isFile: () => false },
-          { name: "link", isDirectory: () => false, isFile: () => false },   // ← 跳过分支
+          { name: "link", isDirectory: () => false, isFile: () => false },
         ];
       }
       return [{ name: "b.txt", isDirectory: () => false, isFile: () => true }];
     }, async () => 7);
-    expect(tree).toEqual([
+    expect(out.entries).toEqual([
       { rel: "a.txt", size: 7, isDir: false },
       { rel: "sub", size: 0, isDir: true },
       { rel: "sub/b.txt", size: 7, isDir: false },
     ]);
+    expect(out.skipped).toBe(1);
     expect(calls).toEqual(["/root", "/root/sub"]);
   });
 
-  it("默认参数走真实 fs(空目录 → 空清单)", async () => {
+  it("默认参数走真实 fs(空目录)", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-empty-"));
-    expect(await walkLocalTree(dir)).toEqual([]);
+    expect(await walkLocalTree(dir)).toEqual({ entries: [], skipped: 0 });
   });
 });
 
-describe("transferTree:上传目录", () => {
-  it("建远端目录、上传全部文件,进度含每文件与聚合信息", async () => {
+describe("上传", () => {
+  it("目录:建远端目录、逐文件上传(.part → rename),进度含聚合信息", async () => {
     const { ctl, events, sftp } = makeCtl();
     const root = tmp({ "a.txt": "aaa", "sub/b.txt": "bbbbb" });
     const res = await ctl.transferTree(1, "up", root, "/dst");
-    expect(res).toMatchObject({ files: 2, bytes: 8, cancelled: false });
-    expect(sftp.dirs.has("/dst")).toBe(true);
+    expect(res).toEqual({ jobId: 1, files: 2, skippedFiles: 0, skippedEntries: 0, bytes: 8, cancelled: false });
     expect(sftp.dirs.has("/dst/sub")).toBe(true);
     expect(sftp.files.get("/dst/a.txt")?.toString()).toBe("aaa");
     expect(sftp.files.get("/dst/sub/b.txt")?.toString()).toBe("bbbbb");
+    expect([...sftp.files.keys()].some((k) => k.endsWith(".part"))).toBe(false);
     expect(events.at(-1)).toMatchObject({ state: "done", index: 2, count: 2, overallTotal: 8, overallBytes: 8 });
   });
 
-  it("单文件上传(root 不是目录)", async () => {
+  it("单文件", async () => {
     const { ctl, sftp } = makeCtl();
     const dir = tmp({ "one.txt": "xyz" });
     const res = await ctl.transferTree(1, "up", path.join(dir, "one.txt"), "/one.txt");
@@ -135,36 +145,79 @@ describe("transferTree:上传目录", () => {
     expect(sftp.files.get("/one.txt")?.toString()).toBe("xyz");
   });
 
-  it("断点续传:远端已有前缀时从断点 append,不重传已有字节", async () => {
+  it("断点续传:远端 .part 有前缀时从断点 append", async () => {
     const { ctl, sftp } = makeCtl();
-    sftp.files.set("/f.txt", Buffer.from("hello "));
+    sftp.files.set("/f.txt.part", Buffer.from("hello "));
     const dir = tmp({ "f.txt": "hello world" });
     const res = await ctl.transferTree(1, "up", path.join(dir, "f.txt"), "/f.txt");
     expect(res.bytes).toBe(11);
     expect(sftp.files.get("/f.txt")?.toString()).toBe("hello world");
   });
 
-  it("远端比本地还大时当作脏文件从头覆盖(不能 append 出脏内容)", async () => {
+  it(".part 比源还大 → 当作脏文件从头来", async () => {
     const { ctl, sftp } = makeCtl();
-    sftp.files.set("/f.txt", Buffer.from("0123456789ABCDEF"));
+    sftp.files.set("/f.txt.part", Buffer.from("0123456789ABCDEF"));
     const dir = tmp({ "f.txt": "abc" });
     await ctl.transferTree(1, "up", path.join(dir, "f.txt"), "/f.txt");
     expect(sftp.files.get("/f.txt")?.toString()).toBe("abc");
   });
 
-  it("远端大小与本地一致 → 直接算完成,不再写", async () => {
+  it(".part 已完整 → 不再传输,直接 rename", async () => {
     const { ctl, sftp } = makeCtl();
-    sftp.files.set("/f.txt", Buffer.from("same"));
+    sftp.files.set("/f.txt.part", Buffer.from("done"));
     const write = vi.spyOn(sftp, "createWriteStream");
-    const dir = tmp({ "f.txt": "same" });
+    const dir = tmp({ "f.txt": "done" });
     const res = await ctl.transferTree(1, "up", path.join(dir, "f.txt"), "/f.txt");
     expect(res.bytes).toBe(4);
     expect(write).not.toHaveBeenCalled();
+    expect(sftp.files.get("/f.txt")?.toString()).toBe("done");
+  });
+
+  it("目标已存在 + overwrite → 覆盖", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.files.set("/f.txt", Buffer.from("OLD"));
+    const dir = tmp({ "f.txt": "new" });
+    await ctl.transferTree(1, "up", path.join(dir, "f.txt"), "/f.txt", { policy: "overwrite" });
+    expect(sftp.files.get("/f.txt")?.toString()).toBe("new");
+  });
+
+  it("目标已存在 + skip → 跳过并计数", async () => {
+    const { ctl, events, sftp } = makeCtl();
+    sftp.files.set("/f.txt", Buffer.from("OLD"));
+    const dir = tmp({ "f.txt": "new" });
+    const res = await ctl.transferTree(1, "up", path.join(dir, "f.txt"), "/f.txt", { policy: "skip" });
+    expect(res).toMatchObject({ files: 0, skippedFiles: 1, bytes: 0 });
+    expect(sftp.files.get("/f.txt")?.toString()).toBe("OLD");
+    expect(events.some((e) => e.state === "skipped")).toBe(true);
+  });
+
+  it("目标已存在 + rename → 加序号(保留扩展名;无扩展名也支持)", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.files.set("/f.txt", Buffer.from("1"));
+    sftp.files.set("/f (1).txt", Buffer.from("2"));
+    sftp.files.set("/Makefile", Buffer.from("m"));
+    sftp.files.set("/Makefile (1)", Buffer.from("m1"));
+    const dir = tmp({ "f.txt": "new", "Makefile": "mm" });
+    await ctl.transferTree(1, "up", path.join(dir, "f.txt"), "/f.txt", { policy: "rename" });
+    await ctl.transferTree(1, "up", path.join(dir, "Makefile"), "/Makefile", { policy: "rename" });
+    expect(sftp.files.get("/f (2).txt")?.toString()).toBe("new");
+    expect(sftp.files.get("/Makefile (2)")?.toString()).toBe("mm");
+  });
+
+  it("rename 撞满 99 个 → 抛错(不无限循环)", async () => {
+    const { ctl, sftp } = makeCtl();
+    const exists = new Set<string>(["/x.txt"]);
+    for (let i = 1; i < 100; i += 1) exists.add(`/x (${i}).txt`);
+    vi.spyOn(sftp, "stat").mockImplementation((p: string, cb: (e: ErrBox, a?: { size: number; mode: number }) => void) =>
+      (exists.has(p) ? cb(null, { size: 1, mode: 0o100644 }) : cb(new Error("ENOENT"))));
+    const dir = tmp({ "x.txt": "z" });
+    await expect(ctl.transferTree(1, "up", path.join(dir, "x.txt"), "/x.txt", { policy: "rename" }))
+      .rejects.toThrow("too many conflicting files");
   });
 });
 
-describe("transferTree:下载目录", () => {
-  it("建本地目录、下载全部文件", async () => {
+describe("下载", () => {
+  it("目录:建本地目录、逐文件下载", async () => {
     const { ctl, sftp } = makeCtl();
     sftp.dirs.add("/src");
     sftp.dirs.add("/src/sub");
@@ -173,116 +226,75 @@ describe("transferTree:下载目录", () => {
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-dl-"));
     const res = await ctl.transferTree(1, "down", path.join(dest, "out"), "/src");
     expect(res).toMatchObject({ files: 2, bytes: 5 });
-    expect(fs.readFileSync(path.join(dest, "out/a.txt"), "utf8")).toBe("aaa");
-    expect(fs.readFileSync(path.join(dest, "out/sub/b.txt"), "utf8")).toBe("bb");
+    expect(read(path.join(dest, "out/a.txt"))).toBe("aaa");
+    expect(read(path.join(dest, "out/sub/b.txt"))).toBe("bb");
   });
 
-  it("断点续传:本地已有前缀时从断点 append", async () => {
+  it("断点续传:本地 .part 有前缀时从断点 append", async () => {
     const { ctl, sftp } = makeCtl();
     sftp.files.set("/r.txt", Buffer.from("0123456789"));
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-resume-"));
-    const local = path.join(dest, "r.txt");
-    fs.writeFileSync(local, "0123");
-    const res = await ctl.transferTree(1, "down", local, "/r.txt");
+    fs.writeFileSync(path.join(dest, "r.txt.part"), "0123");
+    const res = await ctl.transferTree(1, "down", path.join(dest, "r.txt"), "/r.txt");
     expect(res.bytes).toBe(10);
-    expect(fs.readFileSync(local, "utf8")).toBe("0123456789");
+    expect(read(path.join(dest, "r.txt"))).toBe("0123456789");
   });
 
-  it("本地已完整 → 跳过", async () => {
+  it(".part 已完整 → 直接 rename", async () => {
     const { ctl, sftp } = makeCtl();
     sftp.files.set("/r.txt", Buffer.from("abc"));
-    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-skip-"));
-    const full = path.join(dest, "full.txt");
-    fs.writeFileSync(full, "abc");
-    expect(await ctl.transferTree(1, "down", full, "/r.txt")).toMatchObject({ bytes: 3 });
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-full-"));
+    fs.writeFileSync(path.join(dest, "r.txt.part"), "abc");
+    await ctl.transferTree(1, "down", path.join(dest, "r.txt"), "/r.txt");
+    expect(read(path.join(dest, "r.txt"))).toBe("abc");
   });
 
-  it("本地比远端大 → 当作脏文件从头覆盖", async () => {
+  it("远端目录里的符号链接 → 跳过并计数", async () => {
     const { ctl, sftp } = makeCtl();
-    sftp.files.set("/r2.txt", Buffer.from("zz"));
-    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-big-"));
-    const big = path.join(dest, "big.txt");
-    fs.writeFileSync(big, "0123456789");
-    await ctl.transferTree(1, "down", big, "/r2.txt");
-    expect(fs.readFileSync(big, "utf8")).toBe("zz");
+    sftp.dirs.add("/s2");
+    sftp.files.set("/s2/real.txt", Buffer.from("r"));
+    sftp.files.set("/s2/link", Buffer.from("l"));
+    sftp.symlinks.add("/s2/link");
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-sym-"));
+    const res = await ctl.transferTree(1, "down", path.join(dest, "o"), "/s2");
+    expect(res).toMatchObject({ files: 1, skippedEntries: 1 });
+    expect(fs.existsSync(path.join(dest, "o/link"))).toBe(false);
   });
 });
 
-describe("transferTree:取消与错误", () => {
-  it("传输中取消:停止后续文件并返回 cancelled=true", async () => {
-    const sftp = new FakeSftp();
-    sftp.dirs.add("/s");
-    sftp.files.set("/s/1.txt", Buffer.from("1"));
-    sftp.files.set("/s/2.txt", Buffer.from("2"));
-    const events: TreeProgress[] = [];
-    let ctl!: SftpController;
-    ctl = new SftpController(() => undefined, (p) => {
-      events.push(p as TreeProgress);
-      /* 第一个文件开始传时就取消:后续文件不该再开始 */
-      if (p.state === "active" && p.index === 1) ctl.cancelJob((p as TreeProgress).jobId);
-    });
-    vi.spyOn(ctl, "sftp").mockResolvedValue(sftp as never);
-    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-cancel-"));
-    const res = await ctl.transferTree(1, "down", path.join(dest, "o"), "/s");
-    expect(res.cancelled).toBe(true);
-    expect(fs.existsSync(path.join(dest, "o/2.txt"))).toBe(false);
-  });
-
-  it("cancelJob 对已结束任务返回 false;对进行中任务置位并让结果 cancelled", async () => {
-    const { ctl, sftp } = makeCtl();
-    sftp.files.set("/x.txt", Buffer.from("x"));
-    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-c2-"));
-    const res = await ctl.transferTree(1, "down", path.join(dest, "x.txt"), "/x.txt");
-    expect(res.cancelled).toBe(false);
-    expect(ctl.cancelJob(res.jobId)).toBe(false);   // 已结束 → false
-    expect(ctl.cancelJob(123456)).toBe(false);      // 未知 → false
-  });
-
-  it("单个文件失败 → 上报 state=error 并整体抛出", async () => {
-    const { ctl, sftp, events } = makeCtl();
-    sftp.files.set("/bad.txt", Buffer.from("x"));
-    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-err-"));
-    const spy = vi.spyOn(sftp, "createReadStream").mockImplementation(() => { throw new Error("boom"); });
-    await expect(ctl.transferTree(1, "down", path.join(dest, "bad.txt"), "/bad.txt")).rejects.toThrow("boom");
-    expect(events.some((e) => e.state === "error" && e.error === "boom")).toBe(true);
-    spy.mockRestore();
-  });
-
-  it("ensureRemoteDir:已存在的层级跳过,缺的才 mkdir", async () => {
-    const { ctl, sftp } = makeCtl();
-    sftp.dirs.add("/have");
-    sftp.files.set("/have/f.txt", Buffer.from("f"));
-    const dir = tmp({ "f.txt": "f" });
-    await ctl.transferTree(1, "up", dir, "/have");
-    expect(sftp.files.get("/have/f.txt")?.toString()).toBe("f");
-  });
-});
-
-describe("边界与失败路径", () => {
-  it("远端 readdir 失败 → 下载目录整体拒绝(不静默当空目录)", async () => {
+describe("边界与失败", () => {
+  it("远端 readdir 失败 → 整体拒绝", async () => {
     const { ctl, sftp } = makeCtl();
     sftp.dirs.add("/bad");
-    vi.spyOn(sftp, "readdir").mockImplementation((_p, cb) => cb(new Error("permission denied")));
+    vi.spyOn(sftp, "readdir").mockImplementation((_p: string, cb: (e: ErrBox, l?: never) => void) => cb(new Error("permission denied")));
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-rd-"));
     await expect(ctl.transferTree(1, "down", path.join(dest, "o"), "/bad")).rejects.toThrow("permission denied");
   });
 
-  it("目标给相对路径时归一为绝对路径(建目录与写文件位置一致)", async () => {
+  it("远端相对路径归一为绝对(建目录与写文件位置一致)", async () => {
     const { ctl, sftp } = makeCtl();
     const dir = tmp({ "a.txt": "a" });
-    const res = await ctl.transferTree(1, "up", dir, "reldst");
-    expect(res.files).toBe(1);
-    expect(sftp.files.get("/reldst/a.txt")?.toString()).toBe("a");   // 相对路径归一为绝对
+    await ctl.transferTree(1, "up", dir, "reldst");
+    expect(sftp.files.get("/reldst/a.txt")?.toString()).toBe("a");
   });
 
-  it("远端 mkdir 失败 → 抛出(不吞错)", async () => {
+  it("远端 mkdir 失败 → 抛出", async () => {
     const { ctl, sftp } = makeCtl();
-    vi.spyOn(sftp, "mkdir").mockImplementation((_p, cb) => cb(new Error("read-only fs")));
+    vi.spyOn(sftp, "mkdir").mockImplementation((_p: string, cb: (e?: ErrBox) => void) => cb(new Error("read-only fs")));
     const dir = tmp({ "a.txt": "a" });
     await expect(ctl.transferTree(1, "up", dir, "/ro")).rejects.toThrow("read-only fs");
   });
 
-  it("上传过程中取消 → 当前文件中断,结果 cancelled=true", async () => {
+  it("单文件失败 → state=error 并抛出", async () => {
+    const { ctl, sftp, events } = makeCtl();
+    sftp.files.set("/bad.txt", Buffer.from("x"));
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-err-"));
+    vi.spyOn(sftp, "createReadStream").mockImplementation(() => { throw new Error("boom"); });
+    await expect(ctl.transferTree(1, "down", path.join(dest, "bad.txt"), "/bad.txt")).rejects.toThrow("boom");
+    expect(events.some((e) => e.state === "error" && e.error === "boom")).toBe(true);
+  });
+
+  it("上传中取消:中断当前文件并保留 .part,结果 cancelled=true", async () => {
     const sftp = new FakeSftp();
     sftp.dirs.add("/u");
     const dir = tmp({ "big.bin": "x".repeat(256 * 1024) });
@@ -293,5 +305,98 @@ describe("边界与失败路径", () => {
     vi.spyOn(ctl, "sftp").mockResolvedValue(sftp as never);
     const res = await ctl.transferTree(1, "up", path.join(dir, "big.bin"), "/u/big.bin");
     expect(res.cancelled).toBe(true);
+    expect(sftp.files.has("/u/big.bin")).toBe(false);
+  });
+
+  it("传输中取消:后续文件不再开始", async () => {
+    const sftp = new FakeSftp();
+    sftp.dirs.add("/s");
+    sftp.files.set("/s/1.txt", Buffer.from("1"));
+    sftp.files.set("/s/2.txt", Buffer.from("2"));
+    let ctl!: SftpController;
+    ctl = new SftpController(() => undefined, (p) => {
+      if (p.state === "active" && (p as TreeProgress).index === 1) ctl.cancelJob((p as TreeProgress).jobId);
+    });
+    vi.spyOn(ctl, "sftp").mockResolvedValue(sftp as never);
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-cancel-"));
+    const res = await ctl.transferTree(1, "down", path.join(dest, "o"), "/s");
+    expect(res.cancelled).toBe(true);
+    expect(fs.existsSync(path.join(dest, "o/2.txt"))).toBe(false);
+  });
+
+  it("cancelJob:已结束与未知任务都返回 false", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.files.set("/x.txt", Buffer.from("x"));
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-c2-"));
+    const res = await ctl.transferTree(1, "down", path.join(dest, "x.txt"), "/x.txt");
+    expect(ctl.cancelJob(res.jobId)).toBe(false);
+    expect(ctl.cancelJob(123456)).toBe(false);
+  });
+});
+
+describe("下载:脏 .part 与目标覆盖", () => {
+  it("本地 .part 比远端文件还大 → 视为脏文件从头下", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.files.set("/r.txt", Buffer.from("abc"));
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-dirty-"));
+    fs.writeFileSync(path.join(dest, "r.txt.part"), "0123456789");
+    await ctl.transferTree(1, "down", path.join(dest, "r.txt"), "/r.txt");
+    expect(read(path.join(dest, "r.txt"))).toBe("abc");
+  });
+
+  it("目标已存在 + overwrite → 覆盖(走的正是 localExists=true 分支)", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.files.set("/r.txt", Buffer.from("new"));
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-ow-"));
+    const target = path.join(dest, "r.txt");
+    fs.writeFileSync(target, "OLD");
+    await ctl.transferTree(1, "down", target, "/r.txt", { policy: "overwrite" });
+    expect(read(target)).toBe("new");
+  });
+});
+
+describe("收尾失败路径", () => {
+  it("上传完成后 rename 失败 → 抛出(不假装成功)", async () => {
+    const { ctl, sftp } = makeCtl();
+    vi.spyOn(sftp, "rename").mockImplementation((_a: string, _b: string, cb: (e?: ErrBox) => void) => cb(new Error("rename denied")));
+    const dir = tmp({ "f.txt": "x" });
+    await expect(ctl.transferTree(1, "up", path.join(dir, "f.txt"), "/f.txt")).rejects.toThrow("rename denied");
+  });
+
+  it("下载完成后本地 rename 失败 → 抛出", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.files.set("/r.txt", Buffer.from("x"));
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-rn-"));
+    const target = path.join(dest, "r.txt");
+    fs.mkdirSync(`${target}.part`, { recursive: true });   /* 让 rename 目标被目录占据 */
+    await expect(ctl.transferTree(1, "down", target, "/r.txt")).rejects.toThrow();
+  });
+});
+
+describe("失败重试", () => {
+  it("第一次传输失败、第二次成功 → 最终完成(.part 让重试从断点继续)", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.dirs.add("/rt");
+    sftp.files.set("/rt/a.txt", Buffer.from("hello"));
+    const real = sftp.createReadStream.bind(sftp);
+    let failed = false;
+    vi.spyOn(sftp, "createReadStream").mockImplementation((p: string, o?: { start?: number }) => {
+      if (!failed) { failed = true; throw new Error("channel reset"); }
+      return real(p, o);
+    });
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-retry-"));
+    const res = await ctl.transferTree(1, "down", path.join(dest, "o"), "/rt");
+    expect(res).toMatchObject({ files: 1, cancelled: false });
+    expect(read(path.join(dest, "o/a.txt"))).toBe("hello");
+  });
+
+  it("一直失败 → 抛最后一次错误(不会无限重试)", async () => {
+    const { ctl, sftp } = makeCtl();
+    sftp.dirs.add("/rt");
+    sftp.files.set("/rt/a.txt", Buffer.from("x"));
+    const spy = vi.spyOn(sftp, "createReadStream").mockImplementation(() => { throw new Error("always"); });
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-retry2-"));
+    await expect(ctl.transferTree(1, "down", path.join(dest, "o"), "/rt", { retries: 2 })).rejects.toThrow("always");
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });

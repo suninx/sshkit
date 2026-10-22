@@ -31,7 +31,11 @@ let rmRemote: ReturnType<typeof vi.fn>;
 let renRemote: ReturnType<typeof vi.fn>;
 let uploadRemote: ReturnType<typeof vi.fn>;
 let downloadRemote: ReturnType<typeof vi.fn>;
+let startDrag: ReturnType<typeof vi.fn>;
+let pathForFile: ReturnType<typeof vi.fn>;
+let transferPolicies: string[];
 let progressCbs: Array<(p: unknown) => void>;
+let cancelJob: ReturnType<typeof vi.fn>;
 
 /**
  * 忠实替身:严格按 preload 里真实暴露的 API 实现(签名/返回值一致)。
@@ -40,6 +44,7 @@ let progressCbs: Array<(p: unknown) => void>;
  */
 function fakeBridge(): unknown {
   return {
+    native: { pathForFile: (f: File) => pathForFile(f) },
     local: {
       list: (dir: string) => listLocal(dir),
       mkdir: (dir: string) => mkLocal(dir),
@@ -51,8 +56,14 @@ function fakeBridge(): unknown {
       mkdir: (sid: number, dir: string) => mkRemote(sid, dir),
       remove: (sid: number, t: string) => rmRemote(sid, t),
       rename: (sid: number, a: string, b: string) => renRemote(sid, a, b),
-      upload: (sid: number, a: string, b: string) => uploadRemote(sid, a, b),
-      download: (sid: number, a: string, b: string) => downloadRemote(sid, a, b),
+      /* 视图现在统一走引擎接口 transfer(dir, ...),内部按方向落到原来的两个 spy 上,
+         这样既有断言(检查真实参数)继续有效,同时能记录 policy */
+      transfer: (sid: number, dir: "up" | "down", a: string, b: string, policy?: string) => {
+        transferPolicies.push(policy ?? "");
+        return dir === "up" ? uploadRemote(sid, a, b) : downloadRemote(sid, a, b);
+      },
+      cancel: (jobId: number) => cancelJob(jobId),
+      startDrag: (filePath: string) => startDrag(filePath),
       /** 真实签名返回"取消订阅"函数 */
       onProgress: (cb: (p: unknown) => void) => { progressCbs.push(cb); return () => { progressCbs = progressCbs.filter((x) => x !== cb); }; },
     },
@@ -149,8 +160,14 @@ beforeEach(() => {
   mkRemote = vi.fn(async () => undefined);
   rmRemote = vi.fn(async () => undefined);
   renRemote = vi.fn(async () => undefined);
-  uploadRemote = vi.fn(async () => 1);
-  downloadRemote = vi.fn(async () => 2);
+  /* 返回真实的 TreeResult 形状(视图会读 skippedFiles/skippedEntries) */
+  const treeOk = { jobId: 1, files: 1, skippedFiles: 0, skippedEntries: 0, bytes: 0, cancelled: false };
+  uploadRemote = vi.fn(async () => ({ ...treeOk }));
+  downloadRemote = vi.fn(async () => ({ ...treeOk }));
+  transferPolicies = [];
+  cancelJob = vi.fn(async () => true);
+  startDrag = vi.fn();
+  pathForFile = vi.fn(() => "/tmp/dropped.bin");
   progressCbs = [];
   document.body.innerHTML = "";
 });
@@ -530,7 +547,18 @@ describe("SFTP 视图 · 选择与操作", () => {
     await vi.waitFor(() => expect(downloadRemote).toHaveBeenCalledWith(7, "/root/x.bin", "/home/u/x.bin"));
   });
 
-  it("选中目录/无选中时传输给提示,不发桥调用", async () => {
+  it("没选中任何项时传输只给提示,不发桥调用", async () => {
+    const view = await mountView({ sid: 7, label: "node-1" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    actionsMenu("local");
+    click(menuItem("Upload →"));
+    await flushView();
+    expect(uploadRemote).not.toHaveBeenCalled();
+    expect(lastBanner()).toBe("Select a file or folder first");
+  });
+
+  it("选中目录也能传:递归交给主进程引擎", async () => {
     const view = await mountView({ sid: 7, label: "node-1" });
     view.onShow();
     await vi.waitFor(() => expect(rowNames("local")).toContain("docs"));
@@ -538,9 +566,7 @@ describe("SFTP 视图 · 选择与操作", () => {
     await flushView();
     actionsMenu("local");
     click(menuItem("Upload →"));
-    await flushView();
-    expect(uploadRemote).not.toHaveBeenCalled();
-    expect(lastBanner()).toBe("Select a file first (folder transfer is not supported yet)");
+    await vi.waitFor(() => expect(uploadRemote).toHaveBeenCalledWith(7, "/home/u/docs", "/root/docs"));
   });
 
   it("传输失败:横幅显示主进程原因(去掉 invoke 前缀)", async () => {
@@ -1345,5 +1371,227 @@ describe("SFTP 视图 · 边界路径", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/* ================= 引擎接线:策略 / Finder 拖入 / ⌥ 拖出 / 队列取消 ================= */
+
+describe("SFTP 视图 · 引擎接线", () => {
+  const dropWithFiles = (el: Element, files: File[]): void => {
+    const ev = new Event("drop", { bubbles: true, cancelable: true }) as Event & { dataTransfer: unknown };
+    ev.dataTransfer = { files };
+    el.dispatchEvent(ev);
+  };
+
+  it("冲突策略:菜单里可循环切换并持久化,传输时带上当前策略", async () => {
+    const view = await mountView({ sid: 3, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    actionsMenu("local");
+    expect(menuItem("On conflict: overwrite")).toBeTruthy();
+    click(menuItem("On conflict: overwrite"));
+    await flushView();
+    expect(lastBanner()).toBe("On conflict: skip");
+    expect(localStorage.getItem("sshkit.sftpConflict")).toBe("skip");
+
+    clickRow("local", "a.txt");
+    await flushView();
+    actionsMenu("local");
+    click(menuItem("Upload →"));
+    await vi.waitFor(() => expect(uploadRemote).toHaveBeenCalledWith(3, "/home/u/a.txt", "/root/a.txt"));
+    expect(transferPolicies).toEqual(["skip"]);
+  });
+
+  it("Finder 拖入远端栏:逐个文件上传到当前远端目录", async () => {
+    const view = await mountView({ sid: 4, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rows("remote")).toBeGreaterThan(0));
+    pathForFile.mockReturnValueOnce("/tmp/one.bin").mockReturnValueOnce("/tmp/two.bin");
+    dropWithFiles(pane("remote").querySelector(".sp-body")!, [
+      new File(["a"], "one.bin"), new File(["b"], "two.bin"),
+    ]);
+    await vi.waitFor(() => expect(uploadRemote).toHaveBeenCalledTimes(2));
+    expect(uploadRemote).toHaveBeenNthCalledWith(1, 4, "/tmp/one.bin", "/root/one.bin");
+    expect(uploadRemote).toHaveBeenNthCalledWith(2, 4, "/tmp/two.bin", "/root/two.bin");
+  });
+
+  it("Finder 拖到本地栏:只提示已在本地,不上传", async () => {
+    const view = await mountView({ sid: 5, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    dropWithFiles(pane("local").querySelector(".sp-body")!, [new File(["a"], "x.bin")]);
+    await flushView();
+    expect(uploadRemote).not.toHaveBeenCalled();
+    expect(lastBanner()).toContain("already local");
+  });
+
+  it("⌥ + 拖本地文件 → 原生拖到 Finder;普通拖不触发", async () => {
+    const view = await mountView({ sid: 6, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    const row = rowByName("local", "a.txt");
+    row.dispatchEvent(new MouseEvent("dragstart", { bubbles: true }));
+    expect(startDrag).not.toHaveBeenCalled();
+    row.dispatchEvent(new MouseEvent("dragstart", { bubbles: true, altKey: true }));
+    expect(startDrag).toHaveBeenCalledWith("/home/u/a.txt");
+  });
+
+  it("传输队列:每条任务可取消,进度显示 i/n", async () => {
+    const view = await mountView({ sid: 8, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rows("remote")).toBeGreaterThan(0));
+    progressCbs.forEach((cb) => cb({
+      sid: 8, jobId: 42, dir: "up", file: "a.txt", bytes: 5, total: 10,
+      state: "active", relPath: "a.txt", index: 1, count: 3, overallBytes: 5, overallTotal: 30,
+    }));
+    const row = document.querySelector(".sftp-queue .job")! as HTMLElement;
+    expect(row.querySelector(".jname")!.textContent).toContain("(1/3)");
+    click(row.querySelector(".jx")!);
+    await vi.waitFor(() => expect(cancelJob).toHaveBeenCalledWith(42));
+    expect(document.querySelector(".sftp-queue .job")).toBeNull();
+  });
+
+  it("跳过的文件/特殊项:传输后给出横幅", async () => {
+    const view = await mountView({ sid: 9, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    const treeOk = { jobId: 1, files: 1, skippedFiles: 2, skippedEntries: 1, bytes: 0, cancelled: false };
+    uploadRemote.mockResolvedValueOnce({ ...treeOk });
+    clickRow("local", "a.txt");
+    await flushView();
+    actionsMenu("local");
+    click(menuItem("Upload →"));
+    /* 两条提示都会出现:banner 是 prepend,所以"特殊项"(后发)在最前,"已存在文件"在后 */
+    await vi.waitFor(() => expect(bannerTexts()[0]).toBe("Skipped 1 special entries (symlinks etc.)"));
+    expect(lastBanner()).toBe("Skipped 2 existing file(s)");
+  });
+});
+
+describe("SFTP 视图 · 拖入与队列边界", () => {
+  const dropWith = (el: Element, files: File[]): void => {
+    const ev = new Event("drop", { bubbles: true, cancelable: true }) as Event & { dataTransfer: unknown };
+    ev.dataTransfer = { files };
+    el.dispatchEvent(ev);
+  };
+
+  it("取不到真实路径的文件被跳过;Windows 路径也能取出文件名;上传失败给横幅", async () => {
+    const view = await mountView({ sid: 11, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rows("remote")).toBeGreaterThan(0));
+    pathForFile
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("C:\\Users\\me\\win.bin")
+      .mockReturnValueOnce("/tmp/boom.bin");
+    uploadRemote.mockRejectedValueOnce(new Error("disk full"));
+    dropWith(pane("remote").querySelector(".sp-body")!, [
+      new File(["0"], "empty-path.bin"), new File(["1"], "win.bin"), new File(["2"], "boom.bin"),
+    ]);
+    await vi.waitFor(() => expect(lastBanner()).toContain("disk full"));
+    expect(uploadRemote).toHaveBeenCalledWith(11, "C:\\Users\\me\\win.bin", "/root/win.bin");
+    expect(uploadRemote).toHaveBeenCalledTimes(2);
+  });
+
+  it("冲突策略:存了非法值时回落覆盖;存 rename 时显示 rename", async () => {
+    localStorage.setItem("sshkit.sftpConflict", "bogus");
+    const view = await mountView({ sid: 12, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    actionsMenu("local");
+    expect(menuItem("On conflict: overwrite")).toBeTruthy();
+    localStorage.setItem("sshkit.sftpConflict", "rename");
+    click(menuItem("On conflict: overwrite"));
+    await flushView();
+    expect(lastBanner()).toBe("On conflict: overwrite");
+  });
+
+  it("队列:cancelled / skipped 状态收尾;total=0 且无 index 时不显示 i/n", async () => {
+    const view = await mountView({ sid: 13, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rows("remote")).toBeGreaterThan(0));
+    const base = { sid: 13, jobId: 71, dir: "up", file: "x", bytes: 0, total: 0, state: "active" };
+    progressCbs.forEach((cb) => cb(base));
+    expect(document.querySelector(".sftp-queue .jname")!.textContent).toBe("⬆ x");
+    progressCbs.forEach((cb) => cb({ ...base, state: "skipped" }));
+    await vi.waitFor(() => expect(document.querySelector(".sftp-queue .job")!.className).toContain("done"));
+    progressCbs.forEach((cb) => cb({ ...base, jobId: 72, state: "cancelled" }));
+    await flushView();
+    expect(document.body.textContent).toContain("cancelled");
+  });
+});
+
+describe("SFTP 视图 · 剩余分支", () => {
+  const dropWith = (el: Element, files: File[]): void => {
+    const ev = new Event("drop", { bubbles: true, cancelable: true }) as Event & { dataTransfer: unknown };
+    ev.dataTransfer = { files };
+    el.dispatchEvent(ev);
+  };
+
+  it("没有会话时把文件拖进远端栏:提示未绑定,不发请求", async () => {
+    const view = await mountView(null);
+    view.onShow();
+    await vi.waitFor(() => expect(document.querySelector(".sftp-empty")).toBeTruthy());
+    dropWith(pane("remote").querySelector(".sp-body")!, [new File(["a"], "x.bin")]);
+    await flushView();
+    expect(lastBanner()).toBe("Remote pane is not bound to a session");
+    expect(uploadRemote).not.toHaveBeenCalled();
+  });
+
+  it("拖入的上传失败:横幅显示原因", async () => {
+    const view = await mountView({ sid: 21, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rows("remote")).toBeGreaterThan(0));
+    pathForFile.mockReturnValue("/tmp/deny.bin");
+    uploadRemote.mockRejectedValue(new Error("permission denied"));
+    dropWith(pane("remote").querySelector(".sp-body")!, [new File(["a"], "deny.bin")]);
+    await vi.waitFor(() => expect(lastBanner()).toContain("permission denied"));
+  });
+
+  it("队列:有 index 但只有 1 个文件时不加 i/n;done 且 total=0 时进度按 100%", async () => {
+    const view = await mountView({ sid: 22, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rows("remote")).toBeGreaterThan(0));
+    const p1 = { sid: 22, jobId: 91, dir: "down", file: "one", bytes: 0, total: 0, state: "active",
+      relPath: "one", index: 1, count: 1, overallBytes: 0, overallTotal: 0 };
+    progressCbs.forEach((cb) => cb(p1));
+    expect(document.querySelector(".sftp-queue .jname")!.textContent).toBe("⬇ one");
+    progressCbs.forEach((cb) => cb({ ...p1, state: "done" }));
+    await vi.waitFor(() => expect((document.querySelector(".sftp-queue .jfill") as HTMLElement).style.width).toBe("100%"));
+  });
+});
+
+describe("SFTP 视图 · 最后几个分支", () => {
+  it("策略标签:localStorage 为 skip 时菜单显示 skip(走表的 skip 项)", async () => {
+    localStorage.setItem("sshkit.sftpConflict", "skip");
+    const view = await mountView({ sid: 31, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    actionsMenu("local");
+    expect(menuItem("On conflict: skip")).toBeTruthy();
+  });
+
+  it("错误对象没有 message 时横幅用原始值", async () => {
+    const view = await mountView({ sid: 32, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rowNames("local")).toContain("a.txt"));
+    uploadRemote.mockRejectedValueOnce("weird-failure");
+    clickRow("local", "a.txt");
+    await flushView();
+    actionsMenu("local");
+    click(menuItem("Upload →"));
+    await vi.waitFor(() => expect(lastBanner()).toBe("weird-failure"));
+  });
+});
+
+describe("SFTP 视图 · 拖入时的非标准错误", () => {
+  it("拖入上传被以字符串拒绝:横幅显示原始值", async () => {
+    const view = await mountView({ sid: 33, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(rows("remote")).toBeGreaterThan(0));
+    pathForFile.mockReturnValue("/tmp/raw.bin");
+    uploadRemote.mockRejectedValueOnce("raw-drop-error");
+    const ev = new Event("drop", { bubbles: true, cancelable: true }) as Event & { dataTransfer: unknown };
+    ev.dataTransfer = { files: [new File(["a"], "raw.bin")] };
+    pane("remote").querySelector(".sp-body")!.dispatchEvent(ev);
+    await vi.waitFor(() => expect(lastBanner()).toBe("raw-drop-error"));
   });
 });
