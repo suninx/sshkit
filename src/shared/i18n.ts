@@ -118,7 +118,6 @@ export const en = {
   "hosts.emptyCta": "Continue",
   /* ---- 侧栏 ---- */
   "rail.hosts": "Hosts",
-  "rail.keychain": "Keychain",
   "rail.forwarding": "Port Forwarding",
   "rail.snippets": "Snippets",
   "rail.knownhosts": "Known Hosts",
@@ -254,8 +253,6 @@ export const en = {
   "sec.import": "Import",
   "empty.snippetTitle": "Create snippet",
   "empty.snippetDesc": "Save your most used commands as snippets to reuse them in one click.",
-  "empty.keyTitle": "Add credentials",
-  "empty.keyDesc": "Store your credentials to quick and securely access your servers.",
   "empty.logsTitle": "No logs yet",
   "empty.logsDesc": "Connection and disconnect events will appear here.",
 
@@ -393,7 +390,6 @@ export const zh: Record<MsgKey, string> = {
   "hosts.emptyAddrPlaceholder": "输入 IP 或主机名",
   "hosts.emptyCta": "继续",
   "rail.hosts": "主机",
-  "rail.keychain": "钥匙串",
   "rail.forwarding": "端口转发",
   "rail.snippets": "代码片段",
   "rail.knownhosts": "已知主机",
@@ -521,8 +517,6 @@ export const zh: Record<MsgKey, string> = {
   "sec.import": "导入",
   "empty.snippetTitle": "创建代码片段",
   "empty.snippetDesc": "把常用命令存成片段,一键复用。",
-  "empty.keyTitle": "添加凭据",
-  "empty.keyDesc": "保存凭据,以便快速、安全地访问服务器。",
   "empty.logsTitle": "暂无日志",
   "empty.logsDesc": "连接与断开事件会显示在这里。",
 

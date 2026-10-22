@@ -35,7 +35,7 @@ type TabState = "idle" | "on" | "off";
 type Tab = {
   id: string;
   /* 分区类 tab:原版把一级导航的分区也做成主区视图(Vaults / Snippets / Keychain / Logs …) */
-  kind: "session" | "newtab" | "sftp" | "fwd" | "kh" | "vault" | "snippets" | "keychain" | "logs";
+  kind: "session" | "newtab" | "sftp" | "fwd" | "kh" | "vault" | "snippets" | "logs";
   label: string;
   state: TabState;
   pane: HTMLDivElement;
@@ -640,7 +640,6 @@ const TICON: Record<Tab["kind"], string> = {
   fwd: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 8h13l-3-3M21 16H8l3 3"/></svg>',
   kh: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3Z"/></svg>',
   snippets: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg>',
-  keychain: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8"/></svg>',
   logs: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   newtab: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>',
 };
@@ -820,37 +819,9 @@ async function renderSnippetsSection(boxId: string): Promise<void> {
   }));
 }
 
-function openKeychainTab(): void {
-  openSection("keychain", "Keychain", (body) => {
-    body.innerHTML = `<div id="kc-list" class="sec-list"></div>`;
-    void (async () => {
-      const box = document.getElementById("kc-list")!;
-      const hosts = await bridge.hosts.list();
-      const withCreds: Array<{ name: string; host: string; username: string }> = [];
-      for (const h of hosts) if (await bridge.creds.has(h.id)) withCreds.push({ name: h.name, host: h.host, username: h.username });
-      if (!withCreds.length) {
-        box.replaceChildren(secEmpty(tr("empty.keyTitle"), tr("empty.keyDesc"), SEC_ICONS.key));
-        box.classList.add("is-empty");
-        return;
-      }
-      box.classList.remove("is-empty");
-      box.replaceChildren(...withCreds.map((h) => {
-        const row = document.createElement("div");
-        row.className = "sec-row";
-        row.innerHTML = `<span class="hico blue"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8"/></svg></span>
-          <span class="nm"></span><span class="cm"></span><span class="pill on">saved</span>`;
-        (row.querySelector(".nm") as HTMLElement).textContent = h.name;
-        (row.querySelector(".cm") as HTMLElement).textContent = `${h.username}@${h.host}`;
-        return row;
-      }));
-    })();
-  }, [
-    /* 密钥生成/导入 UI:2026-10-22 用户决定不做,入口已移除(见 HANDOVER §4.5)。
-       主机表单的 keyPath 字段保留 —— 已有私钥仍可直接填路径使用。 */
-    /* 证书 / Touch ID / FIDO2:2026-10-22 用户决定不做(与串口、密钥 UI 同类),
-       三个假按钮一并移除。钥匙串页现在只剩"哪些主机存了凭据"的只读概览。 */
-  ]);
-}
+/* 钥匙串页已于 2026-10-22 移除(用户:"也没啥用")。凭据本身仍由系统钥匙串(keytar)保存,
+   主机表单里的"Password (saved in Keychain)"照旧生效 —— 删掉的只是那个只读列表页。
+ */
 
 function renderLogsSection(): void {
   /* 调用方只有两个:openLogsTab 的 build(刚插入 #logs-list)与 pushLog(仅当活动 tab 是 logs,
@@ -882,7 +853,7 @@ function openLogsTab(): void {
 
 const NAV_OF_KIND: Record<string, string> = {
   vault: "hosts", fwd: "forwarding", kh: "knownhosts", snippets: "snippets",
-  keychain: "keychain", logs: "logs",
+  logs: "logs",
 };
 
 /** 导航栏高亮跟随当前 tab(原版:Vaults tab 活动时左栏 Hosts 高亮) */
@@ -1913,7 +1884,6 @@ void (async () => {
         case "forwarding": openFwdTab(); break;
         case "knownhosts": openKnownHostsTab(); break;
         case "snippets": openSnippetsTab(); break;
-        case "keychain": openKeychainTab(); break;
         case "logs": openLogsTab(); break;
       }
     });

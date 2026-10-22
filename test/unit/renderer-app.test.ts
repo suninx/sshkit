@@ -1199,11 +1199,6 @@ describe("分区屏", () => {
     await waitFor(() => document.querySelectorAll(".tab-pane.active .sec-row").length > 0);
     expect(document.querySelector(".tab-pane.active .sec-row .nm")!.textContent).toBe("Deploy");
 
-    click(nav("keychain"));
-    await waitFor(() => tabKinds().includes("keychain"));
-    await waitFor(() => document.querySelectorAll(".tab-pane.active .sec-row").length > 0);
-    expect(document.querySelector(".tab-pane.active .sec-row .nm")!.textContent).toBe("alice");
-
     click(nav("logs"));
     await waitFor(() => tabKinds().includes("logs"));
     expect(document.querySelector(".tab-pane.active .sec-empty-title")!.textContent).toBe("No logs yet");
@@ -1212,18 +1207,6 @@ describe("分区屏", () => {
     click(nav("hosts"));
     await waitFor(() => activeTab()!.dataset.kind === "vault");
     expect(nav("hosts").classList.contains("on")).toBe(true);
-  });
-
-  it("Keychain:空态文案 + 工具栏不再有假按钮(密钥/证书/TouchID/FIDO2 均已移除)", async () => {
-    await boot();
-    click(nav("keychain"));
-    await waitFor(() => document.querySelector(".tab-pane.active .sec-empty-title")?.textContent === "Add credentials");
-    /* 这一页现在只有只读的凭据概览:工具栏不该残留任何"点了只弹提示"的按钮 */
-    const labels = [...document.querySelectorAll<HTMLElement>(".tab-pane.active .sec-band .tb-btn, .tab-pane.active .sec-band .sec-chip")]
-      .map((b) => b.textContent?.trim());
-    for (const gone of ["New key", "Certificate", "Touch ID", "FIDO2"]) {
-      expect(labels).not.toContain(gone);
-    }
   });
 
   it("Snippets 分区:无会话时提示,有会话时把命令写进会话;删除走桥", async () => {
@@ -2500,20 +2483,6 @@ describe("分区屏边界", () => {
     click(document.querySelector(".tab-pane.active .sec-send"));
     await flush(2);
     expect((lastCall(calls, "write") as unknown[])[1]).toBe("echo hi\r");
-  });
-
-  it("Keychain 只列出钥匙串里确实有凭据的主机", async () => {
-    const HOST2 = { ...HOST, id: "h_bob", name: "bob", host: "192.0.2.11" };
-    await boot({
-      overrides: {
-        "hosts.list": async () => [HOST, HOST2],
-        "creds.has": async (id: unknown) => id === "h_alice",
-      },
-    });
-    click(document.querySelector('#rail .rail-item[data-nav="keychain"]'));
-    await waitFor(() => !!document.querySelector(".tab-pane.active .sec-row"));
-    const names = [...document.querySelectorAll(".tab-pane.active .sec-row .nm")].map((n) => n.textContent);
-    expect(names).toEqual(["alice"]);
   });
 
   it("Known Hosts 卡片绘制对陌生行结构容错,且重复绘制不会重画已上色图标", async () => {
