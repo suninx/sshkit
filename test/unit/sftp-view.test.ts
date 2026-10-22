@@ -1656,6 +1656,7 @@ describe("SFTP 视图 · 行内右键菜单", () => {
     rightClick("remote", "x.bin");
     click([...document.querySelectorAll(".sp-menu button")].find((b) => b.textContent?.trim() === "Rename")!);
     await openPromptDialog();
+    expect(document.querySelector(".prompt-dlg .pd-hint")!.textContent).toContain("no slashes");
     answerPrompt("y.bin");
     await vi.waitFor(() => expect(renRemote).toHaveBeenCalledWith(44, "/root/x.bin", "/root/y.bin"));
   });
@@ -1670,6 +1671,9 @@ describe("SFTP 视图 · 行内右键菜单", () => {
     await vi.waitFor(() => expect(document.querySelector(".prompt-dlg")).toBeTruthy());
     const input = document.querySelector(".prompt-dlg .pd-input") as HTMLInputElement;
     expect(input.value).toBe("644");
+    /* 对话框要给出格式提示与确认按钮文案(不能是裸 OK / 无说明的输入框) */
+    expect(document.querySelector(".prompt-dlg .pd-hint")!.textContent).toContain("644");
+    expect(document.querySelector(".prompt-dlg .dd-ok")!.textContent).toBe("OK");
     input.value = "600";
     click(document.querySelector(".prompt-dlg .dd-ok")!);
     await vi.waitFor(() => expect(chmodRemote).toHaveBeenCalledWith(45, "/root/x.bin", 0o600));

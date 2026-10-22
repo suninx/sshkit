@@ -17,6 +17,9 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "common.ok": "OK",
+  "sftp.permHint": "Current {cur} · 3–4 octal digits, e.g. 600 or 755",
+  "sftp.renameHint": "Enter a new name (no slashes)",
   "sftp.download": "← Download",
   "sftp.uploadN": "Upload {n} items →",
   "sftp.downloadN": "← Download {n} items",
@@ -309,6 +312,9 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "common.ok": "确定",
+  "sftp.permHint": "当前 {cur} · 八进制 3–4 位,如 600 或 755",
+  "sftp.renameHint": "输入新的名称(不要包含 /)",
   "sftp.download": "← 下载",
   "sftp.uploadN": "上传 {n} 项 →",
   "sftp.downloadN": "← 下载 {n} 项",

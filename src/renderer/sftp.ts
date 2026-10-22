@@ -440,7 +440,7 @@ export function createSftpView(
     const targets = st.entries.filter((e) => st.selSet.has(e.name) || e === st.sel);
     if (targets.length === 0) { banner(tr("sftp.selectItemFirst")); return; }
     const cur = (targets[0].mode & 0o7777).toString(8).padStart(3, "0");
-    const input = await dialogs().prompt(tr("sftp.permTitle"), cur);
+    const input = await dialogs().prompt(tr("sftp.permTitle"), cur, tr("sftp.permHint", { cur }));
     if (input === null) return;
     const clean = input.trim();
     if (!/^[0-7]{3,4}$/.test(clean)) { banner(tr("sftp.permInvalid")); return; }
@@ -597,7 +597,7 @@ export function createSftpView(
           if (st.which === "local") await bridge.local.remove(rel);
           else await bridge.sftp.remove(s!.sid, rel);
         } else {
-          const next = await dialogs().prompt(tr("sftp.renameTitle"), p.name);
+          const next = await dialogs().prompt(tr("sftp.renameTitle"), p.name, tr("sftp.renameHint"));
           if (!next) return;
           if (st.which === "local") await bridge.local.rename(rel, joinPath(st.dir, next));
           else await bridge.sftp.rename(s!.sid, rel, joinPath(st.dir, next));
@@ -654,7 +654,7 @@ export function createSftpView(
   /* ---- 应用内弹窗:Electron 渲染进程**不支持** window.prompt(返回 null),
           原生 confirm 在 Linux 上还会阻塞渲染进程 —— 统一换成 DOM 弹窗。 ---- */
   function dialogs(): {
-    prompt: (title: string, initial?: string) => Promise<string | null>;
+    prompt: (title: string, initial?: string, hint?: string) => Promise<string | null>;
     confirm: (title: string, body: string) => Promise<boolean>;
   } {
     const mount = (html: string): HTMLElement => {
@@ -666,13 +666,13 @@ export function createSftpView(
       return wrap;
     };
     return {
-      prompt(title, initial = "") {
+      prompt(title, initial = "", hint = "") {
         return new Promise((resolve) => {
           const wrap = mount(`
             <div class="dd-box" role="dialog" aria-modal="true">
               <div class="dd-head"><span></span><button class="dd-x" aria-label="close">✕</button></div>
               <div class="dd-body">
-                <p></p>
+                <p class="pd-hint"></p>
                 <input class="pd-input" type="text" />
                 <div class="pd-actions">
                   <button class="dd-cancel"></button><button class="dd-ok"></button>
@@ -680,11 +680,13 @@ export function createSftpView(
               </div>
             </div>`);
           wrap.querySelector(".dd-head span")!.textContent = title;
-          wrap.querySelector(".dd-body p")!.textContent = title;
+          const hintEl = wrap.querySelector(".pd-hint") as HTMLElement;
+          hintEl.textContent = hint;
+          hintEl.hidden = hint === "";
           const input = wrap.querySelector(".pd-input") as HTMLInputElement;
           input.value = initial;
           (wrap.querySelector(".dd-cancel") as HTMLButtonElement).textContent = tr("form.cancel");
-          (wrap.querySelector(".dd-ok") as HTMLButtonElement).textContent = "OK";
+          (wrap.querySelector(".dd-ok") as HTMLButtonElement).textContent = tr("common.ok");
           const done = (v: string | null): void => { wrap.remove(); resolve(v); };
           wrap.querySelector(".dd-x")!.addEventListener("click", () => done(null));
           wrap.querySelector(".dd-cancel")!.addEventListener("click", () => done(null));
