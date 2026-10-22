@@ -1834,3 +1834,22 @@ describe("SFTP 视图 · 右键下载与错误文本", () => {
     await vi.waitFor(() => expect(lastBanner()).toBe("raw-chmod-error"));
   });
 });
+
+describe("SFTP 视图 · Actions 菜单的刷新", () => {
+  it("两个栏的 Reload 都会重新拉列表(不改变当前目录)", async () => {
+    const view = await mountView({ sid: 71, label: "n" });
+    view.onShow();
+    await vi.waitFor(() => expect(listedNames("local")).toContain("a.txt"));
+    const before = listLocal.mock.calls.length;
+    actionsMenu("local");
+    expect(menuItem("Reload")).toBeTruthy();
+    click(menuItem("Reload"));
+    await vi.waitFor(() => expect(listLocal.mock.calls.length).toBe(before + 1));
+    expect(listLocal).toHaveBeenLastCalledWith("/home/u");   // 目录没变
+
+    const beforeR = listRemote.mock.calls.length;
+    actionsMenu("remote");
+    click(menuItem("Reload"));
+    await vi.waitFor(() => expect(listRemote.mock.calls.length).toBe(beforeR + 1));
+  });
+});

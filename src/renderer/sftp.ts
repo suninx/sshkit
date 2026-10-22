@@ -498,6 +498,7 @@ export function createSftpView(
   function openActions(st: PaneState, anchor: HTMLElement): void {
     const n = st.selSet.size;
     const items: Array<[string, () => void]> = [
+      [tr("sftp.reload"), () => void refresh(st)],
       [tr("common.goUp"), () => { st.dir = parentOf(st.dir); void refresh(st); }],
       [tr("common.newFolder"), () => void op(st, "mkdir")],
     ];
