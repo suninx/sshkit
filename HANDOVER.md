@@ -109,7 +109,7 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 
 **用户诉求原话**:"我想要的是 ai 助手做,我还能直观地看" → 结论是
 **sshkit 当 MCP 服务器,AI 客户端(Claude Code / Codex / IDEA+Junie)通过 MCP 操作主机,
-sshift 负责执行并把每次调用渲染到界面**。不是内置 agent(不接模型 API、不要 API key)。
+sshkit 负责执行并把每次调用渲染到界面**。不是内置 agent(不接模型 API、不要 API key)。
 
 - 传输:**Streamable HTTP**(`POST/GET/DELETE /mcp`),只绑 `127.0.0.1`,默认端口 **7788**,
   `Authorization: Bearer <token>`。协议版本协商 `2025-06-18 / 2025-03-26 / 2024-11-05`。
