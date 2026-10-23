@@ -1396,8 +1396,10 @@ describe("分区屏", () => {
 
   it("字体加载失败也照样能开会话(只是不等待)", async () => {
     const fakeFonts = {
-      load: () => Promise.reject(new Error("font boom")),
-      ready: Promise.reject(new Error("ready boom")),
+      /* 用 getter 惰性创建:直接写 Promise.reject(...) 会在字面量求值时立刻产生
+         未处理的 rejection(vitest 会把它当测试失败)。 */
+      get load() { return () => Promise.reject(new Error("font boom")); },
+      get ready() { return Promise.reject(new Error("ready boom")); },
       check: () => false, add() {}, delete() {}, clear() {},
       addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; },
       forEach() {}, entries() { return [][Symbol.iterator](); }, keys() { return [][Symbol.iterator](); },
