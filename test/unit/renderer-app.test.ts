@@ -1273,6 +1273,38 @@ describe("分区屏", () => {
     await waitFor(() => count(calls, "ssh.connect") === 1);
   });
 
+  it("AI 执行回放:主机名对不上时,接管按钮是 no-op", async () => {
+    const { execCbs, calls } = await boot();
+    const execCb = execCbs.at(-1) as (ev: unknown) => void;
+    execCb({ id: "e9", hostName: "no-such-host", command: "id" });
+    await waitFor(() => tabKinds().includes("mcp-exec"));
+    const takeover = [...document.querySelectorAll<HTMLElement>(".tab-pane.active .sec-band button")]
+      .find((b) => b.textContent === "Take over");
+    takeover!.click();
+    await flush(3);
+    expect(count(calls, "ssh.connect")).toBe(0);
+  });
+
+  it("AI 执行回放:接管时主机已被删掉,点击是 no-op", async () => {
+    let deleted = false;
+    const { execCbs, calls } = await boot({
+      overrides: {
+        /* 回放反查时主机还在;点"接管"前把它删掉 → 列表为空 */
+        "hosts.list": async () => (deleted ? [] : [HOST]),
+      },
+    });
+    const execCb = execCbs.at(-1) as (ev: unknown) => void;
+    execCb({ id: "e10", hostName: HOST.name, command: "id" });
+    await waitFor(() => tabKinds().includes("mcp-exec"));
+    await flush(4);
+    deleted = true;
+    const takeover = [...document.querySelectorAll<HTMLElement>(".tab-pane.active .sec-band button")]
+      .find((b) => b.textContent === "Take over");
+    takeover!.click();
+    await flush(3);
+    expect(count(calls, "ssh.connect")).toBe(0);
+  });
+
   it("标准档批准:onApproval 事件弹出允许/拒绝,点击回传主进程", async () => {
     const { approvalCbs, calls } = await boot();
     /* 批准弹层由 MCP 分区挂载时订阅:先打开分区 */

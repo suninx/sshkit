@@ -495,12 +495,12 @@ const mcpDeps: McpToolDeps = {
       sendExec({});
       try {
         return await new Promise((resolve, reject) => {
-          let out = ""; let err = ""; let truncated = false;
+          const bufs = { out: "", err: "" };
+          let truncated = false;
           const append = (which: "out" | "err", chunk: string): void => {
-            const total = (which === "out" ? out : err).length + chunk.length;
-            if (total > 64 * 1024) truncated = true;
-            if (which === "out") { if (out.length < 64 * 1024) out += chunk.slice(0, 64 * 1024 - out.length); }
-            else if (err.length < 64 * 1024) err += chunk.slice(0, 64 * 1024 - err.length);
+            const room = Math.max(0, 64 * 1024 - bufs[which].length);
+            if (chunk.length > room) truncated = true;
+            bufs[which] += chunk.slice(0, room);
             sendExec({ chunk, stream: which });
           };
           const onAbort = (): void => { reject(new Error("exec cancelled")); };
@@ -511,8 +511,9 @@ const mcpDeps: McpToolDeps = {
             stream.stderr.on("data", (d: Buffer) => append("err", d.toString("utf-8")));
             stream.on("close", (code: number | null) => {
               signal.removeEventListener("abort", onAbort);
-              sendExec({ done: true, exitCode: code ?? 0 });
-              resolve({ stdout: out, stderr: err, exitCode: code ?? 0, truncated });
+              const exitCode = code ?? 0;
+              sendExec({ done: true, exitCode });
+              resolve({ stdout: bufs.out, stderr: bufs.err, exitCode, truncated });
             });
             stream.on("error", (er: Error) => { signal.removeEventListener("abort", onAbort); reject(er); });
           });
@@ -627,7 +628,9 @@ async function requestApproval(def: { name: string }, args: Record<string, unkno
       mainWindow.webContents.send("mcp:approval", { id, tool: def.name, args: JSON.stringify(args).slice(0, 400) });
     }
     setTimeout(() => {
-      if (pendingApprovals.delete(id)) resolve(false);
+      /* 已答过也没关系:再 resolve 一次是 no-op */
+      pendingApprovals.delete(id);
+      resolve(false);
     }, approvalTimeoutMs).unref?.();
   });
 }

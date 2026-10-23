@@ -149,6 +149,26 @@ sshkit 负责执行并把每次调用渲染到界面**。不是内置 agent(不�
 **下一步(阶段 3,未做)**:`ssh_exec`(在真实终端里可见/可接管)、三档权限 + 逐次批准、
 审计落盘、客户端级授权、STOP 一键中断。
 
+### 阶段 3(2026-10-23 已交付):ssh_exec + 三档权限 + STOP + 审计
+
+- **`ssh_exec`**:在远端跑命令,返回 `exit code` / stdout / stderr(各 64KiB 上限,
+  超了标 truncated);支持 `timeoutMs`(默认 60s,最小 10ms)与 MCP 取消通知。
+- **执行回放**:每次 exec 都会在 sshkit 里开一个「AI 执行」标签页,实时追加 stdout/stderr,
+  结束显示退出码;工具条「接管」按主机名反查 id 后开**真实交互终端**,可直接接手。
+- **三档权限**(设置 `mcp.policy`,默认 `full`):
+  - `read-only`:只注册 4 个读工具
+  - `standard`:写/执行前主进程发 `mcp:approval` 给界面,弹「允许/拒绝」;
+    60s 不答按拒绝(超时可用 `setMcpApprovalTimeout` 调,单测用)
+  - `full`:12 个工具全开(4 读 + 7 写 + 1 执行)
+- **STOP**:`mcp:abort` → 服务端 `abortAll()`,在跑的调用全部 abort(客户端收到 -32800)。
+- **审计**:每次调用结束追加一行 JSONL 到 `userData/mcp-audit.jsonl`
+  (时间/客户端/工具/状态/耗时/参数脱敏/错误);写失败只 warn,不影响调用。
+
+真机验证(10.0.0.193):
+`uname -sr; whoami; echo $((6*7))` → `Linux 5.14… / root / 42`(exit 0);
+`echo to-stderr >&2; exit 7` → exit code 7 + stderr;`df -h /` → 磁盘行;
+界面出现「AI 执行」标签页,内容与退出码一致,MCP 活动流 4 条可见。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。

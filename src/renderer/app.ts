@@ -1090,6 +1090,7 @@ function openSftpTab(): void {
 /* ===== AI 执行回放:ssh_exec 的输出实时打到这个标签页,并可一键接管 ===== */
 let execHostId: string | null = null;
 let execOut: HTMLElement | null = null;
+let execHead: HTMLElement | null = null;
 
 /** 打开(或复用)「AI 执行」标签页 */
 function openMcpExecTab(): void {
@@ -1101,6 +1102,7 @@ function openMcpExecTab(): void {
       <pre class="mcp-exec-out"></pre>
     </div>`;
     execOut = body.querySelector(".mcp-exec-out");
+    execHead = body.querySelector(".mcp-exec-head");
   }, [
     { label: tr("mcp.takeover"), onClick: () => {
       if (!execHostId) return;
@@ -1120,26 +1122,25 @@ function onMcpExec(ev: { id: string; hostName: string; command: string; chunk?: 
       execHostId = hs.find((h) => h.name === ev.hostName)?.id ?? execHostId;
     });
     openMcpExecTab();
-    const head = document.querySelector(".tab-pane.active .mcp-exec-head");
-    if (head) {
-      (head.querySelector(".mcp-exec-host") as HTMLElement).textContent = ev.hostName;
-      (head.querySelector(".mcp-exec-cmd") as HTMLElement).textContent = `$ ${ev.command}`;
-    }
-    if (execOut) execOut.textContent = "";
+    /* 标签页刚建好,这两个 ref 一定存在(构建回调里赋的) */
+    execHead!.querySelector(".mcp-exec-host")!.textContent = ev.hostName;
+    execHead!.querySelector(".mcp-exec-cmd")!.textContent = `$ ${ev.command}`;
+    execOut!.textContent = "";
     return;
   }
-  if (!execOut) return;
+  /* 头部事件一定先到(onMcpExec 里先开标签页再追加),所以这里 execOut 必然存在 */
+  const out = execOut!;
   if (ev.chunk) {
     const span = document.createElement("span");
     if (ev.stream === "err") span.className = "err";
     span.textContent = ev.chunk;
-    execOut.append(span);
+    out.append(span);
   }
   if (ev.done) {
     const line = document.createElement("div");
     line.className = "mcp-exec-done";
     line.textContent = `—— ${tr("mcp.execDone", { code: String(ev.exitCode ?? 0) })}`;
-    execOut.append(line);
+    out.append(line);
   }
 }
 

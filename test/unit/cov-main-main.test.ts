@@ -1494,6 +1494,11 @@ describe("MCP 服务器接线", () => {
       const r = await callExec(1);
       expect(r.content[0].text).toContain("exit code: 1");
 
+      /* close(null):按 0 处理(有些服务端不给退出码) */
+      setExec((stream) => { stream.emit("data", Buffer.from("ok")); stream.emit("close", null); });
+      const nullCode = await callExec(5);
+      expect(nullCode.content[0].text).toContain("exit code: 0");
+
       setExecError(null);
       setExec((stream) => { stream.emit("error", new Error("stream boom")); });
       const failed = await callExec(3);
