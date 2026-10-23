@@ -936,6 +936,7 @@ describe("会话与分屏", () => {
     contextMenuOn(tabByKind("session"));
     expect(document.querySelector(".tab-menu")!.textContent).toContain("Split horizontally");
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     await waitFor(() => !!document.querySelector(".split-pane"));
     expect(document.querySelector(".split-title")!.textContent).toBe("New pane");
     const bc = document.querySelector(".split-bc input") as HTMLInputElement;
@@ -1360,6 +1361,59 @@ describe("分区屏", () => {
     click(nav("hosts"));
     await waitFor(() => activeTab()!.dataset.kind === "vault");
     expect(nav("hosts").classList.contains("on")).toBe(true);
+  });
+
+  it("终端字体就绪闸门:字体没加载完不建终端(避免行距不一致)", async () => {
+    /* 用一个可控的 FontFaceSet 替身:load/ready 由用例决定何时完成 */
+    let releaseLoad!: () => void;
+    const loadGate = new Promise<void>((r) => { releaseLoad = r; });
+    const fakeFonts = {
+      load: () => loadGate,
+      ready: Promise.resolve(),
+      check: () => true,
+      add() { /* noop */ }, delete() { /* noop */ }, clear() { /* noop */ },
+      addEventListener() { /* noop */ }, removeEventListener() { /* noop */ }, dispatchEvent() { return true; },
+      forEach() { /* noop */ }, entries() { return [][Symbol.iterator](); }, keys() { return [][Symbol.iterator](); },
+      values() { return [][Symbol.iterator](); }, [Symbol.iterator]() { return [][Symbol.iterator](); },
+      size: 0, status: "loading", onloadingdone: null, onloadingerror: null, onloading: null,
+    };
+    const desc = Object.getOwnPropertyDescriptor(Document.prototype, "fonts");
+    Object.defineProperty(document, "fonts", { configurable: true, value: fakeFonts });
+    try {
+      const { calls } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+      click(document.querySelector(".host-item"));
+      await flush(6);
+      /* 字体还在加载:会话没发起 */
+      expect(count(calls, "ssh.connect")).toBe(0);
+      releaseLoad();
+      await waitFor(() => count(calls, "ssh.connect") === 1);
+      expect(title()).toBe(HOST.name);
+    } finally {
+      if (desc) Object.defineProperty(Document.prototype, "fonts", desc);
+      else delete (document as unknown as { fonts?: unknown }).fonts;
+    }
+  });
+
+  it("字体加载失败也照样能开会话(只是不等待)", async () => {
+    const fakeFonts = {
+      load: () => Promise.reject(new Error("font boom")),
+      ready: Promise.reject(new Error("ready boom")),
+      check: () => false, add() {}, delete() {}, clear() {},
+      addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; },
+      forEach() {}, entries() { return [][Symbol.iterator](); }, keys() { return [][Symbol.iterator](); },
+      values() { return [][Symbol.iterator](); }, [Symbol.iterator]() { return [][Symbol.iterator](); },
+      size: 0, status: "error", onloadingdone: null, onloadingerror: null, onloading: null,
+    };
+    const desc = Object.getOwnPropertyDescriptor(Document.prototype, "fonts");
+    Object.defineProperty(document, "fonts", { configurable: true, value: fakeFonts });
+    try {
+      const { calls } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+      click(document.querySelector(".host-item"));
+      await waitFor(() => count(calls, "ssh.connect") === 1);
+    } finally {
+      if (desc) Object.defineProperty(Document.prototype, "fonts", desc);
+      else delete (document as unknown as { fonts?: unknown }).fonts;
+    }
   });
 
   it("多主机执行:工具栏按钮打开面板,主机来自 hosts.list", async () => {
@@ -1896,6 +1950,7 @@ describe("快捷键矩阵与边界路径", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     await waitFor(() => !!document.querySelector(".split-pane"));
     await waitFor(() => document.querySelectorAll(".sp-host option").length === 1);
     const sel = document.querySelector(".sp-host") as HTMLSelectElement;
@@ -1932,6 +1987,7 @@ describe("快捷键矩阵与边界路径", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     await waitFor(() => document.querySelectorAll(".sp-host option").length === 1);
     const sel = document.querySelector(".sp-host") as HTMLSelectElement;
     sel.value = "h_alice";
@@ -2328,6 +2384,7 @@ describe("分屏边界", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     await waitFor(() => !!document.querySelector(".split-pane"));
     const closeBtn = document.querySelector(".split-close") as HTMLButtonElement;
     click(closeBtn);
@@ -2344,6 +2401,7 @@ describe("分屏边界", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     await waitFor(() => !!document.querySelector(".split-pane"));
     const localBtn = document.querySelector(".sp-local") as HTMLButtonElement;
     click(document.querySelector(".split-close"));
@@ -2365,6 +2423,7 @@ describe("分屏边界", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     await waitFor(() => document.querySelectorAll(".sp-host option").length === 1);
     const sel = document.querySelector(".sp-host") as HTMLSelectElement;
     sel.value = "h_alice";
@@ -2380,6 +2439,7 @@ describe("分屏边界", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     click(document.querySelector(".sp-local"));
     await waitFor(() => !document.querySelector(".split-picker"));
 
@@ -2416,6 +2476,7 @@ describe("分屏边界", () => {
 
       contextMenuOn(tabByKind("session"));
       click(tabMenuItem("Split horizontally"));
+      await flush(3);
       click(document.querySelector(".sp-local"));
       await waitFor(() => !document.querySelector(".split-picker"));
       terms[1].resize(90, 20);
@@ -2445,6 +2506,7 @@ describe("分屏边界", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     click(document.querySelector(".sp-local"));
     await waitFor(() => !document.querySelector(".split-picker"));
     const box = document.querySelector(".split-bc input") as HTMLInputElement;
@@ -2466,6 +2528,7 @@ describe("分屏边界", () => {
       await openLocal();
       contextMenuOn(tabByKind("session"));
       click(tabMenuItem("Split horizontally"));
+      await flush(3);
       await waitFor(() => !!document.querySelector(".split-pane"));
       const before = fitSpy.mock.calls.length;
       click(document.querySelector("#btn-tabview"));
@@ -2511,6 +2574,7 @@ describe("分屏边界", () => {
       await openLocal();
       contextMenuOn(tabByKind("session"));
       click(tabMenuItem("Split horizontally"));
+      await flush(3);
       await waitFor(() => document.querySelectorAll(".sp-host option").length === 1);
       const sel = document.querySelector(".sp-host") as HTMLSelectElement;
       sel.value = "h_alice";
@@ -3067,6 +3131,7 @@ describe("分屏与断线的迟到事件", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     click(document.querySelector(".sp-local"));
     await waitFor(() => !document.querySelector(".split-picker"));
     const { Terminal } = await xtermApis();
@@ -3087,6 +3152,7 @@ describe("分屏与断线的迟到事件", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     click(document.querySelector(".sp-local"));
     await waitFor(() => !document.querySelector(".split-picker"));
     const { Terminal } = await xtermApis();
@@ -3121,6 +3187,7 @@ describe("分屏与断线的迟到事件", () => {
     await openLocal();
     contextMenuOn(tabByKind("session"));
     click(tabMenuItem("Split horizontally"));
+    await flush(3);
     await waitFor(() => document.querySelectorAll(".sp-host option").length === 1);
     const sel = document.querySelector(".sp-host") as HTMLSelectElement;
     sel.value = "h_alice";

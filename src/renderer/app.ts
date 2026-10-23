@@ -509,7 +509,7 @@ function moveTab(from: string, target: string, after: boolean): void {
 }
 
 /** 在 tab 内水平分出一格(原版 `Split horizontally`)。新格先给选择器:本地终端或某台主机。 */
-function splitTab(tab: Tab): void {
+async function splitTab(tab: Tab): Promise<void> {
   /* 前置条件由唯一调用方保证:菜单项只在 `t.kind === "session" && !t.split` 时加入,
      且菜单点击时先 remove 菜单再回调(不存在并发二次进入);每个 tab 创建时都带 pane。 */
   const pane = document.createElement("div");
@@ -529,6 +529,7 @@ function splitTab(tab: Tab): void {
     <div class="split-body"></div>`;
   tab.pane.append(pane);
 
+  await ensureTermFontReady();
   const term = new Terminal({
     fontFamily: TERM_FONT, fontSize: TERM_FONT_SIZE, theme: TERM_THEME,
     /* lineHeight 必须与分屏终端一致 —— 之前只给分屏设了,主终端漏了,
@@ -642,7 +643,7 @@ function openTabMenu(t: Tab, x: number, y: number): void {
   item(tr("menu.rename"), () => startRenameTab(t));
   item(tr("menu.duplicate"), () => duplicateTab(t));
   item(tr("menu.duplicateWindow"), () => { void bridge.window.create(); });
-  if (t.kind === "session" && !t.split) item(tr("menu.splitH"), () => splitTab(t));
+  if (t.kind === "session" && !t.split) item(tr("menu.splitH"), () => { void splitTab(t); });
   if (t.kind === "session" && t.host && t.termId !== null) {
     const inGroup = bcState.ids.has(t.termId);
     item(inGroup ? tr("menu.unbroadcast") : tr("menu.broadcast"), () => {
@@ -1121,6 +1122,18 @@ function syncRenderer(term: Terminal, holder: { canvasAddon?: CanvasAddon }): vo
     holder.canvasAddon = undefined;
   }
 }
+/** 终端字体就绪闸门:随包 Meslo 是 @font-face 网页字体,xterm 在创建时按当时量到的字高
+    算格高。第一个终端若在字体加载完成前创建,行距会和后面的不一致(用户反馈"两个窗口
+    行间距不同")。所以**创建终端前**显式等字体加载完;字体/字号变更后重置闸门。 */
+let termFontReady: Promise<void> | null = null;
+function ensureTermFontReady(): Promise<void> {
+  termFontReady ??= (async () => {
+    try { await document.fonts?.load(`${TERM_FONT_SIZE}px ${TERM_FONT}`); } catch { /* 没有 FontFaceSet 就跳过 */ }
+    try { await document.fonts?.ready; } catch { /* 同上 */ }
+  })();
+  return termFontReady;
+}
+
 let TERM_FONT_SIZE = 14; // 原版 defaultFontSize=14,实机同;可选范围 4–40
 /* 目标格高 18px(原版实测格 8×18)。注意 xterm 会对"字体量出高 × lineHeight"取整,
    14px MesloLGS 的自然高约 15.5-16,所以 1.05 推不上一行(实测仍 16)。可用
@@ -1376,6 +1389,7 @@ function applyAppearance(): void {
   TERM_THEME = toXtermTheme(sc);
   TERM_FONT = fontFamily;
   TERM_FONT_SIZE = Math.min(40, Math.max(4, fontSize));
+  termFontReady = null;      // 字体或字号变了:下次建终端重新等字体
   document.documentElement.style.setProperty("--term-bg", sc.background);
   /* tab 条底色跟随终端主题(原版实测如此),所以其**文字色必须按该底色的明暗来定** ——
      否则界面切浅色时(tab 条仍是终端底色)会变成"深字黑底",标签几乎看不见。实测踩到过。 */
@@ -1776,6 +1790,8 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
   hostWrap.className = "term-host";
   tab.pane.replaceChildren(hostWrap);
 
+  /* 字体没就绪就建终端 → 格高和后续窗口不一致,见 ensureTermFontReady 注释 */
+  await ensureTermFontReady();
   const fit = new FitAddon();
   const t = new Terminal({
     fontFamily: TERM_FONT,

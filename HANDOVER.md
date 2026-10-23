@@ -198,6 +198,21 @@ sshkit 负责执行并把每次调用渲染到界面**。不是内置 agent(不�
 `echo to-stderr >&2; exit 7` → exit code 7 + stderr;`df -h /` → 磁盘行;
 界面出现「AI 执行」标签页,内容与退出码一致,MCP 活动流 4 条可见。
 
+### 修复:多个终端行距不一致(2026-10-24)
+
+现象:同一窗口开两个主机终端,行距不一样(实测第一个 35 行、第二个 31 行)。
+
+根因:随包 Meslo 是 `@font-face` **网页字体**,xterm 在 `new Terminal()` 时按**当时**量到的
+字高算格高。第一个终端常在字体加载完成前创建 → 用回退字体的度量;后面的终端用真实字体
+→ 两者行高不同。
+
+修法:`ensureTermFontReady()` 闸门 —— 创建终端(主终端 / 分屏)前先
+`await document.fonts.load("<size>px <family>")` + `document.fonts.ready`;
+字体或字号变更时重置闸门(下次重新等)。字体加载失败也照常放行(只是不等待)。
+
+验证:修复后同一窗口两个会话都是 31 行(修复前 35 vs 31);jsdom 用例覆盖
+"字体未就绪不发起会话 / 加载失败照常开会话"。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。
