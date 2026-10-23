@@ -39,12 +39,16 @@ export interface McpServerOptions {
   onClients: (clients: string[]) => void;
   /** 仅测试用:允许端口 0 自动分配 */
   host?: string;
+  /** 标准档:写/执行前先问用户(返回 false = 拒绝执行) */
+  approve?: (def: McpToolDef, args: Record<string, unknown>) => Promise<boolean>;
   /** SSE keep-alive 间隔(毫秒;由调用方给常量,测试里调小) */
   pingMs: number;
 }
 
 export interface McpServerHandle {
   port: number;
+  /** 一键中断:把所有在跑的 tools/call 都 abort(STOP 按钮 / 关服务时用) */
+  abortAll: () => void;
   close: () => Promise<void>;
 }
 
@@ -194,6 +198,18 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
       if (!tool) return { body: rpcError(id, -32602, `unknown tool: ${name}`), status: 200 };
 
       const args = (params.arguments ?? {}) as Record<string, unknown>;
+      /* 标准档:写/执行类工具先问用户;拒绝就不执行(不是超时,是明确拒绝) */
+      if (tool.def.kind !== "read" && opts.approve) {
+        const allowed = await opts.approve(tool.def, args);
+        if (!allowed) {
+          activity({ client: session.client, method: "tools/call", tool: name, status: "error",
+            args: clip(JSON.stringify(redactArgs(args))), error: "denied by user" });
+          return {
+            body: rpcResult(id, { content: [{ type: "text", text: "Denied by user (sshkit MCP approval)" }], isError: true }),
+            status: 200,
+          };
+        }
+      }
       const started = Date.now();
       const ctl = new AbortController();
       const key = String(id);
@@ -323,6 +339,7 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
 
   return {
     port,
+    abortAll: () => { for (const ctl of inflight.values()) ctl.abort(); },
     close: async () => {
       if (closed) return;
       closed = true;

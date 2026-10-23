@@ -134,7 +134,19 @@ const api = {
   /* 内置 MCP 服务器:状态 / 开关 / 活动流(用户要求"AI 通过 MCP 操作,但我看得见") */
   mcp: {
     status: () => ipcRenderer.invoke("mcp:status"),
-    set: (patch: { enabled?: boolean; port?: number; allowWrite?: boolean }) => ipcRenderer.invoke("mcp:set", patch),
+    set: (patch: { enabled?: boolean; port?: number; policy?: "read-only" | "standard" | "full" }) => ipcRenderer.invoke("mcp:set", patch),
+    abort: () => ipcRenderer.invoke("mcp:abort"),
+    answerApproval: (id: string, ok: boolean) => ipcRenderer.invoke("mcp:approval-answer", id, ok),
+    onApproval: (cb: (req: unknown) => void) => {
+      const handler = (_e: unknown, req: unknown) => cb(req);
+      ipcRenderer.on("mcp:approval", handler);
+      return () => { ipcRenderer.off("mcp:approval", handler); };
+    },
+    onExec: (cb: (ev: unknown) => void) => {
+      const handler = (_e: unknown, ev: unknown) => cb(ev);
+      ipcRenderer.on("mcp:exec", handler);
+      return () => { ipcRenderer.off("mcp:exec", handler); };
+    },
     regenerateToken: () => ipcRenderer.invoke("mcp:regenerateToken"),
     clearActivity: () => ipcRenderer.invoke("mcp:clearActivity"),
     onActivity: (cb: (ev: unknown) => void) => {

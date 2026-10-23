@@ -102,6 +102,8 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
   const prefsCbs: AnyFn[] = [];
   const fwdStatusCbs: AnyFn[] = [];
   const maximizedCbs: AnyFn[] = [];
+  const execCbs: AnyFn[] = [];
+  const approvalCbs: AnyFn[] = [];
 
   const api: Record<string, any> = {
     /* preload 暴露的平台:自绘窗口按钮/红绿灯让位按它分支(测试固定 win32) */
@@ -142,17 +144,23 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
     /* 内置 MCP 服务器(状态/开关/活动流) */
     mcp: {
       status: rec("mcp.status", o("mcp.status", async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
       }))),
       set: rec("mcp.set", o("mcp.set", async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
       }))),
       regenerateToken: rec("mcp.regenerateToken", o("mcp.regenerateToken", async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
       }))),
       clearActivity: rec("mcp.clearActivity", o("mcp.clearActivity", async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
       }))),
+      abort: rec("mcp.abort", o("mcp.abort", async () => ({
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
+      }))),
+      answerApproval: rec("mcp.answerApproval", o("mcp.answerApproval", async () => true)),
+      onApproval: rec("mcp.onApproval", o("mcp.onApproval", (cb: AnyFn) => { approvalCbs.push(cb); return () => undefined; })),
+      onExec: rec("mcp.onExec", o("mcp.onExec", (cb: AnyFn) => { execCbs.push(cb); return () => undefined; })),
       onActivity: rec("mcp.onActivity", o("mcp.onActivity", () => () => undefined)),
       onStatus: rec("mcp.onStatus", o("mcp.onStatus", () => () => undefined)),
     },
@@ -231,7 +239,7 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
     maximized: (on: boolean): void => { for (const cb of maximizedCbs) cb(on); },
   };
 
-  return { calls, api: guard(api), emit };
+  return { calls, api: guard(api), emit, execCbs, approvalCbs };
 }
 
 /* ---------------- 环境准备 ---------------- */
@@ -1224,6 +1232,59 @@ describe("分区屏", () => {
     click(nav("hosts"));
     await waitFor(() => activeTab()!.dataset.kind === "vault");
     expect(nav("hosts").classList.contains("on")).toBe(true);
+  });
+
+  it("AI 执行回放:收到 exec 事件就开标签页,输出逐段追加,结束显示退出码;接管按钮可用", async () => {
+    const { execCbs, calls } = await boot({
+      overrides: { "hosts.list": async () => [HOST] },
+    });
+    const execCb = execCbs.at(-1) as (ev: unknown) => void;
+    execCb({ id: "e1", hostName: HOST.name, command: "echo hi" });
+    await waitFor(() => tabKinds().includes("mcp-exec"));
+    await waitFor(() => !!document.querySelector(".tab-pane.active .mcp-exec-cmd"));
+    expect(document.querySelector(".tab-pane.active .mcp-exec-cmd")!.textContent).toContain("echo hi");
+    expect(document.querySelector(".tab-pane.active .mcp-exec-host")!.textContent).toBe(HOST.name);
+
+    execCb({ id: "e1", hostName: HOST.name, command: "echo hi", chunk: "hi\n", stream: "out" });
+    execCb({ id: "e1", hostName: HOST.name, command: "echo hi", chunk: "oops\n", stream: "err" });
+    execCb({ id: "e1", hostName: HOST.name, command: "echo hi", done: true, exitCode: 3 });
+    await flush(2);
+    const out = document.querySelector(".tab-pane.active .mcp-exec-out")!;
+    expect(out.textContent).toContain("hi");
+    expect(out.querySelector(".err")!.textContent).toContain("oops");
+    expect(out.textContent).toContain("3");
+
+    /* 再来一次 exec:复用同一个标签页(不新建);chunk 先于 head 到达时安全忽略 */
+    execCb({ id: "e2", hostName: HOST.name, command: "ls" });
+    execCb({ id: "e2", hostName: HOST.name, command: "ls", chunk: "x", stream: "out" });
+    await flush(2);
+    expect(tabKinds().filter((k) => k === "mcp-exec").length).toBe(1);
+    expect(document.querySelector(".tab-pane.active .mcp-exec-cmd")!.textContent).toContain("ls");
+
+    /* 结束事件不带 exitCode 时按 0 显示 */
+    execCb({ id: "e2", hostName: HOST.name, command: "ls", done: true });
+    await flush(2);
+    expect(document.querySelector(".tab-pane.active .mcp-exec-out")!.textContent).toContain("0");
+
+    /* 接管:按主机名反查 id 后开真实会话 */
+    const takeover = [...document.querySelectorAll<HTMLElement>(".tab-pane.active .sec-band button")]
+      .find((b) => b.textContent === "Take over");
+    takeover!.click();
+    await waitFor(() => count(calls, "ssh.connect") === 1);
+  });
+
+  it("标准档批准:onApproval 事件弹出允许/拒绝,点击回传主进程", async () => {
+    const { approvalCbs, calls } = await boot();
+    /* 批准弹层由 MCP 分区挂载时订阅:先打开分区 */
+    click(document.querySelector('#rail .rail-item[data-nav="mcp"]') as HTMLElement);
+    await waitFor(() => tabKinds().includes("mcp"));
+    await waitFor(() => approvalCbs.length > 0);
+    const approvalCb = approvalCbs.at(-1) as (req: unknown) => void;
+    approvalCb({ id: "ap1", tool: "sftp_write_file", args: '{"host":"prod"}' });
+    await waitFor(() => !!document.querySelector(".mcp-approve"));
+    (document.querySelector('.mcp-approve [data-act="allow"]') as HTMLElement).click();
+    await waitFor(() => count(calls, "mcp.answerApproval") === 1);
+    expect(calls["mcp.answerApproval"][0]).toEqual(["ap1", true]);
   });
 
   it("MCP 分区:显示服务器状态与活动流;工具条可清空记录;重复点击只激活", async () => {

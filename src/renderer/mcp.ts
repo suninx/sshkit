@@ -4,7 +4,14 @@
 
 import { bridge } from "./hosts";
 import { tr } from "../shared/i18n";
-import type { McpActivity, McpStatus } from "../shared/mcp";
+import type { McpActivity, McpApprovalRequest, McpPolicy, McpStatus } from "../shared/mcp";
+
+/** 权限档的中文/英文标签 */
+export function policyLabel(p: McpPolicy): string {
+  if (p === "read-only") return tr("mcp.policyReadOnly");
+  if (p === "standard") return tr("mcp.policyStandard");
+  return tr("mcp.policyFull");
+}
 
 const fmtTime = (at: number): string => {
   const d = new Date(at);
@@ -79,8 +86,9 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
     ? tr("mcp.connected", { who: s.clients.join(", ") })
     : tr("mcp.noClient");
   const mode = document.createElement("span");
-  mode.className = `mcp-mode ${s.allowWrite ? "full" : "ro"}`;
-  mode.textContent = `${tr("mcp.mode")}:${s.allowWrite ? tr("mcp.modeFull") : tr("mcp.modeReadOnly")}`;
+  const modeClass: Record<McpPolicy, string> = { full: "full", standard: "std", "read-only": "ro" };
+  mode.className = `mcp-mode ${modeClass[s.policy]}`;
+  mode.textContent = `${tr("mcp.policy")}:${policyLabel(s.policy)}`;
   line2.append(clients, mode);
 
   const line3 = document.createElement("div");
@@ -101,10 +109,20 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
   const regen = mk(s.running ? tr("mcp.regenerate") : tr("mcp.regenerate"), "ghost", () => {
     void bridge.mcp.regenerateToken().then((st) => { current = st; paintMcp(box, st); });
   });
-  const writeToggle = mk(s.allowWrite ? tr("mcp.makeReadOnly") : tr("mcp.makeWritable"), "ghost", () => {
-    void bridge.mcp.set({ allowWrite: !s.allowWrite }).then((st) => { current = st; paintMcp(box, st); });
+  const stop = mk(tr("mcp.stop"), "danger", () => { void bridge.mcp.abort(); });
+  const policy = document.createElement("select");
+  policy.className = "mcp-policy";
+  for (const p of ["read-only", "standard", "full"] as const) {
+    const opt = document.createElement("option");
+    opt.value = p;
+    opt.textContent = policyLabel(p);
+    opt.selected = s.policy === p;
+    policy.append(opt);
+  }
+  policy.addEventListener("change", () => {
+    void bridge.mcp.set({ policy: policy.value as McpPolicy }).then((st) => { current = st; paintMcp(box, st); });
   });
-  line3.append(toggle, copy, regen, writeToggle);
+  line3.append(toggle, copy, regen, stop, policy);
   head.append(line1, line2, line3);
 
   const hint = document.createElement("div");
@@ -190,6 +208,7 @@ export function mountMcpSection(box: HTMLElement): McpSectionRefs {
     paintMcp(head, st);
     paintActivity(st.activity);
   });
+  bridge.mcp.onApproval((req: McpApprovalRequest) => { showApproval(req); });
   bridge.mcp.onActivity((ev) => {
     if (list.querySelector(".mcp-empty")) list.innerHTML = "";
     const prev = rows.get(ev.id);
@@ -207,3 +226,30 @@ export function mountMcpSection(box: HTMLElement): McpSectionRefs {
 
 /** 供「清空活动」工具条按钮复用 */
 export function currentMcpStatus(): McpStatus | null { return current; }
+
+/** 标准档批准弹层:显示工具名与参数,允许/拒绝(不点则 60s 后主进程按拒绝处理) */
+export function showApproval(req: McpApprovalRequest): void {
+  document.querySelector(".mcp-approve")?.remove();
+  const wrap = document.createElement("div");
+  wrap.className = "mcp-approve";
+  wrap.innerHTML = `<div class="mcp-approve-box">
+    <div class="mcp-approve-title"></div>
+    <pre class="mcp-approve-args"></pre>
+    <div class="mcp-approve-actions">
+      <button class="mcp-btn ghost" data-act="deny"></button>
+      <button class="mcp-btn primary" data-act="allow"></button>
+    </div>
+  </div>`;
+  (wrap.querySelector(".mcp-approve-title") as HTMLElement).textContent = `${tr("mcp.approveTitle")}  ${req.tool}`;
+  (wrap.querySelector(".mcp-approve-args") as HTMLElement).textContent = req.args;
+  const btn = (act: string): HTMLElement => wrap.querySelector(`[data-act="${act}"]`) as HTMLElement;
+  (btn("allow")).textContent = tr("mcp.approve");
+  (btn("deny")).textContent = tr("mcp.deny");
+  const close = (ok: boolean): void => {
+    void bridge.mcp.answerApproval(req.id, ok);
+    wrap.remove();
+  };
+  btn("allow").addEventListener("click", () => close(true));
+  btn("deny").addEventListener("click", () => close(false));
+  document.body.append(wrap);
+}

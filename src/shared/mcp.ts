@@ -14,7 +14,7 @@ export const MCP_LATEST_PROTOCOL = MCP_PROTOCOL_VERSIONS[0];
 /** 服务器自报身份(initialize 的 serverInfo) */
 export const MCP_SERVER_NAME = "sshkit";
 
-export type McpToolKind = "read" | "write";
+export type McpToolKind = "read" | "write" | "exec";
 
 export interface McpToolDef {
   name: string;
@@ -52,8 +52,8 @@ export interface McpStatus {
   port: number;
   /** 本地访问令牌;客户端配置里要带上 */
   token: string;
-  /** 是否允许写入/执行(false = 只读档,客户端看不到写工具) */
-  allowWrite: boolean;
+  /** 当前权限档 */
+  policy: McpPolicy;
   /** 已建立会话的客户端名 */
   clients: string[];
   error: string | null;
@@ -61,11 +61,33 @@ export interface McpStatus {
   activity: McpActivity[];
 }
 
+/** 三档权限:只读 / 标准(写与执行需你点"允许")/ 全自动 */
+export type McpPolicy = "read-only" | "standard" | "full";
+
 export interface McpSettings {
   enabled: boolean;
   port: number;
-  /** 允许 AI 写入/执行(默认 true:产品定位是"全自动");关掉即只读档 */
-  allowWrite: boolean;
+  policy: McpPolicy;
+}
+
+/** ssh_exec 的实时回放事件(渲染层据此开一个可见的"AI 执行"标签页) */
+export interface McpExecEvent {
+  id: string;
+  hostName: string;
+  command: string;
+  /** 增量输出 */
+  chunk?: string;
+  stream?: "out" | "err";
+  /** 结束事件 */
+  done?: boolean;
+  exitCode?: number;
+}
+
+/** 标准档下,写/执行前的批准请求 */
+export interface McpApprovalRequest {
+  id: string;
+  tool: string;
+  args: string;
 }
 
 /** SSE keep-alive 间隔(15s:足够让代理/客户端保持连接,又不会吵) */

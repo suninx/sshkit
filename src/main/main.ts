@@ -15,7 +15,7 @@ import type { HostInput } from "../shared/host";
 import type { SFTPWrapper } from "ssh2";
 import { randomBytes } from "node:crypto";
 import { startMcpServer, type McpServerHandle } from "./mcp/server";
-import { buildReadTools, buildWriteTools, type McpToolDeps } from "./mcp/tools";
+import { buildExecTools, buildReadTools, buildWriteTools, type McpToolDeps } from "./mcp/tools";
 import { RemotePool } from "./mcp/pool";
 import {
   chmodRemote, downloadFiles, listRemote, mkdirRemote, readRemote, removeRemote,
@@ -23,7 +23,10 @@ import {
 } from "./mcp/remote";
 import fs from "node:fs";
 import { getMcpToken, setMcpToken } from "./keystore";
-import { MCP_ACTIVITY_LIMIT, MCP_SSE_PING_MS, type McpActivity, type McpStatus } from "../shared/mcp";
+import {
+  MCP_ACTIVITY_LIMIT, MCP_SSE_PING_MS,
+  type McpActivity, type McpExecEvent, type McpPolicy, type McpStatus,
+} from "../shared/mcp";
 
 /** macOS 专属窗口 chrome:原版没有原生标题栏,红绿灯浮在内容上。
  *  **纯函数**(平台由调用方传入),便于在任意平台覆盖两个分支。 */
@@ -407,7 +410,7 @@ const mcpStatus = (): McpStatus => ({
   running: mcpHandle !== null,
   port: mcpHandle?.port ?? getSettings().mcp.port,
   token: mcpToken,
-  allowWrite: getSettings().mcp.allowWrite,
+  policy: getSettings().mcp.policy,
   clients: mcpClients,
   error: mcpError,
   activity: mcpActivity,
@@ -417,7 +420,22 @@ const pushMcpStatus = (): void => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mcp:status", mcpStatus());
 };
 
+const auditFile = (): string => path.join(app.getPath("userData"), "mcp-audit.jsonl");
+
+/** 审计:每次调用**结束时**追加一行 JSONL(失败也不影响主流程) */
+function auditMcpCall(ev: McpActivity): void {
+  try {
+    fs.appendFileSync(auditFile(), JSON.stringify({
+      at: new Date(ev.at).toISOString(), client: ev.client, tool: ev.tool,
+      status: ev.status, ms: ev.ms, args: ev.args, error: ev.error,
+    }) + "\n");
+  } catch (err) {
+    console.warn("[mcp] 审计写入失败:", err);
+  }
+}
+
 const pushMcpActivity = (ev: McpActivity): void => {
+  if (ev.status !== "running") auditMcpCall(ev);
   /* 同一次调用(running → ok/error)复用 id:原地更新,活动流里只留一行 */
   const idx = mcpActivity.findIndex((a) => a.id === ev.id);
   if (idx >= 0) mcpActivity[idx] = ev;
@@ -466,6 +484,43 @@ const mcpDeps: McpToolDeps = {
       const sftp = (await mcpPool.get(hostId)).sftp;
       return await downloadFiles(sftp, remotePath, () => fs.createWriteStream(localPath));
     },
+    exec: async (hostId, command, signal) => {
+      const host = hostStore.get(hostId)!;
+      const secrets = host.authType === "password" || host.authType === "key" ? await getCreds(hostId) : {};
+      const client = await sshService.openAux(host, secrets);
+      const execId = randomBytes(8).toString("hex");
+      const sendExec = (ev: Partial<McpExecEvent>): void => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mcp:exec", { id: execId, hostName: host.name, command, ...ev });
+      };
+      sendExec({});
+      try {
+        return await new Promise((resolve, reject) => {
+          let out = ""; let err = ""; let truncated = false;
+          const append = (which: "out" | "err", chunk: string): void => {
+            const total = (which === "out" ? out : err).length + chunk.length;
+            if (total > 64 * 1024) truncated = true;
+            if (which === "out") { if (out.length < 64 * 1024) out += chunk.slice(0, 64 * 1024 - out.length); }
+            else if (err.length < 64 * 1024) err += chunk.slice(0, 64 * 1024 - err.length);
+            sendExec({ chunk, stream: which });
+          };
+          const onAbort = (): void => { reject(new Error("exec cancelled")); };
+          signal.addEventListener("abort", onAbort);
+          client.exec(command, (e, stream) => {
+            if (e) { signal.removeEventListener("abort", onAbort); reject(e); return; }
+            stream.on("data", (d: Buffer) => append("out", d.toString("utf-8")));
+            stream.stderr.on("data", (d: Buffer) => append("err", d.toString("utf-8")));
+            stream.on("close", (code: number | null) => {
+              signal.removeEventListener("abort", onAbort);
+              sendExec({ done: true, exitCode: code ?? 0 });
+              resolve({ stdout: out, stderr: err, exitCode: code ?? 0, truncated });
+            });
+            stream.on("error", (er: Error) => { signal.removeEventListener("abort", onAbort); reject(er); });
+          });
+        });
+      } finally {
+        try { client.end(); } catch { /* 已断开 */ }
+      }
+    },
   },
 };
 
@@ -478,9 +533,13 @@ async function startMcp(): Promise<void> {
       version: app.getVersion(),
       tools: [
         ...buildReadTools(mcpDeps),
-        /* 只读档位下不注册写工具:客户端从 tools/list 就看不到,而不是调用时才失败 */
-        ...(getSettings().mcp.allowWrite ? buildWriteTools(mcpDeps) : []),
+        /* 只读档位下不注册写/执行工具:客户端从 tools/list 就看不到,而不是调用时才失败 */
+        ...(getSettings().mcp.policy === "read-only"
+          ? []
+          : [...buildWriteTools(mcpDeps), ...buildExecTools(mcpDeps)]),
       ],
+      /* 标准档:写/执行前弹批准(60s 不答视为拒绝) */
+      approve: getSettings().mcp.policy === "standard" ? requestApproval : undefined,
       pingMs: MCP_SSE_PING_MS,
       onActivity: pushMcpActivity,
       onClients: (clients) => { mcpClients = clients; pushMcpStatus(); },
@@ -530,12 +589,12 @@ export async function ensureMcpToken(): Promise<void> {
 }
 
 ipcMain.handle("mcp:status", () => mcpStatus());
-ipcMain.handle("mcp:set", async (_e, patch: { enabled?: boolean; port?: number; allowWrite?: boolean }) => {
+ipcMain.handle("mcp:set", async (_e, patch: { enabled?: boolean; port?: number; policy?: McpPolicy }) => {
   const cur = getSettings().mcp;
   const next = {
     enabled: patch.enabled ?? cur.enabled,
     port: typeof patch.port === "number" && patch.port > 0 && patch.port < 65_536 ? patch.port : cur.port,
-    allowWrite: patch.allowWrite ?? cur.allowWrite,
+    policy: patch.policy ?? cur.policy,
   };
   setSetting("mcp", next);
   const wasRunning = mcpHandle !== null;
@@ -554,6 +613,33 @@ ipcMain.handle("mcp:regenerateToken", async () => {
   return mcpStatus();
 });
 ipcMain.handle("mcp:clearActivity", () => { mcpActivity.length = 0; pushMcpStatus(); return mcpStatus(); });
+
+/* ---- 标准档批准:主进程发请求,渲染层点"允许/拒绝",60s 不答视为拒绝 ---- */
+const pendingApprovals = new Map<string, (ok: boolean) => void>();
+/** 审批等待上限;导出 setter 便于单测(生产固定 60s) */
+let approvalTimeoutMs = 60_000;
+export function setMcpApprovalTimeout(ms: number): void { approvalTimeoutMs = ms; }
+async function requestApproval(def: { name: string }, args: Record<string, unknown>): Promise<boolean> {
+  const id = randomBytes(6).toString("hex");
+  return await new Promise<boolean>((resolve) => {
+    pendingApprovals.set(id, resolve);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("mcp:approval", { id, tool: def.name, args: JSON.stringify(args).slice(0, 400) });
+    }
+    setTimeout(() => {
+      if (pendingApprovals.delete(id)) resolve(false);
+    }, approvalTimeoutMs).unref?.();
+  });
+}
+ipcMain.handle("mcp:approval-answer", (_e, id: string, ok: boolean) => {
+  const resolve = pendingApprovals.get(id);
+  if (!resolve) return false;
+  pendingApprovals.delete(id);
+  resolve(ok);
+  return true;
+});
+/* ---- STOP:中断所有在跑的调用 ---- */
+ipcMain.handle("mcp:abort", () => { mcpHandle?.abortAll(); return mcpStatus(); });
 
 /* dev 模式下进程名/图标都来自 Electron 自己的 bundle(菜单栏会显示 "Electron")。
    显式设置应用名与 Dock 图标,让开发时的表现接近打包后的样子。 */

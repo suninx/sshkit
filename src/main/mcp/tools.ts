@@ -28,6 +28,8 @@ export interface McpRemoteOps {
   write(hostId: string, target: string, content: Buffer): Promise<number>;
   upload(hostId: string, localPath: string, remotePath: string): Promise<{ bytes: number }>;
   download(hostId: string, remotePath: string, localPath: string): Promise<{ bytes: number }>;
+  /** 执行命令:实时把输出回放到界面,同时把结果返回给客户端 */
+  exec(hostId: string, command: string, signal: AbortSignal): Promise<{ stdout: string; stderr: string; exitCode: number; truncated: boolean }>;
 }
 
 
@@ -356,6 +358,56 @@ export function buildWriteTools(deps: McpToolDeps): McpTool[] {
         const localPath = argString(args, "localPath");
         const { bytes } = await deps.remote.download(host.id, remotePath, localPath);
         return { text: `downloaded ${bytes} bytes: ${host.name}:${remotePath} → ${localPath}` };
+      },
+    },
+  ];
+}
+
+/* ================= 阶段 3:执行工具 ================= */
+
+const EXEC_DEF: Omit<McpToolDef, "name"> = {
+  title: "Run shell command",
+  description: "Run a shell command on the remote host and return stdout/stderr/exit code. "
+    + "The command runs in a real SSH exec channel and its output is mirrored into an sshkit tab "
+    + "so the user can watch it live and take over an interactive shell if needed.",
+  kind: "exec",
+  inputSchema: {
+    type: "object",
+    properties: {
+      host: HOST_ARG,
+      command: { type: "string", description: "Shell command to run (single line or multi-line script)" },
+      timeoutMs: { type: "integer", description: "Abort after this many ms (default 60000, max 300000)" },
+    },
+    required: ["host", "command"], additionalProperties: false,
+  },
+};
+
+const MAX_EXEC_BYTES = 64 * 1024;
+
+export function buildExecTools(deps: McpToolDeps): McpTool[] {
+  return [
+    {
+      def: { name: "ssh_exec", ...EXEC_DEF },
+      async run(args, ctx) {
+        const host = resolveHost(deps, argString(args, "host"));
+        const command = argString(args, "command");
+        const asked = typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs) ? args.timeoutMs : 60_000;
+        const timeout = Math.max(10, Math.min(300_000, Math.floor(asked)));
+        const ctl = new AbortController();
+        const onAbort = (): void => ctl.abort();
+        ctx.signal.addEventListener("abort", onAbort);
+        const timer = setTimeout(() => ctl.abort(), timeout);
+        try {
+          const res = await deps.remote.exec(host.id, command, ctl.signal);
+          const parts = [`# exit code: ${res.exitCode}`];
+          if (res.stdout) parts.push(`## stdout\n${res.stdout}`);
+          if (res.stderr) parts.push(`## stderr\n${res.stderr}`);
+          if (res.truncated) parts.push("(output truncated at 64 KiB per stream)");
+          return { text: clipOut(parts.join("\n\n")) };
+        } finally {
+          clearTimeout(timer);
+          ctx.signal.removeEventListener("abort", onAbort);
+        }
       },
     },
   ];

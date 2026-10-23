@@ -22,7 +22,7 @@ async function boot(overrides: Record<string, (...args: unknown[]) => unknown> =
 }
 
 const status = (patch: Partial<McpStatus> = {}): McpStatus => ({
-  running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], allowWrite: true, ...patch,
+  running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full", ...patch,
 });
 
 const act = (patch: Partial<McpActivity> = {}): McpActivity => ({
@@ -96,7 +96,7 @@ describe("MCP 状态卡", () => {
 
     const btns = [...box.querySelectorAll("button")].map((b) => b.textContent);
     expect(btns).toEqual([
-      i18n.tr("mcp.disable"), i18n.tr("mcp.copyConfig"), i18n.tr("mcp.regenerate"), i18n.tr("mcp.makeReadOnly"),
+      i18n.tr("mcp.disable"), i18n.tr("mcp.copyConfig"), i18n.tr("mcp.regenerate"), i18n.tr("mcp.stop"),
     ]);
 
     (box.querySelectorAll("button")[1] as HTMLElement).click();
@@ -114,20 +114,45 @@ describe("MCP 状态卡", () => {
     expect(text(box)).toContain("http://127.0.0.1:7788/mcp");
   });
 
-  it("权限档:显示徽章;点按钮切到只读", async () => {
-    await boot({ "mcp.set": async () => status({ running: true, allowWrite: false }) });
+  it("权限档:徽章跟随;下拉切换会调用 mcp:set", async () => {
+    await boot({ "mcp.set": async () => status({ running: true, policy: "read-only" }) });
     const box = document.createElement("div");
     document.body.append(box);
-    mcp.paintMcp(box, status({ running: true, allowWrite: true }));
-    expect(text(box.querySelector(".mcp-mode"))).toContain(i18n.tr("mcp.modeFull"));
-    const labels = [...box.querySelectorAll("button")].map((b) => b.textContent);
-    expect(labels).toContain(i18n.tr("mcp.makeReadOnly"));
+    mcp.paintMcp(box, status({ running: true, policy: "full" }));
+    expect(text(box.querySelector(".mcp-mode"))).toContain(i18n.tr("mcp.policyFull"));
+    expect(mcp.policyLabel("standard")).toBe(i18n.tr("mcp.policyStandard"));
+    expect(mcp.policyLabel("read-only")).toBe(i18n.tr("mcp.policyReadOnly"));
 
+    const sel = box.querySelector(".mcp-policy") as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.value)).toEqual(["read-only", "standard", "full"]);
+    expect(sel.value).toBe("full");
+    sel.value = "read-only";
+    sel.dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls["mcp.set"].at(-1)![0]).toEqual({ policy: "read-only" });
+    expect(text(box.querySelector(".mcp-mode"))).toContain(i18n.tr("mcp.policyReadOnly"));
+
+    /* STOP 按钮:调用中断 */
     (box.querySelectorAll("button")[3] as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(calls["mcp.set"].at(-1)![0]).toEqual({ allowWrite: false });
-    expect(text(box.querySelector(".mcp-mode"))).toContain(i18n.tr("mcp.modeReadOnly"));
-    expect([...box.querySelectorAll("button")].map((b) => b.textContent)).toContain(i18n.tr("mcp.makeWritable"));
+    expect(calls["mcp.abort"].length).toBe(1);
+  });
+
+  it("标准档批准弹层:允许/拒绝都会回传", async () => {
+    await boot();
+    mcp.showApproval({ id: "a1", tool: "sftp_write_file", args: '{"host":"prod"}' });
+    let box = document.querySelector(".mcp-approve") as HTMLElement;
+    expect(text(box)).toContain("sftp_write_file");
+    (box.querySelector('[data-act="allow"]') as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls["mcp.answerApproval"].at(-1)).toEqual(["a1", true]);
+    expect(document.querySelector(".mcp-approve")).toBeNull();
+
+    mcp.showApproval({ id: "a2", tool: "ssh_exec", args: "{}" });
+    box = document.querySelector(".mcp-approve") as HTMLElement;
+    (box.querySelector('[data-act="deny"]') as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls["mcp.answerApproval"].at(-1)).toEqual(["a2", false]);
   });
 
   it("未启用:提示怎么开,并且没有已连接提示", async () => {

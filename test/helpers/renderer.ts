@@ -103,17 +103,21 @@ export function installBridge(overrides: Record<string, Behavior> = {}, opts: { 
     /* 内置 MCP 服务器:状态/开关/活动流 */
     mcp: {
       status: record("mcp.status", overrides["mcp.status"] ?? (async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], allowWrite: true,
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
       }))),
       set: record("mcp.set", overrides["mcp.set"] ?? (async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], allowWrite: true,
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
       }))),
       regenerateToken: record("mcp.regenerateToken", overrides["mcp.regenerateToken"] ?? (async () => ({
         running: false, port: 7788, token: "tok2", clients: [], error: null, activity: [],
       }))),
       clearActivity: record("mcp.clearActivity", overrides["mcp.clearActivity"] ?? (async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], allowWrite: true,
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
       }))),
+      abort: record("mcp.abort", overrides["mcp.abort"] ?? (async () => ({ running: true, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full" }))),
+      answerApproval: record("mcp.answerApproval", overrides["mcp.answerApproval"] ?? (async () => true)),
+      onApproval: record("mcp.onApproval", overrides["mcp.onApproval"] ?? (() => () => undefined)),
+      onExec: record("mcp.onExec", overrides["mcp.onExec"] ?? (() => () => undefined)),
       onActivity: record("mcp.onActivity", overrides["mcp.onActivity"] ?? (() => () => undefined)),
       onStatus: record("mcp.onStatus", overrides["mcp.onStatus"] ?? (() => () => undefined)),
     },

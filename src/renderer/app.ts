@@ -4,7 +4,7 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import { SearchAddon } from "@xterm/addon-search";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
-import { mountMcpSection } from "./mcp";
+import { mountMcpSection, policyLabel } from "./mcp";
 import { applyDom, audit, getLocale, resolveLocale, setLocale as setI18nLocale, tr, type LocalePref } from "../shared/i18n";
 import { createFwdView } from "./fwd";
 import { createKnownHostsView, installHostKeyDialog } from "./knownhosts";
@@ -36,7 +36,7 @@ type TabState = "idle" | "on" | "off";
 type Tab = {
   id: string;
   /* 分区类 tab:原版把一级导航的分区也做成主区视图(Vaults / Snippets / Keychain / Logs …) */
-  kind: "session" | "newtab" | "sftp" | "fwd" | "kh" | "vault" | "snippets" | "logs" | "mcp";
+  kind: "session" | "newtab" | "sftp" | "fwd" | "kh" | "vault" | "snippets" | "logs" | "mcp" | "mcp-exec";
   label: string;
   state: TabState;
   pane: HTMLDivElement;
@@ -642,6 +642,7 @@ const TICON: Record<Tab["kind"], string> = {
   kh: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3Z"/></svg>',
   snippets: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg>',
   logs: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  "mcp-exec": '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 7l4 5-4 5M13 17h6"/></svg>',
   mcp: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="2.6"/><path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21M5.6 5.6l2.3 2.3M16.1 16.1l2.3 2.3M18.4 5.6l-2.3 2.3M7.9 16.1l-2.3 2.3"/></svg>',
   newtab: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>',
 };
@@ -1086,6 +1087,62 @@ function openSftpTab(): void {
 }
 
 /** T3:端口转发面板(原版是左栏一级导航的目的地;我方以 tab 承载,与 SFTP 同理)。 */
+/* ===== AI 执行回放:ssh_exec 的输出实时打到这个标签页,并可一键接管 ===== */
+let execHostId: string | null = null;
+let execOut: HTMLElement | null = null;
+
+/** 打开(或复用)「AI 执行」标签页 */
+function openMcpExecTab(): void {
+  const existing = tabs.find((t) => t.kind === "mcp-exec");
+  if (existing) { activateTab(existing.id); return; }
+  openSection("mcp-exec", tr("mcp.execTab"), (body) => {
+    body.innerHTML = `<div class="mcp-exec">
+      <div class="mcp-exec-head"><span class="mcp-exec-host"></span><span class="mcp-exec-cmd"></span></div>
+      <pre class="mcp-exec-out"></pre>
+    </div>`;
+    execOut = body.querySelector(".mcp-exec-out");
+  }, [
+    { label: tr("mcp.takeover"), onClick: () => {
+      if (!execHostId) return;
+      void bridge.hosts.list().then((hs) => {
+        const host = hs.find((h) => h.id === execHostId);
+        if (host) void openSession("ssh", host);
+      });
+    } },
+  ]);
+}
+
+/** 收到一次 exec 事件:开标签页 → 写命令行 → 追加输出 → 结束显示退出码 */
+function onMcpExec(ev: { id: string; hostName: string; command: string; chunk?: string; stream?: "out" | "err"; done?: boolean; exitCode?: number }): void {
+  if (!ev.chunk && !ev.done) {
+    /* 主机 id 供"接管"用:按名字反查(主机名唯一,列表很小) */
+    void bridge.hosts.list().then((hs) => {
+      execHostId = hs.find((h) => h.name === ev.hostName)?.id ?? execHostId;
+    });
+    openMcpExecTab();
+    const head = document.querySelector(".tab-pane.active .mcp-exec-head");
+    if (head) {
+      (head.querySelector(".mcp-exec-host") as HTMLElement).textContent = ev.hostName;
+      (head.querySelector(".mcp-exec-cmd") as HTMLElement).textContent = `$ ${ev.command}`;
+    }
+    if (execOut) execOut.textContent = "";
+    return;
+  }
+  if (!execOut) return;
+  if (ev.chunk) {
+    const span = document.createElement("span");
+    if (ev.stream === "err") span.className = "err";
+    span.textContent = ev.chunk;
+    execOut.append(span);
+  }
+  if (ev.done) {
+    const line = document.createElement("div");
+    line.className = "mcp-exec-done";
+    line.textContent = `—— ${tr("mcp.execDone", { code: String(ev.exitCode ?? 0) })}`;
+    execOut.append(line);
+  }
+}
+
 /** MCP 分区:服务器状态 + 调用活动流(用户要求"AI 通过 MCP 操作,但我看得见") */
 function openMcpTab(): void {
   openSection("mcp", tr("rail.mcp"), (body) => {
@@ -1887,6 +1944,9 @@ void (async () => {
   document.getElementById("btn-new-host-caret")?.addEventListener("click", () => {
     document.getElementById("btn-new-host")?.click();
   });
+
+  /* MCP:AI 执行回放 */
+  bridge.mcp.onExec((ev) => { onMcpExec(ev as Parameters<typeof onMcpExec>[0]); });
 
   document.querySelectorAll<HTMLElement>("#rail .rail-item").forEach((b) => {
     b.addEventListener("click", () => {

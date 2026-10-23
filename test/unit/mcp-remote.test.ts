@@ -6,7 +6,7 @@ import {
   chmodRemote, downloadFiles, listRemote, mkdirRemote, permString, readRemote, removeRemote,
   renameRemote, statRemote, uploadFiles, writeRemote, type SftpLike,
 } from "../../src/main/mcp/remote";
-import { buildReadTools, buildWriteTools, capList, parseMode, resolveHost, type McpToolDeps } from "../../src/main/mcp/tools";
+import { buildExecTools, buildReadTools, buildWriteTools, capList, parseMode, resolveHost, type McpToolDeps } from "../../src/main/mcp/tools";
 import { RemotePool } from "../../src/main/mcp/pool";
 
 interface FakeEntry { filename: string; attrs: { mode: number; size: number; mtime: number; isDirectory?: () => boolean } }
@@ -443,5 +443,39 @@ describe("MCP 写工具(阶段 2)", () => {
       "sftp_write_file", "sftp_upload", "sftp_download",
     ]);
     for (const t of tools) expect(t.def.kind).toBe("write");
+  });
+});
+
+describe("MCP 执行工具 ssh_exec", () => {
+  const execDeps = (exec: McpToolDeps["remote"]["exec"]): McpToolDeps => ({ ...deps(), remote: { ...deps().remote, exec } });
+  const run = async (d: McpToolDeps, args: Record<string, unknown>, signal = new AbortController().signal) =>
+    await buildExecTools(d)[0].run(args, { signal });
+
+  it("成功:带 stdout/stderr/退出码;空流不输出小节", async () => {
+    const out = await run(execDeps(async () => ({ stdout: "hi", stderr: "warn", exitCode: 0, truncated: false })), { host: "h1", command: "x" });
+    expect(out.text).toContain("exit code: 0");
+    expect(out.text).toContain("## stdout\nhi");
+    expect(out.text).toContain("## stderr\nwarn");
+
+    const empty = await run(execDeps(async () => ({ stdout: "", stderr: "", exitCode: 0, truncated: false })), { host: "h1", command: "x" });
+    expect(empty.text).toBe("# exit code: 0");
+  });
+
+  it("非零退出码 + 截断标记;超时/取消会让调用失败", async () => {
+    const bad = await run(execDeps(async () => ({ stdout: "boom", stderr: "", exitCode: 127, truncated: true })), { host: "h1", command: "x" });
+    expect(bad.text).toContain("exit code: 127");
+    expect(bad.text).toContain("truncated");
+
+    /* 超时:exec 永远不返回 → timeoutMs 到点 abort */
+    const never: McpToolDeps["remote"]["exec"] = (_h, _c, signal) => new Promise((_res, rej) => {
+      signal.addEventListener("abort", () => rej(new Error("aborted")));
+    });
+    await expect(run(execDeps(never), { host: "h1", command: "sleep", timeoutMs: 10 })).rejects.toThrow("aborted");
+
+    /* 客户端取消(notifications/cancelled → server abort) */
+    const ctl = new AbortController();
+    const p = run(execDeps(never), { host: "h1", command: "sleep" }, ctl.signal);
+    ctl.abort();
+    await expect(p).rejects.toThrow("aborted");
   });
 });

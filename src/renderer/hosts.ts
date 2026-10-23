@@ -3,7 +3,7 @@ import { applyDom, tr } from "../shared/i18n";
 import type { ForwardRule, ForwardStatus } from "../shared/forward";
 import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
 import type { SftpEntry, TransferProgress } from "../shared/sftp";
-import type { McpActivity, McpStatus } from "../shared/mcp";
+import type { McpActivity, McpApprovalRequest, McpExecEvent, McpStatus } from "../shared/mcp";
 
 interface SshkitBridge {
   /** 运行平台(由 preload 暴露):Windows 用无边框窗口 + 自绘窗口按钮 */
@@ -93,7 +93,11 @@ interface SshkitBridge {
   /** 内置 MCP 服务器(阶段 1:只读工具 + 活动流) */
   mcp: {
     status(): Promise<McpStatus>;
-    set(patch: { enabled?: boolean; port?: number; allowWrite?: boolean }): Promise<McpStatus>;
+    set(patch: { enabled?: boolean; port?: number; policy?: "read-only" | "standard" | "full" }): Promise<McpStatus>;
+    abort(): Promise<McpStatus>;
+    answerApproval(id: string, ok: boolean): Promise<boolean>;
+    onApproval(cb: (req: McpApprovalRequest) => void): () => void;
+    onExec(cb: (ev: McpExecEvent) => void): () => void;
     regenerateToken(): Promise<McpStatus>;
     clearActivity(): Promise<McpStatus>;
     onActivity(cb: (ev: McpActivity) => void): () => void;

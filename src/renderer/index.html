@@ -495,6 +495,24 @@
     .mcp-mode { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--wire); }
     .mcp-mode.full { color: #e0b341; border-color: rgba(224,179,65,.45); background: rgba(224,179,65,.10); }
     .mcp-mode.ro { color: var(--fg-dim); }
+    .mcp-mode.std { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+    .mcp-policy { height: 28px; border-radius: 8px; background: var(--bg2); color: var(--fg);
+      border: 1px solid var(--wire); font-size: 12.5px; padding: 0 8px; }
+    .mcp-approve { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.45); }
+    .mcp-approve-box { width: 440px; max-width: calc(100vw - 48px); background: var(--bg2); border: 1px solid var(--wire);
+      border-radius: 14px; padding: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+    .mcp-approve-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+    .mcp-approve-args { margin: 0 0 14px; padding: 10px; border-radius: 8px; background: var(--bg3);
+      color: var(--fg-dim); font-size: 11.5px; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto; }
+    .mcp-approve-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    /* AI 执行回放标签页 */
+    .mcp-exec { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; height: 100%; }
+    .mcp-exec-head { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--fg-dim); }
+    .mcp-exec-cmd { font-family: var(--mono, ui-monospace, monospace); color: var(--fg); }
+    .mcp-exec-out { flex: 1; margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--bg2);
+      color: var(--fg); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; overflow: auto; }
+    .mcp-exec-out .err { color: #ff7375; }
     .mcp-actions { gap: 8px; }
     .mcp-btn { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; cursor: pointer;
       border: 1px solid var(--wire); background: transparent; color: var(--fg); }

@@ -17,6 +17,19 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "mcp.policy": "Policy",
+  "mcp.policyReadOnly": "Read-only",
+  "mcp.policyStandard": "Standard (ask before write/exec)",
+  "mcp.policyFull": "Full auto",
+  "mcp.stop": "Stop all",
+  "mcp.approveTitle": "Allow this action?",
+  "mcp.approve": "Allow",
+  "mcp.deny": "Deny",
+  "mcp.execTab": "AI exec",
+  "mcp.takeover": "Take over",
+  "mcp.execDone": "exit code {code}",
+  "mcp.audit": "Audit log",
+  "mcp.openAudit": "Show in Finder",
   "mcp.mode": "Mode",
   "mcp.modeFull": "Full (write + execute)",
   "mcp.modeReadOnly": "Read-only",
@@ -337,6 +350,19 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "mcp.policy": "权限",
+  "mcp.policyReadOnly": "只读",
+  "mcp.policyStandard": "标准(写/执行前询问)",
+  "mcp.policyFull": "全自动",
+  "mcp.stop": "全部中断",
+  "mcp.approveTitle": "允许这个操作吗?",
+  "mcp.approve": "允许",
+  "mcp.deny": "拒绝",
+  "mcp.execTab": "AI 执行",
+  "mcp.takeover": "接管",
+  "mcp.execDone": "退出码 {code}",
+  "mcp.audit": "审计日志",
+  "mcp.openAudit": "在 Finder 中显示",
   "mcp.mode": "权限",
   "mcp.modeFull": "完整(可写/可执行)",
   "mcp.modeReadOnly": "只读",

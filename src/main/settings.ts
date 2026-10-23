@@ -14,7 +14,7 @@ export interface Settings {
   mcp: McpSettings;
 }
 
-const DEFAULTS: Settings = { locale: "system", mcp: { enabled: false, port: MCP_DEFAULT_PORT, allowWrite: true } };
+const DEFAULTS: Settings = { locale: "system", mcp: { enabled: false, port: MCP_DEFAULT_PORT, policy: "full" } };
 
 let cache: Settings | null = null;
 
