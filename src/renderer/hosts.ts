@@ -3,6 +3,7 @@ import { applyDom, tr } from "../shared/i18n";
 import type { ForwardRule, ForwardStatus } from "../shared/forward";
 import type { HostKeyAsk, KnownHostRow } from "../shared/knownhost";
 import type { SftpEntry, TransferProgress } from "../shared/sftp";
+import type { McpActivity, McpStatus } from "../shared/mcp";
 
 interface SshkitBridge {
   /** 运行平台(由 preload 暴露):Windows 用无边框窗口 + 自绘窗口按钮 */
@@ -88,6 +89,16 @@ interface SshkitBridge {
   };
   /** Finder 拖入:File → 真实路径 */
   native: { pathForFile(file: File): string };
+
+  /** 内置 MCP 服务器(阶段 1:只读工具 + 活动流) */
+  mcp: {
+    status(): Promise<McpStatus>;
+    set(patch: { enabled?: boolean; port?: number }): Promise<McpStatus>;
+    regenerateToken(): Promise<McpStatus>;
+    clearActivity(): Promise<McpStatus>;
+    onActivity(cb: (ev: McpActivity) => void): () => void;
+    onStatus(cb: (s: McpStatus) => void): () => void;
+  };
 
   local: {
     list(dir: string): Promise<{ path: string; entries: SftpEntry[] }>;

@@ -4,6 +4,7 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import { SearchAddon } from "@xterm/addon-search";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
+import { mountMcpSection } from "./mcp";
 import { applyDom, audit, getLocale, resolveLocale, setLocale as setI18nLocale, tr, type LocalePref } from "../shared/i18n";
 import { createFwdView } from "./fwd";
 import { createKnownHostsView, installHostKeyDialog } from "./knownhosts";
@@ -35,7 +36,7 @@ type TabState = "idle" | "on" | "off";
 type Tab = {
   id: string;
   /* 分区类 tab:原版把一级导航的分区也做成主区视图(Vaults / Snippets / Keychain / Logs …) */
-  kind: "session" | "newtab" | "sftp" | "fwd" | "kh" | "vault" | "snippets" | "logs";
+  kind: "session" | "newtab" | "sftp" | "fwd" | "kh" | "vault" | "snippets" | "logs" | "mcp";
   label: string;
   state: TabState;
   pane: HTMLDivElement;
@@ -641,6 +642,7 @@ const TICON: Record<Tab["kind"], string> = {
   kh: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3Z"/></svg>',
   snippets: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 4c-2 0-2 3-2 4s0 3-2 4c2 1 2 3 2 4s0 4 2 4M15 4c2 0 2 3 2 4s0 3 2 4c-2 1-2 3-2 4s0 4-2 4"/></svg>',
   logs: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  mcp: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="2.6"/><path d="M12 3v3.2M12 17.8V21M3 12h3.2M17.8 12H21M5.6 5.6l2.3 2.3M16.1 16.1l2.3 2.3M18.4 5.6l-2.3 2.3M7.9 16.1l-2.3 2.3"/></svg>',
   newtab: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>',
 };
 
@@ -853,7 +855,7 @@ function openLogsTab(): void {
 
 const NAV_OF_KIND: Record<string, string> = {
   vault: "hosts", fwd: "forwarding", kh: "knownhosts", snippets: "snippets",
-  logs: "logs",
+  logs: "logs", mcp: "mcp",
 };
 
 /** 导航栏高亮跟随当前 tab(原版:Vaults tab 活动时左栏 Hosts 高亮) */
@@ -1084,6 +1086,15 @@ function openSftpTab(): void {
 }
 
 /** T3:端口转发面板(原版是左栏一级导航的目的地;我方以 tab 承载,与 SFTP 同理)。 */
+/** MCP 分区:服务器状态 + 调用活动流(用户要求"AI 通过 MCP 操作,但我看得见") */
+function openMcpTab(): void {
+  openSection("mcp", tr("rail.mcp"), (body) => {
+    mountMcpSection(body);
+  }, [
+    { label: tr("mcp.clear"), onClick: () => { void bridge.mcp.clearActivity(); } },
+  ]);
+}
+
 function openFwdTab(): void {
   const existing = tabs.find((t) => t.kind === "fwd");
   if (existing) { activateTab(existing.id); return; }
@@ -1884,6 +1895,7 @@ void (async () => {
         case "forwarding": openFwdTab(); break;
         case "knownhosts": openKnownHostsTab(); break;
         case "snippets": openSnippetsTab(); break;
+        case "mcp": openMcpTab(); break;
         case "logs": openLogsTab(); break;
       }
     });

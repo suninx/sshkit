@@ -131,6 +131,24 @@ const api = {
   },
 
   /* Finder → 应用:把 drop 进来的 File 还原成真实路径(Electron 32+ 的 webUtils) */
+  /* 内置 MCP 服务器:状态 / 开关 / 活动流(用户要求"AI 通过 MCP 操作,但我看得见") */
+  mcp: {
+    status: () => ipcRenderer.invoke("mcp:status"),
+    set: (patch: { enabled?: boolean; port?: number }) => ipcRenderer.invoke("mcp:set", patch),
+    regenerateToken: () => ipcRenderer.invoke("mcp:regenerateToken"),
+    clearActivity: () => ipcRenderer.invoke("mcp:clearActivity"),
+    onActivity: (cb: (ev: unknown) => void) => {
+      const handler = (_e: unknown, ev: unknown) => cb(ev);
+      ipcRenderer.on("mcp:activity", handler);
+      return () => { ipcRenderer.off("mcp:activity", handler); };
+    },
+    onStatus: (cb: (st: unknown) => void) => {
+      const handler = (_e: unknown, st: unknown) => cb(st);
+      ipcRenderer.on("mcp:status", handler);
+      return () => { ipcRenderer.off("mcp:status", handler); };
+    },
+  },
+
   native: {
     pathForFile: (file: File) => webUtils.getPathForFile(file),
   },

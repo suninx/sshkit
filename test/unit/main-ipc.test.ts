@@ -26,6 +26,8 @@ vi.mock("electron", async () => {
 
 /* keytar:内存实现;并允许测试注入失败(用于"钥匙串不可用时删除仍应成功") */
 const keychain = new Map<string, string>();
+/** 只看主机凭据:主进程启动时还会往钥匙串写 MCP 本地令牌(account = "mcp:token") */
+const hostKeys = (): string[] => [...keychain.keys()].filter((k) => k.includes("|host:"));
 let keytarFails = false;
 vi.mock("keytar", () => ({
   default: {
@@ -113,11 +115,11 @@ describe("hosts:*", () => {
   it("delete 会移除记录并清理钥匙串", async () => {
     const rec = (await em.invoke("hosts:create", hostInput({ name: "del-1" }))) as { id: string };
     await em.invoke("creds:put", rec.id, { password: "secret" });
-    expect(keychain.size).toBe(1);
+    expect(hostKeys().length).toBe(1);
     await em.invoke("hosts:delete", rec.id);
     const list = (await em.invoke("hosts:list")) as Array<{ id: string }>;
     expect(list.some((h) => h.id === rec.id)).toBe(false);
-    expect(keychain.size).toBe(0);
+    expect(hostKeys().length).toBe(0);
   });
 
   it("回归:钥匙串不可用时删除主机仍然成功(否则用户看到'点了删除没反应')", async () => {

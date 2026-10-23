@@ -36,3 +36,17 @@ export async function getCreds(hostId: string): Promise<HostSecrets> {
 export async function deleteCreds(hostId: string): Promise<void> {
   await keytar.deletePassword(SERVICE, `host:${hostId}`);
 }
+
+/* ---------- MCP 本地访问令牌 ----------
+   只存系统钥匙串:不写 settings.json,避免明文令牌跟着备份/同步走。
+   MCP 是**本机**能力,令牌只是防止同机其它程序随便连,不外发。 */
+
+const MCP_TOKEN_ACCOUNT = "mcp:token";
+
+export async function getMcpToken(): Promise<string | null> {
+  return await keytar.getPassword(SERVICE, MCP_TOKEN_ACCOUNT);
+}
+
+export async function setMcpToken(token: string): Promise<void> {
+  await keytar.setPassword(SERVICE, MCP_TOKEN_ACCOUNT, token);
+}

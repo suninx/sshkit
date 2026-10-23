@@ -100,6 +100,23 @@ export function installBridge(overrides: Record<string, Behavior> = {}, opts: { 
       download: record("sftp.download", overrides["sftp.download"] ?? (async () => ({ jobId: 2 }))),
       onProgress: record("sftp.onProgress", overrides["sftp.onProgress"] ?? (() => () => undefined)),
     },
+    /* 内置 MCP 服务器:状态/开关/活动流 */
+    mcp: {
+      status: record("mcp.status", overrides["mcp.status"] ?? (async () => ({
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+      }))),
+      set: record("mcp.set", overrides["mcp.set"] ?? (async () => ({
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+      }))),
+      regenerateToken: record("mcp.regenerateToken", overrides["mcp.regenerateToken"] ?? (async () => ({
+        running: false, port: 7788, token: "tok2", clients: [], error: null, activity: [],
+      }))),
+      clearActivity: record("mcp.clearActivity", overrides["mcp.clearActivity"] ?? (async () => ({
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+      }))),
+      onActivity: record("mcp.onActivity", overrides["mcp.onActivity"] ?? (() => () => undefined)),
+      onStatus: record("mcp.onStatus", overrides["mcp.onStatus"] ?? (() => () => undefined)),
+    },
     local: {
       list: record("local.list", overrides["local.list"] ?? (async () => ({ path: "/home/u", entries: [] }))),
       mkdir: record("local.mkdir", overrides["local.mkdir"] ?? (async () => undefined)),

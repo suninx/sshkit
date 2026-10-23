@@ -48,6 +48,7 @@ let BrowserWin: any;
 let clipboardState: { text: string };
 let dialogState: { openResult: string[] | null; messages: string[] };
 let sshClients: any[];
+let setSftpFailure: (v: boolean) => void;
 
 /* ---------------- vi.mock:electron ---------------- */
 vi.mock("electron", async () => {
@@ -206,6 +207,7 @@ vi.mock("ssh2", async () => {
     }
   }
 
+  let failSftpAll = false;
   class FakeClient extends EventEmitter {
     static instances: FakeClient[] = [];
     config: Record<string, unknown> | null = null;
@@ -236,6 +238,7 @@ vi.mock("ssh2", async () => {
     }
     sftp(cb: (e: Error | null, s?: FakeSftp) => void): void {
       this.sftpCalls++;
+      if (failSftpAll) { cb(new Error("Unable to start subsystem: sftp")); return; }
       if (this.deferSftp) { this.pendingSftp.push(cb); return; }
       if (this.failSftp) { cb(new Error("Unable to start subsystem: sftp")); return; }
       cb(null, this.sftpObj);
@@ -244,7 +247,7 @@ vi.mock("ssh2", async () => {
     unforwardIn(a: string, p: number): void { this.unforwardCalls.push([a, p]); }
     end(): void { this.ended++; }
   }
-  return { Client: FakeClient, __clients: FakeClient.instances };
+  return { Client: FakeClient, __clients: FakeClient.instances, __setSftpFailure: (v: boolean) => { failSftpAll = v; } };
 });
 
 let addHostKey: typeof import("../../src/main/knownhosts").addHostKey;
@@ -281,8 +284,9 @@ beforeAll(async () => {
   addHostKey = kh.addHostKey;
   knownHostField = kh.knownHostField;
   await import("../../src/main/main");
-  const ssh2 = (await import("ssh2")) as unknown as { __clients: any[] };
+  const ssh2 = (await import("ssh2")) as unknown as { __clients: any[]; __setSftpFailure: (v: boolean) => void };
   sshClients = ssh2.__clients;
+  setSftpFailure = ssh2.__setSftpFailure;
   await waitFor(() => em.windows.length >= 1, "initial window created");
 });
 
@@ -963,5 +967,234 @@ describe("chmod 接线", () => {
     expect(fs.statSync(f).mode & 0o200).toBe(0);           // 只读:写位清零
     await em.invoke("local:chmod", f, 0o666);
     expect(fs.statSync(f).mode & 0o200).not.toBe(0);       // 恢复可写
+  });
+});
+
+/* ======================= MCP 内置服务器(阶段 1) =======================
+   用**真实 http 端口**走一遍:initialize → tools/list → tools/call,
+   再验证活动流推给渲染层、令牌轮换、停用、端口被占的错误路径。 */
+describe("MCP 服务器接线", () => {
+  const freePort = async (): Promise<number> => {
+    const net = await import("node:net");
+    const srv = net.createServer();
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", () => r()));
+    const port = (srv.address() as { port: number }).port;
+    await new Promise<void>((r) => srv.close(() => r()));
+    return port;
+  };
+
+  const mcpRpc = async (port: number, token: string, body: unknown, session?: string): Promise<any> => {
+    const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${token}` };
+    if (session) headers["mcp-session-id"] = session;
+    const res = await fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST", headers, body: JSON.stringify(body) });
+    const txt = await res.text();
+    return { status: res.status, session: res.headers.get("mcp-session-id"), body: txt ? JSON.parse(txt) : null };
+  };
+
+  /* 换令牌会"先停再起"同一个端口:重启瞬间可能还没开始监听,重试几次再断言 */
+  const mcpRpcWhenUp = async (port: number, token: string, body: unknown, tries = 60): Promise<any> => {
+    for (let i = 0; ; i++) {
+      try {
+        return await mcpRpc(port, token, body);
+      } catch (err) {
+        if (i >= tries) throw err;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    }
+  };
+
+  it("默认关闭、令牌自动生成;启动后能列出主机、调用只读工具,且每次调用都进活动流", async () => {
+    const st0 = (await em.invoke("mcp:status")) as any;
+    expect(st0).toMatchObject({ running: false, clients: [], error: null, activity: [] });
+    expect(st0.token).toMatch(/^[0-9a-f]{64}$/);
+
+    const host = (await em.invoke("hosts:create", hostInput({ name: "mcp-target", host: "127.0.0.1" }))) as { id: string; name: string };
+    /* 主机存的是密码认证:凭据放钥匙串,主进程开 aux 连接时会取(与界面连接同一条路径) */
+    await em.invoke("creds:put", host.id, { password: "pw" });
+    const port = await freePort();
+    const st1 = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    expect(st1).toMatchObject({ running: true, port, error: null });
+
+    /* 握手 + 列工具 */
+    const init = await mcpRpc(port, st1.token, {
+      jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", clientInfo: { name: "vitest", version: "1" } },
+    });
+    expect(init.status).toBe(200);
+    const session = init.session as string;
+    expect(init.body.result.serverInfo.name).toBe("sshkit");
+
+    const list = await mcpRpc(port, st1.token, { jsonrpc: "2.0", id: 2, method: "tools/list" }, session);
+    expect(list.body.result.tools.map((t: any) => t.name)).toEqual(["list_hosts", "sftp_list", "sftp_read_file", "sftp_stat"]);
+
+    const hostsCall = await mcpRpc(port, st1.token, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_hosts" } }, session);
+    expect(hostsCall.body.result.content[0].text).toContain(host.name);
+
+    /* 真的开一条 aux 连接并列出远端目录(ssh2 是假实现,但走的是生产代码路径) */
+    known("127.0.0.1");
+    const ls = await mcpRpc(port, st1.token, {
+      jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "sftp_list", arguments: { host: host.id, path: "/" } },
+    }, session);
+    expect(ls.body.result.isError).toBeUndefined();
+    expect(JSON.parse(ls.body.result.content[0].text)).toMatchObject({ path: "/", count: 0 });
+
+    /* 未知主机的可读错误(不抛协议错,isError + 可用主机清单) */
+    const missing = await mcpRpc(port, st1.token, {
+      jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "sftp_stat", arguments: { host: "nope", path: "/" } },
+    }, session);
+    expect(missing.body.result.isError).toBe(true);
+    expect(missing.body.result.content[0].text).toContain("unknown host");
+
+    /* 状态里能看到客户端与活动;活动事件推给了渲染层 */
+    const st2 = (await em.invoke("mcp:status")) as any;
+    expect(st2.clients).toEqual(["vitest 1"]);
+    expect(st2.activity.length).toBeGreaterThan(0);
+    /* 主窗口推送记在 em.webContents.sent(不是 IPC 的 event.sender) */
+    expect(em.webContents.sent.some((e) => e[0] === "mcp:activity")).toBe(true);
+    expect(em.webContents.sent.some((e) => e[0] === "mcp:status")).toBe(true);
+
+    /* 令牌轮换:换完旧令牌立刻失效,新令牌可用 */
+    const st3 = (await em.invoke("mcp:regenerateToken")) as any;
+    expect(st3.token).not.toBe(st1.token);
+    const oldToken = await mcpRpcWhenUp(port, st1.token, { jsonrpc: "2.0", id: 6, method: "ping" });
+    expect(oldToken.status).toBe(401);
+    const newInit = await mcpRpcWhenUp(port, st3.token, { jsonrpc: "2.0", id: 7, method: "initialize", params: { clientInfo: { name: "vitest" } } });
+    expect(newInit.status).toBe(200);
+
+    /* 清空活动 + 停用 */
+    const cleared = (await em.invoke("mcp:clearActivity")) as any;
+    expect(cleared.activity).toEqual([]);
+    const off = (await em.invoke("mcp:set", { enabled: false })) as any;
+    expect(off).toMatchObject({ running: false, clients: [] });
+    await expect(fetch(`http://127.0.0.1:${port}/mcp`)).rejects.toThrow();
+  });
+
+  it("端口非法值被忽略;端口被占用时如实报错(不假装在跑)", async () => {
+    const port = await freePort();
+    const st1 = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    expect(st1.running).toBe(true);
+
+    const keep = (await em.invoke("mcp:set", { port: 0 })) as any;
+    expect(keep.port).toBe(port);
+    const keep2 = (await em.invoke("mcp:set", { port: 70_000 })) as any;
+    expect(keep2.port).toBe(port);
+
+    await em.invoke("mcp:set", { enabled: false });
+    /* 先占住端口,再让 MCP 去监听同一个端口 */
+    const net = await import("node:net");
+    const blocker = net.createServer();
+    await new Promise<void>((r) => blocker.listen(port, "127.0.0.1", () => r()));
+    const bad = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    expect(bad.running).toBe(false);
+    expect(String(bad.error)).toMatch(/EADDRINUSE/);
+    await new Promise<void>((r) => blocker.close(() => r()));
+    await em.invoke("mcp:set", { enabled: false });
+  });
+
+  it("agent 认证不开钥匙串;read/stat 工具也走同一条连接;子系统起不来时给出可读错误", async () => {
+    const host = (await em.invoke("hosts:create", hostInput({ name: "mcp-agent", host: "127.0.0.1", authType: "agent" }))) as { id: string; name: string };
+    const port = await freePort();
+    const st = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    try {
+      const init = await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "t" } } });
+      const session = init.session as string;
+      const call = async (id: number, name: string, args: Record<string, unknown>): Promise<any> =>
+        (await mcpRpc(port, st.token, { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } }, session)).body.result;
+
+      known("127.0.0.1");
+      /* 假 SFTP 里没有这个文件 → stat/read 都返回 isError,但走的是生产代码的池子路径 */
+      /* SFTP 子系统起不来的情况:必须用一台**新**主机,否则会复用上面缓存住的连接 */
+      const brokenHost = (await em.invoke("hosts:create", hostInput({ name: "mcp-broken", host: "127.0.0.1", authType: "agent" }))) as { id: string };
+      known("127.0.0.1");
+      setSftpFailure(true);
+      const broken = await call(2, "sftp_list", { host: brokenHost.id, path: "/" });
+      setSftpFailure(false);
+      expect(broken.isError).toBe(true);
+
+      /* 假 SFTP 里没有这个文件 → stat/read 都返回 isError,但走的是生产代码的池子路径 */
+      const stat = await call(3, "sftp_stat", { host: host.id, path: "/nope" });
+      expect(stat.isError).toBe(true);
+      const read = await call(4, "sftp_read_file", { host: host.id, path: "/nope" });
+      expect(read.isError).toBe(true);
+    } finally {
+      setSftpFailure(false);
+      await em.invoke("mcp:set", { enabled: false });
+    }
+  });
+
+  it("活动超过上限时只保留最近 200 条", async () => {
+    const port = await freePort();
+    const st = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    try {
+      const init = await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "t" } } });
+      const session = init.session as string;
+      /* 每次调用只产生一条活动(running→ok 同 id 覆盖)→ 250 次足以越过 200 上限 */
+      for (let i = 0; i < 250; i++) {
+        await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 100 + i, method: "tools/call", params: { name: "list_hosts" } }, session);
+      }
+      const st2 = (await em.invoke("mcp:status")) as any;
+      expect(st2.activity.length).toBe(200);
+    } finally {
+      await em.invoke("mcp:set", { enabled: false });
+    }
+  });
+
+  it("停用状态下换令牌不会去启停服务器", async () => {
+    const before = (await em.invoke("mcp:status")) as any;
+    const after = (await em.invoke("mcp:regenerateToken")) as any;
+    expect(after.running).toBe(false);
+    expect(after.token).not.toBe(before.token);
+  });
+
+  it("设置开启时 bootMcp 拉起服务器;令牌已存在则复用", async () => {
+    const port = await freePort();
+    /* 只写端口、保持关闭:此时不会启动服务器 */
+    const off = (await em.invoke("mcp:set", { enabled: false, port })) as any;
+    expect(off.running).toBe(false);
+    const mod = (await import("../../src/main/main")) as unknown as {
+      bootMcp: (s: { enabled: boolean }) => Promise<void>;
+      ensureMcpToken: () => Promise<void>;
+    };
+    await mod.bootMcp({ enabled: true });
+    const on = (await em.invoke("mcp:status")) as any;
+    expect(on).toMatchObject({ running: true, port });
+    /* 每个用例的 beforeEach 会清空钥匙串:把令牌放回去再验"已存在则复用"分支 */
+    keychain.set("sshkit|mcp:token", on.token);
+    await mod.ensureMcpToken();
+    const again = (await em.invoke("mcp:status")) as any;
+    expect(again.token).toBe(on.token);
+    await em.invoke("mcp:set", { enabled: false });
+  });
+
+  it("窗口被销毁(destroyed)时活动同样不推送", async () => {
+    const port = await freePort();
+    const st = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    /* mainWindow 是"最后创建的那个"窗口:逐个改成 destroyed,避免改错对象 */
+    const wins = em.windows as unknown as Array<{ isDestroyed: () => boolean }>;
+    const orig = wins.map((w) => w.isDestroyed);
+    for (const w of wins) w.isDestroyed = () => true;
+    try {
+      /* 只看 mcp:* 通道:主窗口其它推送(例如 tab/sftp)与这里无关 */
+      const mcpBefore = em.webContents.sent.filter((e) => String(e[0]).startsWith("mcp:")).length;
+      await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "x" } } });
+      await em.invoke("mcp:clearActivity");
+      expect(em.webContents.sent.filter((e) => String(e[0]).startsWith("mcp:")).length).toBe(mcpBefore);
+    } finally {
+      wins.forEach((w, i) => { w.isDestroyed = orig[i]; });
+      await em.invoke("mcp:set", { enabled: false });
+    }
+  });
+
+  it("窗口关掉后活动不再推送(mainWindow 为空时不能 send)", async () => {
+    const port = await freePort();
+    const st = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    /* 关掉主窗口:main.ts 的 closed 回调会把 mainWindow 置空 */
+    const win = em.windows[0] as unknown as { emit: (ev: string) => void };
+    const mcpBefore = em.webContents.sent.filter((e) => String(e[0]).startsWith("mcp:")).length;
+    win.emit("closed");
+    await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "x" } } });
+    const cleared = (await em.invoke("mcp:clearActivity")) as any;
+    expect(cleared.activity).toEqual([]);
+    expect(em.webContents.sent.filter((e) => String(e[0]).startsWith("mcp:")).length).toBe(mcpBefore);
+    await em.invoke("mcp:set", { enabled: false });
   });
 });

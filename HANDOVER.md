@@ -105,6 +105,35 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 
 **唯一保留并要完善的是 SFTP**:递归目录传输 / 断点续传 / 拖拽 / 进度。见 §8 计划。
 
+## 4.6 内置 MCP 服务器(阶段 1:已交付)
+
+**用户诉求原话**:"我想要的是 ai 助手做,我还能直观地看" → 结论是
+**sshkit 当 MCP 服务器,AI 客户端(Claude Code / Codex / IDEA+Junie)通过 MCP 操作主机,
+sshift 负责执行并把每次调用渲染到界面**。不是内置 agent(不接模型 API、不要 API key)。
+
+- 传输:**Streamable HTTP**(`POST/GET/DELETE /mcp`),只绑 `127.0.0.1`,默认端口 **7788**,
+  `Authorization: Bearer <token>`。协议版本协商 `2025-06-18 / 2025-03-26 / 2024-11-05`。
+- 令牌:32 字节随机,**存系统钥匙串**(account = `mcp:token`),首次启动生成;
+  `mcp:regenerateToken` 会换令牌并重启服务器。
+- 工具(阶段 1 只读 4 个):`list_hosts` / `sftp_list` / `sftp_read_file` / `sftp_stat`。
+  输出有上限(列表 500 条且超长时少放几条保持 JSON 合法;读文件 128KB),参数只认 `host`(=id 或名字)+ 路径。
+- 凭据:**不经过 MCP**。客户端只拿 hostId/名字,密码/私钥仍由主进程从钥匙串读;
+  MCP 连接池按主机开独立 aux 连接,闲置 2 分钟自动关(`src/main/mcp/pool.ts`)。
+- 可视化(MCP 分区,左栏第 6 项):运行状态/地址/已连接客户端 + 每次调用一行
+  (时间、客户端、工具 + host/path、状态、耗时),点开看参数/结果;`running→最终状态`
+  **复用同一 id 原地更新**(不会出现两行);活动内存上限 200 条;可清空。
+- 设置:「复制客户端配置」直接给出 `mcpServers` JSON(Claude Code / Codex / VS Code 通用),
+  「换令牌」「停用/启用」。
+- 关键代码:`src/main/mcp/{server,remote,tools,pool}.ts`、`src/renderer/mcp.ts`、
+  `src/shared/mcp.ts`;协议常量与活动模型都在 shared。
+
+**真机验证(2026-10-23)**:自写 MCP 客户端对 `10.0.0.193` 跑通
+`initialize → tools/list → list_hosts → sftp_list /root(22 项)→ sftp_read_file /etc/hostname(→ node1)
+→ sftp_stat /etc/ssh`,UI 活动面板逐条显示、耗时 43/146/665ms。
+
+**下一步(阶段 2,未做)**:写工具(`sftp_write_file/mkdir/rename/remove/chmod/upload/download`)、
+`ssh_exec`(在真实终端里可见/可接管)、只读/标准/全自动三档权限、审计落盘、客户端级授权。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。

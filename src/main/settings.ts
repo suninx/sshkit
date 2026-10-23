@@ -5,13 +5,16 @@ import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import type { LocalePref } from "../shared/i18n";
+import { MCP_DEFAULT_PORT, type McpSettings } from "../shared/mcp";
 
 export interface Settings {
   /** "system" 跟随系统;否则强制 zh / en */
   locale: LocalePref;
+  /** 内置 MCP 服务器(默认关闭;端口只绑 127.0.0.1) */
+  mcp: McpSettings;
 }
 
-const DEFAULTS: Settings = { locale: "system" };
+const DEFAULTS: Settings = { locale: "system", mcp: { enabled: false, port: MCP_DEFAULT_PORT } };
 
 let cache: Settings | null = null;
 
@@ -21,7 +24,8 @@ export function getSettings(): Settings {
   if (cache) return cache;
   try {
     const raw = JSON.parse(fs.readFileSync(file(), "utf-8")) as Partial<Settings>;
-    cache = { ...DEFAULTS, ...raw };
+    /* mcp 是嵌套对象:浅合并会把旧文件里缺失的字段吃掉,单独合一层 */
+    cache = { ...DEFAULTS, ...raw, mcp: { ...DEFAULTS.mcp, ...(raw.mcp ?? {}) } };
   } catch {
     cache = { ...DEFAULTS };
   }

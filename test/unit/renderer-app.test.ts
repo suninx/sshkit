@@ -139,6 +139,23 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
       put: rec("creds.put", o("creds.put", async () => undefined)),
     },
     ssh: { connect: rec("ssh.connect", o("ssh.connect", async () => ({ id: newId() }))) },
+    /* 内置 MCP 服务器(状态/开关/活动流) */
+    mcp: {
+      status: rec("mcp.status", o("mcp.status", async () => ({
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+      }))),
+      set: rec("mcp.set", o("mcp.set", async () => ({
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+      }))),
+      regenerateToken: rec("mcp.regenerateToken", o("mcp.regenerateToken", async () => ({
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+      }))),
+      clearActivity: rec("mcp.clearActivity", o("mcp.clearActivity", async () => ({
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+      }))),
+      onActivity: rec("mcp.onActivity", o("mcp.onActivity", () => () => undefined)),
+      onStatus: rec("mcp.onStatus", o("mcp.onStatus", () => () => undefined)),
+    },
     window: {
       create: rec("window.create", o("window.create", async () => true)),
       /* 无边框窗口的自绘按钮(preload 同名 API) */
@@ -1207,6 +1224,36 @@ describe("分区屏", () => {
     click(nav("hosts"));
     await waitFor(() => activeTab()!.dataset.kind === "vault");
     expect(nav("hosts").classList.contains("on")).toBe(true);
+  });
+
+  it("MCP 分区:显示服务器状态与活动流;工具条可清空记录;重复点击只激活", async () => {
+    const { calls } = await boot({
+      overrides: {
+        "mcp.status": async () => ({
+          running: true, port: 7788, token: "tok", clients: ["Claude Code 2.0"], error: null,
+          activity: [{ id: 1, at: Date.now(), client: "Claude Code 2.0", method: "tools/call", tool: "sftp_list",
+            status: "ok", ms: 3, args: '{"host":"prod","path":"/var/www"}', result: "ok" }],
+        }),
+        "mcp.clearActivity": async () => ({
+          running: true, port: 7788, token: "tok", clients: [], error: null, activity: [],
+        }),
+      },
+    });
+    click(nav("mcp"));
+    await waitFor(() => tabKinds().includes("mcp"));
+    expect(activeTab()!.dataset.kind).toBe("mcp");
+    await waitFor(() => !!document.querySelector(".tab-pane.active .mcp-act"));
+    expect(document.querySelector(".tab-pane.active .mcp-act .mcp-act-title")!.textContent).toContain("sftp_list");
+    expect(nav("mcp").classList.contains("on")).toBe(true);
+
+    const clearBtn = [...document.querySelectorAll<HTMLElement>(".tab-pane.active .sec-band button")]
+      .find((b) => b.textContent === "Clear calls");
+    clearBtn!.click();
+    await waitFor(() => count(calls, "mcp.clearActivity") === 1);
+
+    click(nav("mcp"));
+    await flush(3);
+    expect(tabKinds().filter((k) => k === "mcp").length).toBe(1);
   });
 
   it("Snippets 分区:无会话时提示,有会话时把命令写进会话;删除走桥", async () => {

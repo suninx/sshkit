@@ -12,6 +12,14 @@ import { importKnownHosts, listKnownHosts, removeKnownHost } from "./knownhosts"
 import { deleteCreds, getCreds, putCreds } from "./keystore";
 import { SnippetStore } from "./snippets";
 import type { HostInput } from "../shared/host";
+import type { SFTPWrapper } from "ssh2";
+import { randomBytes } from "node:crypto";
+import { startMcpServer, type McpServerHandle } from "./mcp/server";
+import { buildReadTools, type McpToolDeps } from "./mcp/tools";
+import { RemotePool } from "./mcp/pool";
+import { listRemote, readRemote, statRemote } from "./mcp/remote";
+import { getMcpToken, setMcpToken } from "./keystore";
+import { MCP_ACTIVITY_LIMIT, MCP_SSE_PING_MS, type McpActivity, type McpStatus } from "../shared/mcp";
 
 /** macOS 专属窗口 chrome:原版没有原生标题栏,红绿灯浮在内容上。
  *  **纯函数**(平台由调用方传入),便于在任意平台覆盖两个分支。 */
@@ -380,12 +388,147 @@ ipcMain.handle("local:mkdir", (_e, dir: string) => sftpController.mkdirLocal(dir
 ipcMain.handle("local:remove", (_e, target: string) => sftpController.removeLocal(target));
 ipcMain.handle("local:rename", (_e, from: string, to: string) => sftpController.renameLocal(from, to));
 
+/* ---------- 内置 MCP 服务器(阶段 1:只读工具 + 活动流) ----------
+   AI 客户端(Claude Code / Codex / IDEA+Junie)通过本地 HTTP 调这些工具,
+   sshkit 负责执行并把每次调用推给渲染层 —— 用户要"AI 能操作,但我看得见"。
+   凭据不经过 MCP:工具只收 hostId/主机名,密码/私钥仍从这里查钥匙串。 */
+
+let mcpHandle: McpServerHandle | null = null;
+let mcpToken = "";
+let mcpClients: string[] = [];
+let mcpError: string | null = null;
+const mcpActivity: McpActivity[] = [];
+
+const mcpStatus = (): McpStatus => ({
+  running: mcpHandle !== null,
+  port: mcpHandle?.port ?? getSettings().mcp.port,
+  token: mcpToken,
+  clients: mcpClients,
+  error: mcpError,
+  activity: mcpActivity,
+});
+
+const pushMcpStatus = (): void => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mcp:status", mcpStatus());
+};
+
+const pushMcpActivity = (ev: McpActivity): void => {
+  /* 同一次调用(running → ok/error)复用 id:原地更新,活动流里只留一行 */
+  const idx = mcpActivity.findIndex((a) => a.id === ev.id);
+  if (idx >= 0) mcpActivity[idx] = ev;
+  else mcpActivity.unshift(ev);
+  if (mcpActivity.length > MCP_ACTIVITY_LIMIT) mcpActivity.length = MCP_ACTIVITY_LIMIT;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mcp:activity", ev);
+};
+
+/* 主机 id → 独立 SFTP 连接(闲置 2 分钟自动关),与 SftpController 的 aux 连接同一思路 */
+const mcpPool = new RemotePool(async (hostId: string) => {
+  /* 工具层已经用 hostStore 校验过主机存在(resolveHost),这里直接取 */
+  const host = hostStore.get(hostId)!;
+  const secrets = host.authType === "password" || host.authType === "key" ? await getCreds(hostId) : {};
+  const client = await sshService.openAux(host, secrets);
+  const sftp = await new Promise<SFTPWrapper>((resolve, reject) => {
+    client.sftp((err, wrapper) => (err ? reject(err) : resolve(wrapper)));
+  });
+  return {
+    sftp,
+    close: () => { try { client.end(); } catch { /* 已断开 */ } },
+  };
+});
+
+const mcpDeps: McpToolDeps = {
+  listHosts: () => hostStore.list().map((h) => ({
+    id: h.id, name: h.name, host: h.host, port: h.port, username: h.username, authType: h.authType,
+  })),
+  findHost: (q) => {
+    const h = hostStore.list().find((x) => x.id === q || x.name === q);
+    return h ? { id: h.id, name: h.name, host: h.host, port: h.port, username: h.username, authType: h.authType } : undefined;
+  },
+  remote: {
+    list: async (hostId, dir) => listRemote((await mcpPool.get(hostId)).sftp, dir),
+    read: async (hostId, file, maxBytes) => readRemote((await mcpPool.get(hostId)).sftp, file, maxBytes),
+    stat: async (hostId, p) => statRemote((await mcpPool.get(hostId)).sftp, p),
+  },
+};
+
+async function startMcp(): Promise<void> {
+  mcpError = null;
+  try {
+    mcpHandle = await startMcpServer({
+      port: getSettings().mcp.port,
+      token: mcpToken,
+      version: app.getVersion(),
+      tools: buildReadTools(mcpDeps),
+      pingMs: MCP_SSE_PING_MS,
+      onActivity: pushMcpActivity,
+      onClients: (clients) => { mcpClients = clients; pushMcpStatus(); },
+    });
+  } catch (err) {
+    /* 端口被占/权限不足:如实记下原因,让 UI 显示"启动失败"而不是假装在跑 */
+    mcpHandle = null;
+    mcpError = String((err as Error).message);
+  }
+  pushMcpStatus();
+}
+
+async function stopMcp(): Promise<void> {
+  const handle = mcpHandle;
+  mcpHandle = null;
+  mcpClients = [];
+  mcpError = null;
+  mcpPool.closeAll();
+  await handle!.close();
+  pushMcpStatus();
+}
+
+/** ready 后按设置决定是否启动 MCP(导出:两个分支都要被测到) */
+export async function bootMcp(settings: { enabled: boolean }): Promise<void> {
+  if (settings.enabled) await startMcp();
+}
+
+/** 令牌首次使用时生成(32 字节随机),之后一直从钥匙串读(导出便于单测"已存在"分支) */
+export async function ensureMcpToken(): Promise<void> {
+  mcpToken = (await getMcpToken()) ?? "";
+  if (!mcpToken) {
+    mcpToken = randomBytes(32).toString("hex");
+    await setMcpToken(mcpToken);
+  }
+}
+
+ipcMain.handle("mcp:status", () => mcpStatus());
+ipcMain.handle("mcp:set", async (_e, patch: { enabled?: boolean; port?: number }) => {
+  const cur = getSettings().mcp;
+  const next = {
+    enabled: patch.enabled ?? cur.enabled,
+    port: typeof patch.port === "number" && patch.port > 0 && patch.port < 65_536 ? patch.port : cur.port,
+  };
+  setSetting("mcp", next);
+  const wasRunning = mcpHandle !== null;
+  if (next.enabled) {
+    if (wasRunning) await stopMcp();
+    await startMcp();
+  } else if (wasRunning) {
+    await stopMcp();
+  }
+  return mcpStatus();
+});
+ipcMain.handle("mcp:regenerateToken", async () => {
+  mcpToken = randomBytes(32).toString("hex");
+  await setMcpToken(mcpToken);
+  if (mcpHandle) { await stopMcp(); await startMcp(); }
+  return mcpStatus();
+});
+ipcMain.handle("mcp:clearActivity", () => { mcpActivity.length = 0; pushMcpStatus(); return mcpStatus(); });
+
 /* dev 模式下进程名/图标都来自 Electron 自己的 bundle(菜单栏会显示 "Electron")。
    显式设置应用名与 Dock 图标,让开发时的表现接近打包后的样子。 */
 app.setName("sshkit");
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   setDockIcon(process.platform, (file) => app.dock?.setIcon(file));
+  /* MCP:先确保令牌存在,再按用户设置决定是否启动(默认关闭) */
+  await ensureMcpToken();
+  await bootMcp(getSettings().mcp);
   installAboutPanel();   // 必须在 ready 之后,否则 setAboutPanelOptions 不生效
   installAppMenu();
   createWindow();
