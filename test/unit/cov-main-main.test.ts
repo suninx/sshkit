@@ -1138,6 +1138,18 @@ describe("MCP 服务器接线", () => {
     }
   });
 
+  it("钥匙串不可用时启动仍然成功(令牌退化成进程内,不能挡住开窗)", async () => {
+    const mod = (await import("../../src/main/main")) as unknown as { ensureMcpToken: () => Promise<void> };
+    keychainBroken = true;
+    try {
+      await mod.ensureMcpToken();
+      const st = (await em.invoke("mcp:status")) as any;
+      expect(st.token).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      keychainBroken = false;
+    }
+  });
+
   it("停用状态下换令牌不会去启停服务器", async () => {
     const before = (await em.invoke("mcp:status")) as any;
     const after = (await em.invoke("mcp:regenerateToken")) as any;

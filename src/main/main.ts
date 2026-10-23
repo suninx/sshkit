@@ -486,12 +486,24 @@ export async function bootMcp(settings: { enabled: boolean }): Promise<void> {
   if (settings.enabled) await startMcp();
 }
 
-/** 令牌首次使用时生成(32 字节随机),之后一直从钥匙串读(导出便于单测"已存在"分支) */
+/** 令牌首次使用时生成(32 字节随机),之后一直从钥匙串读(导出便于单测)。
+    ⚠️ 必须在 ready 回调里**不能抛**:Linux 上无 libsecret/secret service 时 keytar 会抛
+    (CI 的 ubuntu runner 就是),一旦这里 reject,后面的 createWindow 就不会执行 ——
+    表现为"应用起来但没有窗口"。所以钥匙串不可用时退化成**进程内令牌**。 */
 export async function ensureMcpToken(): Promise<void> {
-  mcpToken = (await getMcpToken()) ?? "";
+  try {
+    mcpToken = (await getMcpToken()) ?? "";
+  } catch (err) {
+    console.warn("[mcp] 钥匙串不可用,令牌只保留在本次进程内:", err);
+    mcpToken = "";
+  }
   if (!mcpToken) {
     mcpToken = randomBytes(32).toString("hex");
-    await setMcpToken(mcpToken);
+    try {
+      await setMcpToken(mcpToken);
+    } catch (err) {
+      console.warn("[mcp] 令牌写入钥匙串失败(仅本次运行有效):", err);
+    }
   }
 }
 
