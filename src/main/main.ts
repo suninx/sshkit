@@ -459,6 +459,48 @@ const mcpPool = new RemotePool(async (hostId: string) => {
   };
 });
 
+/* ===== 共用执行层:MCP 的 ssh_exec 与「多主机命令面板」都走这里 =====
+   用 aux 连接(不占交互会话),输出按 64KiB/流截断,支持 AbortSignal 取消。 */
+interface RemoteExecResult { stdout: string; stderr: string; exitCode: number; truncated: boolean }
+
+async function runRemoteCommand(
+  hostId: string,
+  command: string,
+  signal: AbortSignal,
+  onChunk?: (chunk: string, stream: "out" | "err") => void,
+): Promise<RemoteExecResult> {
+  const host = hostStore.get(hostId)!;
+  const secrets = host.authType === "password" || host.authType === "key" ? await getCreds(hostId) : {};
+  const client = await sshService.openAux(host, secrets);
+  try {
+    return await new Promise<RemoteExecResult>((resolve, reject) => {
+      const bufs = { out: "", err: "" };
+      let truncated = false;
+      const append = (which: "out" | "err", chunk: string): void => {
+        const room = Math.max(0, 64 * 1024 - bufs[which].length);
+        if (chunk.length > room) truncated = true;
+        bufs[which] += chunk.slice(0, room);
+        onChunk?.(chunk, which);
+      };
+      const onAbort = (): void => { reject(new Error("exec cancelled")); };
+      signal.addEventListener("abort", onAbort);
+      client.exec(command, (e, stream) => {
+        if (e) { signal.removeEventListener("abort", onAbort); reject(e); return; }
+        stream.on("data", (d: Buffer) => append("out", d.toString("utf-8")));
+        stream.stderr.on("data", (d: Buffer) => append("err", d.toString("utf-8")));
+        stream.on("close", (code: number | null) => {
+          signal.removeEventListener("abort", onAbort);
+          const exitCode = code ?? 0;
+          resolve({ stdout: bufs.out, stderr: bufs.err, exitCode, truncated });
+        });
+        stream.on("error", (er: Error) => { signal.removeEventListener("abort", onAbort); reject(er); });
+      });
+    });
+  } finally {
+    try { client.end(); } catch { /* 已断开 */ }
+  }
+}
+
 const mcpDeps: McpToolDeps = {
   listHosts: () => hostStore.list().map((h) => ({
     id: h.id, name: h.name, host: h.host, port: h.port, username: h.username, authType: h.authType,
@@ -486,41 +528,16 @@ const mcpDeps: McpToolDeps = {
     },
     exec: async (hostId, command, signal) => {
       const host = hostStore.get(hostId)!;
-      const secrets = host.authType === "password" || host.authType === "key" ? await getCreds(hostId) : {};
-      const client = await sshService.openAux(host, secrets);
       const execId = randomBytes(8).toString("hex");
       const sendExec = (ev: Partial<McpExecEvent>): void => {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mcp:exec", { id: execId, hostName: host.name, command, ...ev });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("mcp:exec", { id: execId, hostName: host.name, command, ...ev });
+        }
       };
       sendExec({});
-      try {
-        return await new Promise((resolve, reject) => {
-          const bufs = { out: "", err: "" };
-          let truncated = false;
-          const append = (which: "out" | "err", chunk: string): void => {
-            const room = Math.max(0, 64 * 1024 - bufs[which].length);
-            if (chunk.length > room) truncated = true;
-            bufs[which] += chunk.slice(0, room);
-            sendExec({ chunk, stream: which });
-          };
-          const onAbort = (): void => { reject(new Error("exec cancelled")); };
-          signal.addEventListener("abort", onAbort);
-          client.exec(command, (e, stream) => {
-            if (e) { signal.removeEventListener("abort", onAbort); reject(e); return; }
-            stream.on("data", (d: Buffer) => append("out", d.toString("utf-8")));
-            stream.stderr.on("data", (d: Buffer) => append("err", d.toString("utf-8")));
-            stream.on("close", (code: number | null) => {
-              signal.removeEventListener("abort", onAbort);
-              const exitCode = code ?? 0;
-              sendExec({ done: true, exitCode });
-              resolve({ stdout: bufs.out, stderr: bufs.err, exitCode, truncated });
-            });
-            stream.on("error", (er: Error) => { signal.removeEventListener("abort", onAbort); reject(er); });
-          });
-        });
-      } finally {
-        try { client.end(); } catch { /* 已断开 */ }
-      }
+      const res = await runRemoteCommand(hostId, command, signal, (chunk, stream) => sendExec({ chunk, stream }));
+      sendExec({ done: true, exitCode: res.exitCode });
+      return res;
     },
   },
 };
@@ -643,6 +660,53 @@ ipcMain.handle("mcp:approval-answer", (_e, id: string, ok: boolean) => {
 });
 /* ---- STOP:中断所有在跑的调用 ---- */
 ipcMain.handle("mcp:abort", () => { mcpHandle?.abortAll(); return mcpStatus(); });
+
+/* ===== 多主机命令面板:选主机批量执行一条命令(与广播输入是两个独立入口) ===== */
+const multiExecActive = new Set<AbortController>();
+ipcMain.handle("multiexec:run", async (
+  _e, hostIds: string[], command: string,
+  opts?: { mode?: "parallel" | "serial"; timeoutMs?: number },
+) => {
+  const mode = opts?.mode === "serial" ? "serial" : "parallel";
+  const timeoutMs = Math.max(1_000, Math.min(300_000, opts?.timeoutMs ?? 60_000));
+  const runOne = async (hostId: string): Promise<unknown> => {
+    const record = hostStore.get(hostId);
+    const hostName = record ? record.name : hostId;
+    const ctl = new AbortController();
+    multiExecActive.add(ctl);
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    const started = Date.now();
+    const emit = (payload: Record<string, unknown>): void => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("multiexec:result", { hostId, hostName, ...payload });
+      }
+    };
+    emit({ state: "running", exitCode: 0, stdout: "", stderr: "", ms: 0, truncated: false });
+    try {
+      const r = await runRemoteCommand(hostId, command, ctl.signal);
+      const out = { hostId, hostName, exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr, truncated: r.truncated, ms: Date.now() - started };
+      emit({ state: "done", ...out });
+      return out;
+    } catch (err) {
+      const out = { hostId, hostName, exitCode: -1, stdout: "", stderr: String((err as Error).message), truncated: false, ms: Date.now() - started };
+      emit({ state: "error", ...out });
+      return out;
+    } finally {
+      clearTimeout(timer);
+      multiExecActive.delete(ctl);
+    }
+  };
+  if (mode === "serial") {
+    const out: unknown[] = [];
+    for (const id of hostIds) out.push(await runOne(id));
+    return out;
+  }
+  return await Promise.all(hostIds.map(runOne));
+});
+ipcMain.handle("multiexec:cancel", () => {
+  for (const ctl of multiExecActive) ctl.abort();
+  return multiExecActive.size;
+});
 
 /* dev 模式下进程名/图标都来自 Electron 自己的 bundle(菜单栏会显示 "Electron")。
    显式设置应用名与 Dock 图标,让开发时的表现接近打包后的样子。 */

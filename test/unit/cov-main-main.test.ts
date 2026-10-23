@@ -1362,6 +1362,67 @@ describe("MCP 服务器接线", () => {
     }
   });
 
+  it("多主机命令面板:并行/串行执行、失败行、取消、窗口销毁", async () => {
+    const a = (await em.invoke("hosts:create", hostInput({ name: "mx-a", host: "127.0.0.1", authType: "agent" }))) as { id: string };
+    const b = (await em.invoke("hosts:create", hostInput({ name: "mx-b", host: "127.0.0.1", authType: "agent" }))) as { id: string };
+    known("127.0.0.1");
+    setExec((stream) => { stream.emit("data", Buffer.from("ok\n")); stream.emit("close", 0); });
+    try {
+      const par = (await em.invoke("multiexec:run", [a.id, b.id], "uname", { mode: "parallel" })) as any[];
+      expect(par.map((r) => r.exitCode)).toEqual([0, 0]);
+      expect(par[0].stdout).toContain("ok");
+      const events = em.webContents.sent.filter((e) => e[0] === "multiexec:result");
+      expect(events.length).toBeGreaterThanOrEqual(4); // 2 running + 2 done
+
+      /* 串行 + 非零退出码 */
+      setExec((stream) => { stream.stderr.emit("data", Buffer.from("bad\n")); stream.emit("close", 2); });
+      const ser = (await em.invoke("multiexec:run", [a.id], "false", { mode: "serial" })) as any[];
+      expect(ser[0]).toMatchObject({ exitCode: 2 });
+      expect(ser[0].stderr).toContain("bad");
+
+      /* exec 报错 → exitCode -1 且错误进 stderr */
+      setExecError(new Error("channel boom"));
+      const failed = (await em.invoke("multiexec:run", [a.id], "x")) as any[];
+      expect(failed[0].exitCode).toBe(-1);
+      expect(failed[0].stderr).toContain("channel boom");
+      setExecError(null);
+
+      /* 取消:让 exec 卡住,再调 cancel */
+      setExec(null);
+      const hanging = em.invoke("multiexec:run", [a.id], "sleep 99") as Promise<any[]>;
+      await new Promise((r) => setTimeout(r, 60));
+      const cancelled = (await em.invoke("multiexec:cancel")) as number;
+      expect(cancelled).toBeGreaterThanOrEqual(1);
+      const hung = await hanging;
+      expect(hung[0].exitCode).toBe(-1);
+      expect(hung[0].stderr).toContain("cancel");
+
+      /* 未知主机 id:记成失败行(名字回退成 id) */
+      const unknown = (await em.invoke("multiexec:run", ["no-such-host"], "id")) as any[];
+      expect(unknown[0]).toMatchObject({ hostId: "no-such-host", hostName: "no-such-host", exitCode: -1 });
+
+      /* 超时:命令卡住,timeoutMs 到点 abort */
+      setExec(null);
+      const timedOut = (await em.invoke("multiexec:run", [a.id], "sleep 99", { timeoutMs: 1000 })) as any[];
+      expect(timedOut[0].exitCode).toBe(-1);
+      expect(timedOut[0].stderr).toContain("cancel");
+
+      /* 窗口销毁时不推送,但仍返回结果 */
+      const wins = em.windows as unknown as Array<{ isDestroyed: () => boolean }>;
+      const orig = wins.map((w) => w.isDestroyed);
+      for (const w of wins) w.isDestroyed = () => true;
+      const before = em.webContents.sent.filter((e) => e[0] === "multiexec:result").length;
+      setExec((stream) => { stream.emit("data", Buffer.from("x")); stream.emit("close", 0); });
+      const quiet = (await em.invoke("multiexec:run", [a.id], "id")) as any[];
+      expect(quiet[0].exitCode).toBe(0);
+      expect(em.webContents.sent.filter((e) => e[0] === "multiexec:result").length).toBe(before);
+      wins.forEach((w, i) => { w.isDestroyed = orig[i]; });
+    } finally {
+      setExec(null);
+      setExecError(null);
+    }
+  });
+
   it("审计:每次调用结束都追加一行 JSONL(参数脱敏)", async () => {
     const port = await freePort();
     const st = (await em.invoke("mcp:set", { enabled: true, port })) as any;

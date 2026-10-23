@@ -100,6 +100,13 @@ export function installBridge(overrides: Record<string, Behavior> = {}, opts: { 
       download: record("sftp.download", overrides["sftp.download"] ?? (async () => ({ jobId: 2 }))),
       onProgress: record("sftp.onProgress", overrides["sftp.onProgress"] ?? (() => () => undefined)),
     },
+    /* 多主机命令面板 */
+    multiexec: {
+      run: record("multiexec.run", overrides["multiexec.run"] ?? (async () => [])),
+      cancel: record("multiexec.cancel", overrides["multiexec.cancel"] ?? (async () => 0)),
+      onResult: record("multiexec.onResult", overrides["multiexec.onResult"] ?? (() => () => undefined)),
+    },
+
     /* 内置 MCP 服务器:状态/开关/活动流 */
     mcp: {
       status: record("mcp.status", overrides["mcp.status"] ?? (async () => ({

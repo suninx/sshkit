@@ -90,6 +90,14 @@ interface SshkitBridge {
   /** Finder 拖入:File → 真实路径 */
   native: { pathForFile(file: File): string };
 
+  /** 多主机命令面板 */
+  multiexec: {
+    run(hostIds: string[], command: string, opts?: { mode?: "parallel" | "serial"; timeoutMs?: number }):
+      Promise<Array<{ hostId: string; hostName: string; exitCode: number; stdout: string; stderr: string; ms: number; truncated: boolean }>>;
+    cancel(): Promise<number>;
+    onResult(cb: (ev: unknown) => void): () => void;
+  };
+
   /** 内置 MCP 服务器(阶段 1:只读工具 + 活动流) */
   mcp: {
     status(): Promise<McpStatus>;

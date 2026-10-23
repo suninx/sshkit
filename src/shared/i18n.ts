@@ -17,6 +17,18 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "toolbar.multiExec": "Run on hosts",
+  "me.title": "Run on multiple hosts",
+  "me.placeholder": "Command to run on every selected host…",
+  "me.parallel": "Parallel",
+  "me.serial": "Serial",
+  "me.run": "Run",
+  "me.cancelAll": "Stop all",
+  "me.noHosts": "No hosts yet — create one first.",
+  "me.running": "running…",
+  "me.exit": "exit",
+  "me.noOutput": "(no output)",
+  "me.summary": "{total} host(s): {ok} ok, {failed} failed",
   "menu.broadcast": "Join broadcast input",
   "menu.unbroadcast": "Leave broadcast input",
   "bc.active": "Broadcasting to {n} session(s)",
@@ -359,6 +371,18 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "toolbar.multiExec": "多主机执行",
+  "me.title": "多主机执行",
+  "me.placeholder": "要在每台选中主机上执行的命令…",
+  "me.parallel": "并行",
+  "me.serial": "串行",
+  "me.run": "执行",
+  "me.cancelAll": "全部中断",
+  "me.noHosts": "还没有主机 —— 先新建一台。",
+  "me.running": "执行中…",
+  "me.exit": "退出码",
+  "me.noOutput": "(无输出)",
+  "me.summary": "{total} 台:{ok} 成功 / {failed} 失败",
   "menu.broadcast": "加入同步输入",
   "menu.unbroadcast": "退出同步输入",
   "bc.active": "同步输入中:{n} 台",

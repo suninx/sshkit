@@ -5,6 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
 import { mountMcpSection, policyLabel } from "./mcp";
+import { openMultiExec } from "./multiexec";
 import {
   CLEAR_LINE, createBroadcastState, planWrite, removeFromBroadcast, toggleBroadcast,
 } from "./broadcast";
@@ -2031,6 +2032,11 @@ void (async () => {
   document.getElementById("btn-appearance")?.addEventListener("click", () => openPrefs());
   document.getElementById("btn-new-host-caret")?.addEventListener("click", () => {
     document.getElementById("btn-new-host")?.click();
+  });
+
+  /* 多主机命令面板 */
+  document.getElementById("btn-multiexec")?.addEventListener("click", () => {
+    void bridge.hosts.list().then((hs) => openMultiExec(hs));
   });
 
   /* MCP:AI 执行回放 */

@@ -142,6 +142,11 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
     },
     ssh: { connect: rec("ssh.connect", o("ssh.connect", async () => ({ id: newId() }))) },
     /* 内置 MCP 服务器(状态/开关/活动流) */
+    multiexec: {
+      run: rec("multiexec.run", o("multiexec.run", async () => [])),
+      cancel: rec("multiexec.cancel", o("multiexec.cancel", async () => 0)),
+      onResult: rec("multiexec.onResult", o("multiexec.onResult", () => () => undefined)),
+    },
     mcp: {
       status: rec("mcp.status", o("mcp.status", async () => ({
         running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
@@ -1355,6 +1360,16 @@ describe("分区屏", () => {
     click(nav("hosts"));
     await waitFor(() => activeTab()!.dataset.kind === "vault");
     expect(nav("hosts").classList.contains("on")).toBe(true);
+  });
+
+  it("多主机执行:工具栏按钮打开面板,主机来自 hosts.list", async () => {
+    const { calls } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    click(document.querySelector("#btn-multiexec"));
+    await waitFor(() => !!document.querySelector(".me-overlay"));
+    expect(document.querySelectorAll(".me-host input").length).toBe(1);
+    expect(calls["hosts.list"].length).toBeGreaterThan(0);
+    click(document.querySelector('.me-overlay [data-act="close"]'));
+    await waitFor(() => !document.querySelector(".me-overlay"));
   });
 
   it("AI 执行回放:收到 exec 事件就开标签页,输出逐段追加,结束显示退出码;接管按钮可用", async () => {

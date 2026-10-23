@@ -131,6 +131,18 @@ const api = {
   },
 
   /* Finder → 应用:把 drop 进来的 File 还原成真实路径(Electron 32+ 的 webUtils) */
+  /* 多主机命令面板:选主机批量执行 */
+  multiexec: {
+    run: (hostIds: string[], command: string, opts?: { mode?: "parallel" | "serial"; timeoutMs?: number }) =>
+      ipcRenderer.invoke("multiexec:run", hostIds, command, opts),
+    cancel: () => ipcRenderer.invoke("multiexec:cancel"),
+    onResult: (cb: (ev: unknown) => void) => {
+      const handler = (_e: unknown, ev: unknown) => cb(ev);
+      ipcRenderer.on("multiexec:result", handler);
+      return () => { ipcRenderer.off("multiexec:result", handler); };
+    },
+  },
+
   /* 内置 MCP 服务器:状态 / 开关 / 活动流(用户要求"AI 通过 MCP 操作,但我看得见") */
   mcp: {
     status: () => ipcRenderer.invoke("mcp:status"),
