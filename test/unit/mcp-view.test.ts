@@ -22,7 +22,7 @@ async function boot(overrides: Record<string, (...args: unknown[]) => unknown> =
 }
 
 const status = (patch: Partial<McpStatus> = {}): McpStatus => ({
-  running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], ...patch,
+  running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], allowWrite: true, ...patch,
 });
 
 const act = (patch: Partial<McpActivity> = {}): McpActivity => ({
@@ -95,7 +95,9 @@ describe("MCP 状态卡", () => {
     expect(mcp.currentMcpStatus()).toMatchObject({ running: true });
 
     const btns = [...box.querySelectorAll("button")].map((b) => b.textContent);
-    expect(btns).toEqual([i18n.tr("mcp.disable"), i18n.tr("mcp.copyConfig"), i18n.tr("mcp.regenerate")]);
+    expect(btns).toEqual([
+      i18n.tr("mcp.disable"), i18n.tr("mcp.copyConfig"), i18n.tr("mcp.regenerate"), i18n.tr("mcp.makeReadOnly"),
+    ]);
 
     (box.querySelectorAll("button")[1] as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
@@ -110,6 +112,22 @@ describe("MCP 状态卡", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(calls["mcp.regenerateToken"].length).toBe(1);
     expect(text(box)).toContain("http://127.0.0.1:7788/mcp");
+  });
+
+  it("权限档:显示徽章;点按钮切到只读", async () => {
+    await boot({ "mcp.set": async () => status({ running: true, allowWrite: false }) });
+    const box = document.createElement("div");
+    document.body.append(box);
+    mcp.paintMcp(box, status({ running: true, allowWrite: true }));
+    expect(text(box.querySelector(".mcp-mode"))).toContain(i18n.tr("mcp.modeFull"));
+    const labels = [...box.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toContain(i18n.tr("mcp.makeReadOnly"));
+
+    (box.querySelectorAll("button")[3] as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls["mcp.set"].at(-1)![0]).toEqual({ allowWrite: false });
+    expect(text(box.querySelector(".mcp-mode"))).toContain(i18n.tr("mcp.modeReadOnly"));
+    expect([...box.querySelectorAll("button")].map((b) => b.textContent)).toContain(i18n.tr("mcp.makeWritable"));
   });
 
   it("未启用:提示怎么开,并且没有已连接提示", async () => {

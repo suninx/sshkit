@@ -78,7 +78,10 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
   clients.textContent = s.clients.length > 0
     ? tr("mcp.connected", { who: s.clients.join(", ") })
     : tr("mcp.noClient");
-  line2.append(clients);
+  const mode = document.createElement("span");
+  mode.className = `mcp-mode ${s.allowWrite ? "full" : "ro"}`;
+  mode.textContent = `${tr("mcp.mode")}:${s.allowWrite ? tr("mcp.modeFull") : tr("mcp.modeReadOnly")}`;
+  line2.append(clients, mode);
 
   const line3 = document.createElement("div");
   line3.className = "mcp-line mcp-actions";
@@ -98,7 +101,10 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
   const regen = mk(s.running ? tr("mcp.regenerate") : tr("mcp.regenerate"), "ghost", () => {
     void bridge.mcp.regenerateToken().then((st) => { current = st; paintMcp(box, st); });
   });
-  line3.append(toggle, copy, regen);
+  const writeToggle = mk(s.allowWrite ? tr("mcp.makeReadOnly") : tr("mcp.makeWritable"), "ghost", () => {
+    void bridge.mcp.set({ allowWrite: !s.allowWrite }).then((st) => { current = st; paintMcp(box, st); });
+  });
+  line3.append(toggle, copy, regen, writeToggle);
   head.append(line1, line2, line3);
 
   const hint = document.createElement("div");

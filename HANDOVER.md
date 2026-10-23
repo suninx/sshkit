@@ -131,8 +131,23 @@ sshkit 负责执行并把每次调用渲染到界面**。不是内置 agent(不�
 `initialize → tools/list → list_hosts → sftp_list /root(22 项)→ sftp_read_file /etc/hostname(→ node1)
 → sftp_stat /etc/ssh`,UI 活动面板逐条显示、耗时 43/146/665ms。
 
-**下一步(阶段 2,未做)**:写工具(`sftp_write_file/mkdir/rename/remove/chmod/upload/download`)、
-`ssh_exec`(在真实终端里可见/可接管)、只读/标准/全自动三档权限、审计落盘、客户端级授权。
+### 阶段 2(2026-10-23 已交付):写入 / 传输工具 + 权限档
+
+- 新增 7 个写工具:`sftp_mkdir` / `sftp_rename` / `sftp_remove` / `sftp_chmod` /
+  `sftp_write_file` / `sftp_upload` / `sftp_download`。工具定义带 `kind:"write"`,
+  客户端能据此判断风险;写工具的参数、上限与错误都在工具层校验(如 chmod 只接受 3–4 位八进制)。
+- 权限档:设置里 `mcp.allowWrite`(默认 **true**,用户要"全自动")。
+  - true → 注册 4 读 + 7 写(共 11 个工具)
+  - false → **只注册 4 个读工具**,客户端从 `tools/list` 就看不到写能力(不是调用时才失败)
+  - 界面 MCP 页有徽章「权限:完整(可写/可执行)」+「切为只读 / 允许写入」按钮
+- 传输:`upload/download` 是流式的(本机 fs ↔ SFTP 流 pipe),返回字节数;
+  `writeRemote` 同时监听 `finish`/`close`(ssh2 的 SFTP 写流在部分版本上只发 close —— 踩过)。
+- 真机验证(10.0.0.193):mkdir → write(25B)→ chmod 600 → rename → stat(`-rw-------`)
+  → read → upload 64KiB → download → **sha256 完全一致** → remove 文件/空目录,
+  最后用独立 ssh 复核目录已清空;界面 23 条活动逐条可见(含 4 条"删不存在的文件"的红色失败 —— 如实展示)。
+
+**下一步(阶段 3,未做)**:`ssh_exec`(在真实终端里可见/可接管)、三档权限 + 逐次批准、
+审计落盘、客户端级授权、STOP 一键中断。
 
 ## 5. 已知坑位清单(新会话先看这个)
 

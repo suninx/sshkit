@@ -31,6 +31,13 @@ export interface SftpLike {
   readdir(path: string, cb: (err: Error | null | undefined, list: SftpDirEntry[]) => void): void;
   stat(path: string, cb: (err: Error | null | undefined, attrs: SftpAttrs) => void): void;
   createReadStream(path: string, opts?: { start?: number; end?: number }): NodeJS.ReadableStream;
+  /* ---- 写能力(阶段 2):真实 SFTPWrapper 上这些方法都有,测试用假实现 ---- */
+  mkdir?(path: string, cb: (err?: Error | null) => void): void;
+  unlink?(path: string, cb: (err?: Error | null) => void): void;
+  rmdir?(path: string, cb: (err?: Error | null) => void): void;
+  rename?(from: string, to: string, cb: (err?: Error | null) => void): void;
+  chmod?(path: string, mode: number, cb: (err?: Error | null) => void): void;
+  createWriteStream?(path: string, opts?: { flags?: string }): NodeJS.WritableStream;
 }
 
 /* 只判断"非目录":目录由 toEntry 里 isDirectory()/类型位单独识别 */
@@ -113,5 +120,100 @@ export function readRemote(sftp: SftpLike, file: string, maxBytes: number): Prom
       stream.on("end", finish);
       stream.on("close", finish);
     });
+  });
+}
+
+/* ================= 阶段 2:远端写入/传输 ================= */
+
+export interface TransferStats { bytes: number }
+
+/** 建目录(只建一级,和右键「新建文件夹」语义一致) */
+export function mkdirRemote(sftp: SftpLike, dir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const fn = sftp.mkdir;
+    if (!fn) { reject(new Error("sftp does not support mkdir")); return; }
+    fn.call(sftp, dir, (err?: Error | null) => (err ? reject(err) : resolve()));
+  });
+}
+
+export function renameRemote(sftp: SftpLike, from: string, to: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const fn = sftp.rename;
+    if (!fn) { reject(new Error("sftp does not support rename")); return; }
+    fn.call(sftp, from, to, (err?: Error | null) => (err ? reject(err) : resolve()));
+  });
+}
+
+/** 删除:文件用 unlink,目录用 rmdir(空目录;非空时服务端会报错,与界面一致) */
+export function removeRemote(sftp: SftpLike, target: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    sftp.stat(target, (err, attrs) => {
+      if (err) { reject(err); return; }
+      const isDir = attrs.isDirectory ? attrs.isDirectory() : (attrs.mode & 0o170000) === 0o040000;
+      const fn = isDir ? sftp.rmdir : sftp.unlink;
+      if (!fn) { reject(new Error(`sftp does not support ${isDir ? "rmdir" : "unlink"}`)); return; }
+      fn.call(sftp, target, (e?: Error | null) => (e ? reject(e) : resolve()));
+    });
+  });
+}
+
+export function chmodRemote(sftp: SftpLike, target: string, mode: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const fn = sftp.chmod;
+    if (!fn) { reject(new Error("sftp does not support chmod")); return; }
+    fn.call(sftp, target, mode, (err?: Error | null) => (err ? reject(err) : resolve()));
+  });
+}
+
+/** 写文件(覆盖);返回写入字节数 */
+export function writeRemote(sftp: SftpLike, target: string, content: Buffer): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const fn = sftp.createWriteStream;
+    if (!fn) { reject(new Error("sftp does not support createWriteStream")); return; }
+    const stream = fn.call(sftp, target, { flags: "w" });
+    /* 先settle先赢:error / finish 谁先到都行,不需要 done 标记 */
+    stream.on("error", reject);
+    /* ssh2 的 SFTP 写流在部分版本上只发 close 不发 finish —— 两个都听,先到先赢 */
+    stream.on("finish", () => resolve(content.length));
+    stream.on("close", () => resolve(content.length));
+    stream.end(content);
+  });
+}
+
+/** 本机 → 远端(流式,回报已传字节数,便于活动面板显示进度) */
+export function uploadFiles(
+  sftp: SftpLike, makeRead: () => NodeJS.ReadableStream, remotePath: string,
+  onProgress?: (bytes: number) => void,
+): Promise<TransferStats> {
+  return new Promise((resolve, reject) => {
+    const fn = sftp.createWriteStream;
+    if (!fn) { reject(new Error("sftp does not support createWriteStream")); return; }
+    const out = fn.call(sftp, remotePath, { flags: "w" });
+    const input = makeRead();
+    let bytes = 0;
+    input.on("data", (c: Buffer) => { bytes += c.length; onProgress?.(bytes); });
+    input.on("error", reject);
+    out.on("error", reject);
+    out.on("finish", () => resolve({ bytes }));
+    out.on("close", () => resolve({ bytes }));
+    input.pipe(out);
+  });
+}
+
+/** 远端 → 本机 */
+export function downloadFiles(
+  sftp: SftpLike, remotePath: string, makeWrite: () => NodeJS.WritableStream,
+  onProgress?: (bytes: number) => void,
+): Promise<TransferStats> {
+  return new Promise((resolve, reject) => {
+    const input = sftp.createReadStream(remotePath);
+    const out = makeWrite();
+    let bytes = 0;
+    input.on("data", (c: Buffer) => { bytes += c.length; onProgress?.(bytes); });
+    input.on("error", reject);
+    out.on("error", reject);
+    out.on("finish", () => resolve({ bytes }));
+    out.on("close", () => resolve({ bytes }));
+    input.pipe(out);
   });
 }

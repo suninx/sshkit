@@ -52,6 +52,8 @@ export interface McpStatus {
   port: number;
   /** 本地访问令牌;客户端配置里要带上 */
   token: string;
+  /** 是否允许写入/执行(false = 只读档,客户端看不到写工具) */
+  allowWrite: boolean;
   /** 已建立会话的客户端名 */
   clients: string[];
   error: string | null;
@@ -62,6 +64,8 @@ export interface McpStatus {
 export interface McpSettings {
   enabled: boolean;
   port: number;
+  /** 允许 AI 写入/执行(默认 true:产品定位是"全自动");关掉即只读档 */
+  allowWrite: boolean;
 }
 
 /** SSE keep-alive 间隔(15s:足够让代理/客户端保持连接,又不会吵) */

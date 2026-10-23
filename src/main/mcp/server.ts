@@ -329,6 +329,8 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
       for (const s of sessions.values()) for (const stream of s.streams) stream.end();
       sessions.clear();
       inflight.clear();
+      /* HTTP keep-alive 的连接不会自己消失 —— 不主动断开会卡住 close(重启/换端口时很明显) */
+      server.closeAllConnections?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };

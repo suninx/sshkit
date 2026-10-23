@@ -15,9 +15,13 @@ import type { HostInput } from "../shared/host";
 import type { SFTPWrapper } from "ssh2";
 import { randomBytes } from "node:crypto";
 import { startMcpServer, type McpServerHandle } from "./mcp/server";
-import { buildReadTools, type McpToolDeps } from "./mcp/tools";
+import { buildReadTools, buildWriteTools, type McpToolDeps } from "./mcp/tools";
 import { RemotePool } from "./mcp/pool";
-import { listRemote, readRemote, statRemote } from "./mcp/remote";
+import {
+  chmodRemote, downloadFiles, listRemote, mkdirRemote, readRemote, removeRemote,
+  renameRemote, statRemote, uploadFiles, writeRemote,
+} from "./mcp/remote";
+import fs from "node:fs";
 import { getMcpToken, setMcpToken } from "./keystore";
 import { MCP_ACTIVITY_LIMIT, MCP_SSE_PING_MS, type McpActivity, type McpStatus } from "../shared/mcp";
 
@@ -403,6 +407,7 @@ const mcpStatus = (): McpStatus => ({
   running: mcpHandle !== null,
   port: mcpHandle?.port ?? getSettings().mcp.port,
   token: mcpToken,
+  allowWrite: getSettings().mcp.allowWrite,
   clients: mcpClients,
   error: mcpError,
   activity: mcpActivity,
@@ -448,6 +453,19 @@ const mcpDeps: McpToolDeps = {
     list: async (hostId, dir) => listRemote((await mcpPool.get(hostId)).sftp, dir),
     read: async (hostId, file, maxBytes) => readRemote((await mcpPool.get(hostId)).sftp, file, maxBytes),
     stat: async (hostId, p) => statRemote((await mcpPool.get(hostId)).sftp, p),
+    mkdir: async (hostId, path) => mkdirRemote((await mcpPool.get(hostId)).sftp, path),
+    rename: async (hostId, from, to) => renameRemote((await mcpPool.get(hostId)).sftp, from, to),
+    remove: async (hostId, target) => removeRemote((await mcpPool.get(hostId)).sftp, target),
+    chmod: async (hostId, target, mode) => chmodRemote((await mcpPool.get(hostId)).sftp, target, mode),
+    write: async (hostId, target, content) => writeRemote((await mcpPool.get(hostId)).sftp, target, content),
+    upload: async (hostId, localPath, remotePath) => {
+      const sftp = (await mcpPool.get(hostId)).sftp;
+      return await uploadFiles(sftp, () => fs.createReadStream(localPath), remotePath);
+    },
+    download: async (hostId, remotePath, localPath) => {
+      const sftp = (await mcpPool.get(hostId)).sftp;
+      return await downloadFiles(sftp, remotePath, () => fs.createWriteStream(localPath));
+    },
   },
 };
 
@@ -458,7 +476,11 @@ async function startMcp(): Promise<void> {
       port: getSettings().mcp.port,
       token: mcpToken,
       version: app.getVersion(),
-      tools: buildReadTools(mcpDeps),
+      tools: [
+        ...buildReadTools(mcpDeps),
+        /* 只读档位下不注册写工具:客户端从 tools/list 就看不到,而不是调用时才失败 */
+        ...(getSettings().mcp.allowWrite ? buildWriteTools(mcpDeps) : []),
+      ],
       pingMs: MCP_SSE_PING_MS,
       onActivity: pushMcpActivity,
       onClients: (clients) => { mcpClients = clients; pushMcpStatus(); },
@@ -508,11 +530,12 @@ export async function ensureMcpToken(): Promise<void> {
 }
 
 ipcMain.handle("mcp:status", () => mcpStatus());
-ipcMain.handle("mcp:set", async (_e, patch: { enabled?: boolean; port?: number }) => {
+ipcMain.handle("mcp:set", async (_e, patch: { enabled?: boolean; port?: number; allowWrite?: boolean }) => {
   const cur = getSettings().mcp;
   const next = {
     enabled: patch.enabled ?? cur.enabled,
     port: typeof patch.port === "number" && patch.port > 0 && patch.port < 65_536 ? patch.port : cur.port,
+    allowWrite: patch.allowWrite ?? cur.allowWrite,
   };
   setSetting("mcp", next);
   const wasRunning = mcpHandle !== null;

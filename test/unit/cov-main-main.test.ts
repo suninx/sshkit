@@ -181,19 +181,39 @@ vi.mock("ssh2", async () => {
   }
 
   class FakeSftp {
-    files = new Map<string, { size: number; mode: number; mtime: number }>();
+    files = new Map<string, { size: number; mode: number; mtime: number; content?: Buffer }>();
+    writes = new Map<string, Buffer>();
+    chmods: Array<[string, string]> = [];
     calls: Array<[string, ...unknown[]]> = [];
     realpath(p: string, cb: (e: Error | null, abs: string) => void): void { cb(null, p); }
     readdir(_d: string, cb: (e: Error | null, list: Array<{ filename: string; attrs: { size: number; mode: number; mtime: number } }>) => void): void {
       // 真实 readdir 返回的是目录内的"名字",不是完整路径
       cb(null, [...this.files.entries()].map(([p, attrs]) => ({ filename: p.split("/").pop() ?? p, attrs })));
     }
-    stat(p: string, cb: (e: Error | null, st: { size: number; mode: number }) => void): void {
+    stat(p: string, cb: (e: Error | null, st: { size: number; mode: number; mtime: number; isDirectory?: () => boolean }) => void): void {
       const st = this.files.get(p);
       if (!st) { cb(Object.assign(new Error("No such file"), { code: 2 }), undefined as never); return; }
-      cb(null, st);
+      cb(null, { ...st, isDirectory: () => (st.mode & 0o170000) === 0o040000 });
     }
     mkdir(p: string, cb: (e: Error | null) => void): void { this.calls.push(["mkdir", p]); cb(null); }
+    chmod(p: string, mode: number, cb: (e: Error | null) => void): void {
+      this.chmods.push([p, mode.toString(8)]);
+      cb(null);
+    }
+    createWriteStream(p: string, _o?: { flags?: string }): unknown {
+      const { Writable } = require("node:stream") as typeof import("node:stream");
+      const chunks: Buffer[] = [];
+      const ws = new Writable({
+        write: (c: Buffer, _e: BufferEncoding, cb: (e?: Error | null) => void) => { chunks.push(Buffer.from(c)); cb(); },
+        final: (cb: (e?: Error | null) => void) => { this.writes.set(p, Buffer.concat(chunks)); cb(); },
+      });
+      return ws;
+    }
+    createReadStream(p: string): unknown {
+      const { Readable } = require("node:stream") as typeof import("node:stream");
+      const buf = this.writes.get(p) ?? this.files.get(p)?.content ?? Buffer.alloc(0);
+      return Readable.from([buf]);
+    }
     unlink(p: string, cb: (e: Error | null) => void): void { this.calls.push(["unlink", p]); cb(null); }
     rmdir(p: string, cb: (e: Error | null) => void): void { this.calls.push(["rmdir", p]); cb(null); }
     rename(a: string, b: string, cb: (e: Error | null) => void): void { this.calls.push(["rename", a, b]); cb(null); }
@@ -984,7 +1004,9 @@ describe("MCP 服务器接线", () => {
   };
 
   const mcpRpc = async (port: number, token: string, body: unknown, session?: string): Promise<any> => {
-    const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${token}` };
+    const headers: Record<string, string> = {
+      "content-type": "application/json", authorization: `Bearer ${token}`, connection: "close",
+    };
     if (session) headers["mcp-session-id"] = session;
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST", headers, body: JSON.stringify(body) });
     const txt = await res.text();
@@ -1024,7 +1046,12 @@ describe("MCP 服务器接线", () => {
     expect(init.body.result.serverInfo.name).toBe("sshkit");
 
     const list = await mcpRpc(port, st1.token, { jsonrpc: "2.0", id: 2, method: "tools/list" }, session);
-    expect(list.body.result.tools.map((t: any) => t.name)).toEqual(["list_hosts", "sftp_list", "sftp_read_file", "sftp_stat"]);
+    /* 默认完整档:4 读 + 7 写 */
+    expect(list.body.result.tools.map((t: any) => t.name)).toEqual([
+      "list_hosts", "sftp_list", "sftp_read_file", "sftp_stat",
+      "sftp_mkdir", "sftp_rename", "sftp_remove", "sftp_chmod",
+      "sftp_write_file", "sftp_upload", "sftp_download",
+    ]);
 
     const hostsCall = await mcpRpc(port, st1.token, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "list_hosts" } }, session);
     expect(hostsCall.body.result.content[0].text).toContain(host.name);
@@ -1121,21 +1148,108 @@ describe("MCP 服务器接线", () => {
     }
   });
 
+  it("写工具经 MCP 真跑:建目录/写文件/chmod/改名/上传/下载;只读档位看不到写工具", async () => {
+    const host = (await em.invoke("hosts:create", hostInput({ name: "mcp-w", host: "127.0.0.1", authType: "agent" }))) as { id: string; name: string };
+    known("127.0.0.1");
+
+    /* ---- 第一段:只读档(先在关闭状态切档,避免运行中重启带来的时序干扰) ---- */
+    const roPort = await freePort();
+    await em.invoke("mcp:set", { allowWrite: false });
+    const ro = (await em.invoke("mcp:set", { enabled: true, port: roPort })) as any;
+    try {
+      const init = await mcpRpc(roPort, ro.token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "ro" } } });
+      const session = init.session as string;
+      const list = await mcpRpc(roPort, ro.token, { jsonrpc: "2.0", id: 2, method: "tools/list" }, session);
+      expect(list.body.result.tools.map((t: any) => t.name)).toEqual([
+        "list_hosts", "sftp_list", "sftp_read_file", "sftp_stat",
+      ]);
+      const denied = await mcpRpc(roPort, ro.token, {
+        jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "sftp_write_file", arguments: { host: host.id, path: "/x", content: "y" } },
+      }, session);
+      expect(denied.body.error.code).toBe(-32602);   // 写工具没注册
+    } finally {
+      await em.invoke("mcp:set", { enabled: false });
+    }
+
+    /* ---- 第二段:完整档(全新端口、全新实例) ---- */
+    const port = await freePort();
+    await em.invoke("mcp:set", { allowWrite: true });
+    const st = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    try {
+      const init = await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 10, method: "initialize", params: { clientInfo: { name: "w" } } });
+      const session = init.session as string;
+      const tools = await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 11, method: "tools/list" }, session);
+      expect(tools.body.result.tools.length).toBe(11);
+      const call = async (id: number, name: string, args: Record<string, unknown>): Promise<any> =>
+        (await mcpRpc(port, st.token, { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } }, session)).body.result;
+
+      expect((await call(12, "sftp_mkdir", { host: host.id, path: "/newdir" })).content[0].text).toContain("created directory");
+      expect((await call(13, "sftp_write_file", { host: host.id, path: "/hello.txt", content: "hi mcp" })).content[0].text).toContain("wrote 6 bytes");
+      expect((await call(14, "sftp_chmod", { host: host.id, path: "/hello.txt", mode: "600" })).content[0].text).toBe("chmod 600 mcp-w:/hello.txt");
+      expect((await call(15, "sftp_rename", { host: host.id, from: "/hello.txt", to: "/hello2.txt" })).content[0].text).toContain("renamed");
+
+      const upLocal = path.join(HOME, "upload-src.txt");
+      fs.writeFileSync(upLocal, "upload-body");
+      const up = await call(16, "sftp_upload", { host: host.id, localPath: upLocal, remotePath: "/up.txt" });
+      expect(up.content[0].text).toContain("uploaded 11 bytes");
+      const downLocal = path.join(HOME, "download-dst.txt");
+      const down = await call(17, "sftp_download", { host: host.id, remotePath: "/up.txt", localPath: downLocal });
+      expect(down.content[0].text).toContain("downloaded 11 bytes");
+      expect(fs.readFileSync(downLocal, "utf-8")).toBe("upload-body");
+
+      const rm = await call(18, "sftp_remove", { host: host.id, path: "/newdir" });
+      expect(rm.isError).toBe(true);   // 假 SFTP 没登记这个目录 → 可读错误
+    } finally {
+      await em.invoke("mcp:set", { enabled: false });
+    }
+  });
+
   it("活动超过上限时只保留最近 200 条", async () => {
     const port = await freePort();
     const st = (await em.invoke("mcp:set", { enabled: true, port })) as any;
     try {
       const init = await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "t" } } });
       const session = init.session as string;
-      /* 每次调用只产生一条活动(running→ok 同 id 覆盖)→ 250 次足以越过 200 上限 */
+      /* 每次调用只产生一条活动(running→最终同 id 覆盖)→ 250 次足以越过 200 上限 */
       for (let i = 0; i < 250; i++) {
-        await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 100 + i, method: "tools/call", params: { name: "list_hosts" } }, session);
+        await mcpRpc(port, st.token, { jsonrpc: "2.0", id: 1000 + i, method: "tools/call", params: { name: "list_hosts" } }, session);
       }
       const st2 = (await em.invoke("mcp:status")) as any;
       expect(st2.activity.length).toBe(200);
     } finally {
       await em.invoke("mcp:set", { enabled: false });
     }
+  });
+
+  it("运行中换令牌会重启;停用状态下换令牌只换不启", async () => {
+    const port = await freePort();
+    const on = (await em.invoke("mcp:set", { enabled: true, port })) as any;
+    const rotated = (await em.invoke("mcp:regenerateToken")) as any;
+    expect(rotated.running).toBe(true);
+    expect(rotated.token).not.toBe(on.token);
+    await em.invoke("mcp:set", { enabled: false });
+
+    const before = (await em.invoke("mcp:status")) as any;
+    const after = (await em.invoke("mcp:regenerateToken")) as any;
+    expect(after.running).toBe(false);
+    expect(after.token).not.toBe(before.token);
+  });
+
+  it("设置开启时 bootMcp 拉起服务器;令牌已存在则复用", async () => {
+    const port = await freePort();
+    const off = (await em.invoke("mcp:set", { enabled: false, port })) as any;
+    expect(off.running).toBe(false);
+    const mod = (await import("../../src/main/main")) as unknown as {
+      bootMcp: (s: { enabled: boolean }) => Promise<void>;
+      ensureMcpToken: () => Promise<void>;
+    };
+    await mod.bootMcp({ enabled: true });
+    const on = (await em.invoke("mcp:status")) as any;
+    expect(on).toMatchObject({ running: true, port });
+    keychain.set("sshkit|mcp:token", on.token);
+    await mod.ensureMcpToken();
+    expect(((await em.invoke("mcp:status")) as any).token).toBe(on.token);
+    await em.invoke("mcp:set", { enabled: false });
   });
 
   it("钥匙串不可用时启动仍然成功(令牌退化成进程内,不能挡住开窗)", async () => {
@@ -1148,33 +1262,6 @@ describe("MCP 服务器接线", () => {
     } finally {
       keychainBroken = false;
     }
-  });
-
-  it("停用状态下换令牌不会去启停服务器", async () => {
-    const before = (await em.invoke("mcp:status")) as any;
-    const after = (await em.invoke("mcp:regenerateToken")) as any;
-    expect(after.running).toBe(false);
-    expect(after.token).not.toBe(before.token);
-  });
-
-  it("设置开启时 bootMcp 拉起服务器;令牌已存在则复用", async () => {
-    const port = await freePort();
-    /* 只写端口、保持关闭:此时不会启动服务器 */
-    const off = (await em.invoke("mcp:set", { enabled: false, port })) as any;
-    expect(off.running).toBe(false);
-    const mod = (await import("../../src/main/main")) as unknown as {
-      bootMcp: (s: { enabled: boolean }) => Promise<void>;
-      ensureMcpToken: () => Promise<void>;
-    };
-    await mod.bootMcp({ enabled: true });
-    const on = (await em.invoke("mcp:status")) as any;
-    expect(on).toMatchObject({ running: true, port });
-    /* 每个用例的 beforeEach 会清空钥匙串:把令牌放回去再验"已存在则复用"分支 */
-    keychain.set("sshkit|mcp:token", on.token);
-    await mod.ensureMcpToken();
-    const again = (await em.invoke("mcp:status")) as any;
-    expect(again.token).toBe(on.token);
-    await em.invoke("mcp:set", { enabled: false });
   });
 
   it("窗口被销毁(destroyed)时活动同样不推送", async () => {

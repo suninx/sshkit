@@ -1,8 +1,12 @@
 /* MCP 的远端原语 + 四个只读工具 + 连接池。
    全部用假实现,不碰网络/SSH —— 真实的端到端验证放到真机那一步。 */
+import { Readable, Writable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listRemote, permString, readRemote, statRemote, type SftpLike } from "../../src/main/mcp/remote";
-import { buildReadTools, capList, resolveHost, type McpToolDeps } from "../../src/main/mcp/tools";
+import {
+  chmodRemote, downloadFiles, listRemote, mkdirRemote, permString, readRemote, removeRemote,
+  renameRemote, statRemote, uploadFiles, writeRemote, type SftpLike,
+} from "../../src/main/mcp/remote";
+import { buildReadTools, buildWriteTools, capList, parseMode, resolveHost, type McpToolDeps } from "../../src/main/mcp/tools";
 import { RemotePool } from "../../src/main/mcp/pool";
 
 interface FakeEntry { filename: string; attrs: { mode: number; size: number; mtime: number; isDirectory?: () => boolean } }
@@ -106,16 +110,26 @@ const HOSTS = [
 ];
 
 function deps(overrides: Partial<McpToolDeps["remote"]> = {}, hosts = HOSTS): McpToolDeps {
+  const calls: Array<[string, ...unknown[]]> = [];
   return {
     listHosts: () => hosts,
     findHost: (q) => hosts.find((h) => h.id === q || h.name === q),
     remote: {
+      mkdir: async (...a) => { calls.push(["mkdir", ...a]); },
+      rename: async (...a) => { calls.push(["rename", ...a]); },
+      remove: async (...a) => { calls.push(["remove", ...a]); },
+      chmod: async (...a) => { calls.push(["chmod", ...a]); },
+      write: async (...a) => { calls.push(["write", ...a]); return 3; },
+      upload: async (...a) => { calls.push(["upload", ...a]); return { bytes: 7 }; },
+      download: async (...a) => { calls.push(["download", ...a]); return { bytes: 9 }; },
       list: async () => [{ name: "a.txt", type: "file", size: 1, mtime: 1, mode: 0o100644, perm: "-rw-r--r--" }],
       read: async () => ({ text: "hi", truncated: false, size: 2, binary: false }),
       stat: async () => ({ name: "a.txt", type: "file", size: 2, mtime: 1, mode: 0o100644, perm: "-rw-r--r--" }),
       ...overrides,
     },
-  };
+    /* 测试里直接看这些调用记录(与 remote 同一条 deps) */
+    __calls: calls,
+  } as McpToolDeps & { __calls: Array<[string, ...unknown[]]> };
 }
 
 const callTool = async (toolName: string, args: Record<string, unknown>, d: McpToolDeps) => {
@@ -212,6 +226,112 @@ describe("MCP 只读工具", () => {
   });
 });
 
+describe("remote 写入 / 传输", () => {
+  const ok = (fn: () => void) => (cb?: (e?: Error | null) => void) => { fn(); cb?.(null); };
+
+  it("mkdir / rename / chmod / unlink / rmdir 都真的调用到对应方法", async () => {
+    const calls: string[] = [];
+    const files = new Map<string, { mode: number }>();
+    const sftp = {
+      stat: (p: string, cb: (e: Error | null, attrs: { mode: number; size: number; mtime: number }) => void) => {
+        const f = files.get(p);
+        if (!f) { cb(Object.assign(new Error("no such file"), { code: 2 }), undefined as never); return; }
+        cb(null, { mode: f.mode, size: 0, mtime: 0 });
+      },
+      mkdir: (p: string, cb: (e?: Error | null) => void) => { calls.push(`mkdir:${p}`); cb(null); },
+      rename: (a: string, b: string, cb: (e?: Error | null) => void) => { calls.push(`rename:${a}->${b}`); cb(null); },
+      chmod: (p: string, m: number, cb: (e?: Error | null) => void) => { calls.push(`chmod:${p}:${m.toString(8)}`); cb(null); },
+      unlink: (p: string, cb: (e?: Error | null) => void) => { calls.push(`unlink:${p}`); cb(null); },
+      rmdir: (p: string, cb: (e?: Error | null) => void) => { calls.push(`rmdir:${p}`); cb(null); },
+    } as unknown as SftpLike;
+    await mkdirRemote(sftp, "/d");
+    await renameRemote(sftp, "/a", "/b");
+    await chmodRemote(sftp, "/a", 0o600);
+    files.set("/f", { mode: 0o100644 });
+    files.set("/d2", { mode: 0o040755 });
+    await removeRemote(sftp, "/f");
+    await removeRemote(sftp, "/d2");
+    expect(calls).toEqual(["mkdir:/d", "rename:/a->/b", "chmod:/a:600", "unlink:/f", "rmdir:/d2"]);
+  });
+
+  it("remove 优先用 isDirectory();目录缺 rmdir / 文件缺 unlink 时报清楚", async () => {
+    const calls: string[] = [];
+    const withDir = {
+      stat: (_p: string, cb: (e: Error | null, a: { mode: number; size: number; mtime: number; isDirectory: () => boolean }) => void) =>
+        cb(null, { mode: 0, size: 0, mtime: 0, isDirectory: () => true }),
+      rmdir: (p: string, cb: (e?: Error | null) => void) => { calls.push(`rmdir:${p}`); cb(null); },
+    } as unknown as SftpLike;
+    await removeRemote(withDir, "/dir");
+    expect(calls).toEqual(["rmdir:/dir"]);
+    const noRmdir = { stat: (_p: string, cb: (e: Error | null, a: never) => void) => cb(null, { mode: 0o040755 } as never) } as unknown as SftpLike;
+    await expect(removeRemote(noRmdir, "/dir")).rejects.toThrow("does not support rmdir");
+    const noUnlink = { stat: (_p: string, cb: (e: Error | null, a: never) => void) => cb(null, { mode: 0o100644 } as never) } as unknown as SftpLike;
+    await expect(removeRemote(noUnlink, "/f")).rejects.toThrow("does not support unlink");
+    const unlinkFails = {
+      stat: (_p: string, cb: (e: Error | null, a: never) => void) => cb(null, { mode: 0o100644 } as never),
+      unlink: (_p: string, cb: (e?: Error | null) => void) => cb(new Error("busy")),
+    } as unknown as SftpLike;
+    await expect(removeRemote(unlinkFails, "/f")).rejects.toThrow("busy");
+  });
+
+  it("mkdir/rename/chmod 的底层错误原样抛出", async () => {
+    const fail = (cb: (e?: Error | null) => void) => cb(new Error("perm denied"));
+    const sftp = {
+      mkdir: (_p: string, cb: (e?: Error | null) => void) => fail(cb),
+      rename: (_a: string, _b: string, cb: (e?: Error | null) => void) => fail(cb),
+      chmod: (_p: string, _m: number, cb: (e?: Error | null) => void) => fail(cb),
+    } as unknown as SftpLike;
+    await expect(mkdirRemote(sftp, "/d")).rejects.toThrow("perm denied");
+    await expect(renameRemote(sftp, "/a", "/b")).rejects.toThrow("perm denied");
+    await expect(chmodRemote(sftp, "/a", 0o600)).rejects.toThrow("perm denied");
+  });
+
+  it("删除不存在的路径会抛错;服务端缺方法时给出明确错误", async () => {
+    const sftp = { stat: (_p: string, cb: (e: Error | null, a: never) => void) => cb(Object.assign(new Error("no such file"), {}), undefined as never) } as unknown as SftpLike;
+    await expect(removeRemote(sftp, "/nope")).rejects.toThrow("no such file");
+    await expect(mkdirRemote({} as SftpLike, "/d")).rejects.toThrow("does not support mkdir");
+    await expect(renameRemote({} as SftpLike, "/a", "/b")).rejects.toThrow("does not support rename");
+    await expect(chmodRemote({} as SftpLike, "/a", 0o600)).rejects.toThrow("does not support chmod");
+    await expect(writeRemote({} as SftpLike, "/f", Buffer.from("x"))).rejects.toThrow("does not support createWriteStream");
+    await expect(uploadFiles({} as SftpLike, () => Readable.from([Buffer.from("x")]), "/f")).rejects.toThrow("does not support createWriteStream");
+  });
+
+  it("writeRemote 覆盖写入并按 finish 结算;写入流报错会 reject", async () => {
+    const writes: Buffer[] = [];
+    const sftp = {
+      createWriteStream: () => {
+        const ws = new Writable({ write(c: Buffer, _e, cb) { writes.push(Buffer.from(c)); cb(); } });
+        return ws;
+      },
+    } as unknown as SftpLike;
+    expect(await writeRemote(sftp, "/f", Buffer.from("hello"))).toBe(5);
+    expect(Buffer.concat(writes).toString()).toBe("hello");
+
+    const bad = { createWriteStream: () => { const ws = new Writable({ write(_c, _e, cb) { cb(new Error("disk full")); } }); return ws; } } as unknown as SftpLike;
+    await expect(writeRemote(bad, "/f", Buffer.from("x"))).rejects.toThrow("disk full");
+  });
+
+  it("upload/download 流式传输并回报字节数;读流/写流出错会 reject", async () => {
+    const store = new Map<string, Buffer>();
+    const sftp = {
+      createWriteStream: (p: string) => new Writable({ write(c: Buffer, _e, cb) { store.set(p, Buffer.concat([store.get(p) ?? Buffer.alloc(0), Buffer.from(c)])); cb(); } }),
+      createReadStream: (p: string) => Readable.from([store.get(p) ?? Buffer.alloc(0)]),
+    } as unknown as SftpLike;
+
+    const progress: number[] = [];
+    const up = await uploadFiles(sftp, () => Readable.from([Buffer.from("abc"), Buffer.from("de")]), "/r", (n) => progress.push(n));
+    expect(up.bytes).toBe(5);
+    expect(progress).toEqual([3, 5]);
+    const down = await downloadFiles(sftp, "/r", () => new Writable({ write(_c, _e, cb) { cb(); } }));
+    expect(down.bytes).toBe(5);
+
+    const badRead = { createReadStream: () => { const r = new Readable({ read() { this.destroy(new Error("read boom")); } }); return r; } } as unknown as SftpLike;
+    await expect(downloadFiles(badRead, "/r", () => new Writable({ write(_c, _e, cb) { cb(); } }))).rejects.toThrow("read boom");
+    const badWrite = { createWriteStream: () => { const ws = new Writable({ write(_c, _e, cb) { cb(new Error("write boom")); } }); return ws; } } as unknown as SftpLike;
+    await expect(uploadFiles(badWrite, () => Readable.from([Buffer.from("x")]), "/r")).rejects.toThrow("write boom");
+  });
+});
+
 describe("RemotePool", () => {
   afterEach(() => { vi.useRealTimers(); });
 
@@ -256,5 +376,72 @@ describe("RemotePool", () => {
     expect(closed).toEqual([]);
     await vi.advanceTimersByTimeAsync(200);
     expect(closed).toEqual(["h1"]);
+  });
+});
+
+describe("MCP 写工具(阶段 2)", () => {
+  const callWrite = async (name: string, args: Record<string, unknown>, d: McpToolDeps & { __calls: Array<[string, ...unknown[]]> }) => {
+    const tool = buildWriteTools(d).find((t) => t.def.name === name)!;
+    return await tool.run(args, { signal: new AbortController().signal });
+  };
+
+  it("七个写工具都会真的调用远端,并返回可读结果", async () => {
+    const d = deps();
+    expect((await callWrite("sftp_mkdir", { host: "prod", path: "/d" }, d)).text).toContain("created directory");
+    expect((await callWrite("sftp_rename", { host: "h1", from: "/a", to: "/b" }, d)).text).toContain("renamed");
+    expect((await callWrite("sftp_remove", { host: "h1", path: "/a" }, d)).text).toContain("removed");
+    expect((await callWrite("sftp_chmod", { host: "h2", path: "/a", mode: "600" }, d)).text).toBe("chmod 600 staging:/a");
+    expect((await callWrite("sftp_write_file", { host: "h1", path: "/f", content: "hi" }, d)).text).toContain("wrote 3 bytes");
+    expect((await callWrite("sftp_upload", { host: "h1", localPath: "/tmp/x", remotePath: "/r/x" }, d)).text).toContain("uploaded 7 bytes");
+    expect((await callWrite("sftp_download", { host: "h1", remotePath: "/r/x", localPath: "/tmp/x" }, d)).text).toContain("downloaded 9 bytes");
+    /* 参数确实按 (hostId, ...) 传给远端层 */
+    expect(d.__calls.slice(0, 3)).toEqual([
+      ["mkdir", "h1", "/d"], ["rename", "h1", "/a", "/b"], ["remove", "h1", "/a"],
+    ]);
+    expect(d.__calls.at(-1)).toEqual(["download", "h1", "/r/x", "/tmp/x"]);
+  });
+
+  it("写入类操作把底层错误原样抛出(不吞错)", async () => {
+    const boom = new Error("permission denied");
+    const d = deps({
+      mkdir: async () => { throw boom; },
+      rename: async () => { throw boom; },
+      chmod: async () => { throw boom; },
+      write: async () => { throw boom; },
+      upload: async () => { throw boom; },
+      download: async () => { throw boom; },
+    });
+    await expect(callWrite("sftp_mkdir", { host: "h1", path: "/d" }, d)).rejects.toThrow("permission denied");
+    await expect(callWrite("sftp_rename", { host: "h1", from: "/a", to: "/b" }, d)).rejects.toThrow("permission denied");
+    await expect(callWrite("sftp_chmod", { host: "h1", path: "/a", mode: "600" }, d)).rejects.toThrow("permission denied");
+    await expect(callWrite("sftp_write_file", { host: "h1", path: "/f", content: "x" }, d)).rejects.toThrow("permission denied");
+    await expect(callWrite("sftp_upload", { host: "h1", localPath: "/l", remotePath: "/r" }, d)).rejects.toThrow("permission denied");
+    await expect(callWrite("sftp_download", { host: "h1", remotePath: "/r", localPath: "/l" }, d)).rejects.toThrow("permission denied");
+  });
+
+  it("权限串解析:合法八进制,非法值报错", () => {
+    expect(parseMode("644")).toBe(0o644);
+    expect(parseMode("0755")).toBe(0o755);
+    expect(parseMode(" 4777 ")).toBe(0o4777);
+    for (const bad of ["abc", "888", "64", "0o644", ""]) {
+      expect(() => parseMode(bad)).toThrow(/invalid permission mode/);
+    }
+  });
+
+  it("写工具的必填参数与 content 类型都会校验", async () => {
+    const d = deps();
+    await expect(callWrite("sftp_mkdir", { host: "h1" }, d)).rejects.toThrow('parameter "path"');
+    await expect(callWrite("sftp_rename", { host: "h1", from: "/a" }, d)).rejects.toThrow('parameter "to"');
+    await expect(callWrite("sftp_write_file", { host: "h1", path: "/f", content: 42 }, d)).rejects.toThrow('parameter "content"');
+    await expect(callWrite("sftp_write_file", { host: "missing", path: "/f", content: "x" }, d)).rejects.toThrow(/unknown host/);
+  });
+
+  it("写工具定义是 write 档(客户端能据此判断风险)", () => {
+    const tools = buildWriteTools(deps());
+    expect(tools.map((t) => t.def.name)).toEqual([
+      "sftp_mkdir", "sftp_rename", "sftp_remove", "sftp_chmod",
+      "sftp_write_file", "sftp_upload", "sftp_download",
+    ]);
+    for (const t of tools) expect(t.def.kind).toBe("write");
   });
 });

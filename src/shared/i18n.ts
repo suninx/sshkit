@@ -17,6 +17,11 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "mcp.mode": "Mode",
+  "mcp.modeFull": "Full (write + execute)",
+  "mcp.modeReadOnly": "Read-only",
+  "mcp.makeReadOnly": "Switch to read-only",
+  "mcp.makeWritable": "Allow write + execute",
   "rail.mcp": "MCP",
   "mcp.running": "Running",
   "mcp.stopped": "Disabled",
@@ -332,6 +337,11 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "mcp.mode": "权限",
+  "mcp.modeFull": "完整(可写/可执行)",
+  "mcp.modeReadOnly": "只读",
+  "mcp.makeReadOnly": "切为只读",
+  "mcp.makeWritable": "允许写入/执行",
   "rail.mcp": "MCP",
   "mcp.running": "运行中",
   "mcp.stopped": "未启用",

@@ -103,16 +103,16 @@ export function installBridge(overrides: Record<string, Behavior> = {}, opts: { 
     /* 内置 MCP 服务器:状态/开关/活动流 */
     mcp: {
       status: record("mcp.status", overrides["mcp.status"] ?? (async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], allowWrite: true,
       }))),
       set: record("mcp.set", overrides["mcp.set"] ?? (async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], allowWrite: true,
       }))),
       regenerateToken: record("mcp.regenerateToken", overrides["mcp.regenerateToken"] ?? (async () => ({
         running: false, port: 7788, token: "tok2", clients: [], error: null, activity: [],
       }))),
       clearActivity: record("mcp.clearActivity", overrides["mcp.clearActivity"] ?? (async () => ({
-        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [],
+        running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], allowWrite: true,
       }))),
       onActivity: record("mcp.onActivity", overrides["mcp.onActivity"] ?? (() => () => undefined)),
       onStatus: record("mcp.onStatus", overrides["mcp.onStatus"] ?? (() => () => undefined)),

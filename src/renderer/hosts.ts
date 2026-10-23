@@ -93,7 +93,7 @@ interface SshkitBridge {
   /** 内置 MCP 服务器(阶段 1:只读工具 + 活动流) */
   mcp: {
     status(): Promise<McpStatus>;
-    set(patch: { enabled?: boolean; port?: number }): Promise<McpStatus>;
+    set(patch: { enabled?: boolean; port?: number; allowWrite?: boolean }): Promise<McpStatus>;
     regenerateToken(): Promise<McpStatus>;
     clearActivity(): Promise<McpStatus>;
     onActivity(cb: (ev: McpActivity) => void): () => void;

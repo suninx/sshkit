@@ -134,7 +134,7 @@ const api = {
   /* 内置 MCP 服务器:状态 / 开关 / 活动流(用户要求"AI 通过 MCP 操作,但我看得见") */
   mcp: {
     status: () => ipcRenderer.invoke("mcp:status"),
-    set: (patch: { enabled?: boolean; port?: number }) => ipcRenderer.invoke("mcp:set", patch),
+    set: (patch: { enabled?: boolean; port?: number; allowWrite?: boolean }) => ipcRenderer.invoke("mcp:set", patch),
     regenerateToken: () => ipcRenderer.invoke("mcp:regenerateToken"),
     clearActivity: () => ipcRenderer.invoke("mcp:clearActivity"),
     onActivity: (cb: (ev: unknown) => void) => {

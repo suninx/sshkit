@@ -23,7 +23,7 @@ describe("settings.json", () => {
   it("默认语言是跟随系统", async () => {
     const { getSettings } = await mod();
     /* MCP 默认关闭、端口 7788:默认值属于设置的一部分,测试跟着期望即可 */
-    expect(getSettings()).toEqual({ locale: "system", mcp: { enabled: false, port: 7788 } });
+    expect(getSettings()).toEqual({ locale: "system", mcp: { enabled: false, port: 7788, allowWrite: true } });
   });
 
   it("旧版 settings.json 没有 mcp 段:合并默认值(不因升级而读不到设置)", async () => {
@@ -31,7 +31,7 @@ describe("settings.json", () => {
     fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ locale: "zh" }));
     vi.resetModules();
     const { getSettings } = await mod();
-    expect(getSettings()).toEqual({ locale: "zh", mcp: { enabled: false, port: 7788 } });
+    expect(getSettings()).toEqual({ locale: "zh", mcp: { enabled: false, port: 7788, allowWrite: true } });
   });
 
   it("写入后落盘,重新加载能读回", async () => {
