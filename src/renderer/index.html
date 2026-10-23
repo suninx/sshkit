@@ -483,6 +483,24 @@
       padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
     .sp-menu-item:hover { background: var(--h09); }
     .sp-menu-item.danger { color: var(--danger); }
+    /* ===== 广播输入:徽章 / 顶部浮条 / 危险命令确认 ===== */
+    .bc-dot { margin-left: 4px; color: #e0b341; font-size: 11px; line-height: 1; }
+    .bc-banner { position: fixed; right: 16px; bottom: 16px; z-index: 55; display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 10px; background: rgba(224,179,65,.14); border: 1px solid rgba(224,179,65,.45);
+      color: #e0b341; font-size: 12.5px; max-width: 60vw; }
+    .bc-banner .bc-exit { border: 1px solid rgba(224,179,65,.5); background: transparent; color: #e0b341;
+      border-radius: 7px; height: 24px; padding: 0 10px; font-size: 12px; cursor: pointer; }
+    .bc-confirm { position: fixed; inset: 0; z-index: 65; display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.45); }
+    .bc-confirm-box { width: 460px; max-width: calc(100vw - 48px); background: var(--bg2); border: 1px solid rgba(224,179,65,.5);
+      border-radius: 14px; padding: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+    .bc-confirm-title { font-size: 14px; font-weight: 600; color: #e0b341; margin-bottom: 10px; }
+    .bc-confirm-cmd { margin: 0 0 10px; padding: 10px; border-radius: 8px; background: var(--bg3); color: var(--fg);
+      font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px; white-space: pre-wrap; word-break: break-all; }
+    .bc-confirm-hosts { color: var(--fg-dim); font-size: 12px; margin-bottom: 14px; }
+    .bc-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .mcp-btn.danger { color: var(--danger); border-color: rgba(255,115,117,.45); }
+
     /* ===== MCP 分区:状态卡 + 调用活动流 ===== */
     .mcp-wrap { padding: 14px 14px 8px; display: flex; flex-direction: column; gap: 8px; }
     .mcp-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }

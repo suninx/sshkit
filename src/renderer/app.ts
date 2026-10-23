@@ -5,6 +5,9 @@ import { SearchAddon } from "@xterm/addon-search";
 import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
 import { mountMcpSection, policyLabel } from "./mcp";
+import {
+  CLEAR_LINE, createBroadcastState, planWrite, removeFromBroadcast, toggleBroadcast,
+} from "./broadcast";
 import { applyDom, audit, getLocale, resolveLocale, setLocale as setI18nLocale, tr, type LocalePref } from "../shared/i18n";
 import { createFwdView } from "./fwd";
 import { createKnownHostsView, installHostKeyDialog } from "./knownhosts";
@@ -297,6 +300,73 @@ function renderWsRail(): void {
   );
 }
 
+/* ===== 跨标签广播输入(右键单个加入;危险命令回车前确认) ===== */
+const bcState = createBroadcastState();
+
+/** 顶部浮条:显示广播组与退出入口(不改变布局,避免抖动) */
+function renderBroadcastBanner(): void {
+  const old = document.getElementById("bc-banner");
+  if (bcState.ids.size === 0) { old?.remove(); return; }
+  const bar = old ?? document.createElement("div");
+  bar.id = "bc-banner";
+  bar.className = "bc-banner";
+  /* 组内 id 一定有对应 tab(关闭/断开会移出),所以直接按 tab 取名 */
+  const names = tabs.filter((t) => t.termId !== null && bcState.ids.has(t.termId)).map((t) => t.label);
+  bar.textContent = `${tr("bc.active", { n: String(bcState.ids.size) })}:${names.join(" / ")}`;
+  const exit = document.createElement("button");
+  exit.className = "bc-exit";
+  exit.textContent = tr("bc.exit");
+  exit.addEventListener("click", () => {
+    for (const id of [...bcState.ids]) removeFromBroadcast(bcState, id);
+    renderBroadcastBanner();
+    renderTabs();
+  });
+  bar.append(exit);
+  if (!old) document.body.append(bar);
+}
+
+/** 危险命令确认:回车先扣住,用户点确认才广播 */
+function confirmDangerousBroadcast(line: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const names = tabs.filter((t) => t.termId !== null && bcState.ids.has(t.termId)).map((t) => t.label);
+    const wrap = document.createElement("div");
+    wrap.className = "bc-confirm";
+    wrap.innerHTML = `<div class="bc-confirm-box">
+      <div class="bc-confirm-title"></div>
+      <pre class="bc-confirm-cmd"></pre>
+      <div class="bc-confirm-hosts"></div>
+      <div class="bc-confirm-actions">
+        <button class="mcp-btn ghost" data-act="deny"></button>
+        <button class="mcp-btn danger" data-act="allow"></button>
+      </div>
+    </div>`;
+    (wrap.querySelector(".bc-confirm-title") as HTMLElement).textContent = tr("bc.dangerTitle");
+    (wrap.querySelector(".bc-confirm-cmd") as HTMLElement).textContent = line;
+    (wrap.querySelector(".bc-confirm-hosts") as HTMLElement).textContent = `${tr("bc.dangerHosts")}:${names.join(" / ")}`;
+    const btn = (a: string): HTMLElement => wrap.querySelector(`[data-act="${a}"]`) as HTMLElement;
+    (btn("deny")).textContent = tr("bc.cancel");
+    (btn("allow")).textContent = tr("bc.confirm");
+    const close = (ok: boolean): void => { wrap.remove(); resolve(ok); };
+    btn("deny").addEventListener("click", () => close(false));
+    btn("allow").addEventListener("click", () => close(true));
+    document.body.append(wrap);
+  });
+}
+
+/** 一次输入:按广播计划扇出;危险命令先确认,拒绝则发 Ctrl+U 清行 */
+function handleSessionInput(sourceId: number, data: string): void {
+  const plan = planWrite(bcState, sourceId, data);
+  if (plan.confirm) {
+    const { line } = plan.confirm;
+    void confirmDangerousBroadcast(line).then((ok) => {
+      if (ok) { for (const id of plan.targets) bridge.write(id, data); return; }
+      for (const id of plan.targets) bridge.write(id, CLEAR_LINE);
+    });
+    return;
+  }
+  for (const id of plan.targets) bridge.write(id, data);
+}
+
 function renderTabs(): void {
   renderWsRail();
   tabsEl.replaceChildren(
@@ -329,6 +399,13 @@ function renderTabs(): void {
       ico.className = "tico";
       ico.innerHTML = TICON[t.kind];
       el.append(ico);
+      if (t.termId !== null && bcState.ids.has(t.termId)) {
+        const dot = document.createElement("span");
+        dot.className = "bc-dot";
+        dot.title = tr("bc.badge");
+        dot.textContent = "⇢";
+        el.append(dot);
+      }
       let chev: HTMLElement | null = null;
       if (t.kind === "vault") {
         /* 原版 `Vaults` pill 是 [图标][标签][▾](箭头在标签**之后**),不是紧跟图标 */
@@ -565,6 +642,14 @@ function openTabMenu(t: Tab, x: number, y: number): void {
   item(tr("menu.duplicate"), () => duplicateTab(t));
   item(tr("menu.duplicateWindow"), () => { void bridge.window.create(); });
   if (t.kind === "session" && !t.split) item(tr("menu.splitH"), () => splitTab(t));
+  if (t.kind === "session" && t.host && t.termId !== null) {
+    const inGroup = bcState.ids.has(t.termId);
+    item(inGroup ? tr("menu.unbroadcast") : tr("menu.broadcast"), () => {
+      toggleBroadcast(bcState, t.termId!);
+      renderBroadcastBanner();
+      renderTabs();
+    });
+  }
   item(tr("menu.close"), () => closeTab(t.id));
   document.body.append(menu);
   setTimeout(() => document.addEventListener("click", function once(ev) {
@@ -1523,7 +1608,8 @@ function wireSession(tab: Tab, t: Terminal, id: number, kind: "local" | "ssh", h
   tab.termId = id;
   tab.host = host ?? tab.host;
   t.onData((d) => {
-    bridge.write(id, d);
+    /* 跨标签广播:组内输入扇出到全组;危险命令回车前确认(见 broadcast.ts) */
+    handleSessionInput(id, d);
     // T2 广播:原版 `Broadcast` / RUN_IN_ALL_ACTIVE_TABS —— 输入同时发到同 tab 的其它格
     const sp = tab.split;
     if (sp?.broadcast && sp.termId !== null) bridge.write(sp.termId, d);
@@ -1532,6 +1618,7 @@ function wireSession(tab: Tab, t: Terminal, id: number, kind: "local" | "ssh", h
   tab.disposers.push(bridge.onData(id, (d) => t.write(d)));
   tab.disposers.push(bridge.onExit(id, (info: ExitInfo) => {
     if (tab.termId !== id) return; // 上一个会话的迟到事件
+    if (removeFromBroadcast(bcState, id)) { renderBroadcastBanner(); renderTabs(); }
     tab.termId = null;
     tab.state = "off";
     tab.sftp = null;

@@ -17,6 +17,15 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "menu.broadcast": "Join broadcast input",
+  "menu.unbroadcast": "Leave broadcast input",
+  "bc.active": "Broadcasting to {n} session(s)",
+  "bc.exit": "Exit",
+  "bc.badge": "Broadcast input",
+  "bc.dangerTitle": "Dangerous command — send to all sessions?",
+  "bc.dangerHosts": "Targets",
+  "bc.confirm": "Send anyway",
+  "bc.cancel": "Cancel",
   "mcp.policy": "Policy",
   "mcp.policyReadOnly": "Read-only",
   "mcp.policyStandard": "Standard (ask before write/exec)",
@@ -350,6 +359,15 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "menu.broadcast": "加入同步输入",
+  "menu.unbroadcast": "退出同步输入",
+  "bc.active": "同步输入中:{n} 台",
+  "bc.exit": "退出",
+  "bc.badge": "同步输入",
+  "bc.dangerTitle": "危险命令 —— 确认广播到所有会话?",
+  "bc.dangerHosts": "目标",
+  "bc.confirm": "确认发送",
+  "bc.cancel": "取消",
   "mcp.policy": "权限",
   "mcp.policyReadOnly": "只读",
   "mcp.policyStandard": "标准(写/执行前询问)",

@@ -296,6 +296,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  bcRestore?.();
+  bcRestore = null;
   for (const [target, type, fn, opts] of tracked) {
     try { target.removeEventListener(type, fn, captureOf(opts)); } catch { /* 已随 DOM 消失 */ }
   }
@@ -376,6 +378,127 @@ async function waitFor(cond: () => boolean, tries = 40): Promise<void> {
   }
   throw new Error("waitFor timeout");
 }
+
+/* ================= 跨标签广播输入 ================= */
+
+/** onData 属性替换后的还原(下一个用例前必须还回去) */
+let bcRestore: (() => void) | null = null;
+
+describe("广播输入", () => {
+  /** 打开两个 ssh 会话并让它们加入广播组;返回收集到的输入回调 */
+  async function twoBroadcastSessions(): Promise<{ cbs: AnyFn[]; calls: CallLog }> {
+    const { calls } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    const { Terminal } = await xtermApis();
+    const cbs: AnyFn[] = [];
+    /* onData 是 getter(xterm 内部读 this._core),不能 vi.spyOn —— 直接替换属性 */
+    const desc = Object.getOwnPropertyDescriptor(Terminal.prototype, "onData")!;
+    Object.defineProperty(Terminal.prototype, "onData", {
+      configurable: true,
+      value: (cb: AnyFn) => { cbs.push(cb); return { dispose: () => undefined }; },
+    });
+    bcRestore = () => { Object.defineProperty(Terminal.prototype, "onData", desc); };
+    await openSsh();
+    /* 第二个会话:Duplicate 会复用同一台主机 */
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Duplicate"));
+    await waitFor(() => tabKinds().filter((k) => k === "session").length === 2);
+    /* 两个都加入广播组 */
+    for (const el of tabEls().filter((x) => x.dataset.kind === "session")) {
+      contextMenuOn(el);
+      click(tabMenuItem("Join broadcast input"));
+    }
+    return { cbs, calls };
+  }
+
+  it("右键加入/退出:徽章与底部浮条出现;退出后消失", async () => {
+    const { calls } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    await openSsh();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Join broadcast input"));
+    await waitFor(() => !!document.getElementById("bc-banner"));
+    expect(tabByKind("session").querySelector(".bc-dot")).toBeTruthy();
+    expect(document.getElementById("bc-banner")!.textContent).toContain("1");
+
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Leave broadcast input"));
+    await waitFor(() => !document.getElementById("bc-banner"));
+    expect(tabByKind("session").querySelector(".bc-dot")).toBeNull();
+    expect(calls["write"]?.length ?? 0).toBe(0);
+  });
+
+  it("浮条上的退出按钮:清空广播组并收起浮条", async () => {
+    await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    await openSsh();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Join broadcast input"));
+    await waitFor(() => !!document.getElementById("bc-banner"));
+    click(document.querySelector("#bc-banner .bc-exit"));
+    await waitFor(() => !document.getElementById("bc-banner"));
+    expect(tabByKind("session").querySelector(".bc-dot")).toBeNull();
+  });
+
+  it("组内输入扇出到两个会话;回车后各自收到", async () => {
+    const { cbs, calls } = await twoBroadcastSessions();
+    expect(cbs.length).toBeGreaterThanOrEqual(2);
+    cbs[0]("uptime");
+    cbs[0]("\r");
+    await flush(2);
+    const writes = (calls["write"] ?? []).map((a) => [a[0], a[1]] as [number, string]);
+    const data = writes.map((w) => w[1]);
+    expect(data.filter((d) => d === "uptime").length).toBe(2);
+    expect(data.filter((d) => d === "\r").length).toBe(2);
+  });
+
+  it("危险命令:回车先弹确认;取消则发 Ctrl+U 且不发回车,确认则广播", async () => {
+    const { cbs, calls } = await twoBroadcastSessions();
+    cbs[0]("rm -rf /tmp/bc-test");
+    cbs[0]("\r");
+    await waitFor(() => !!document.querySelector(".bc-confirm"));
+    expect(document.querySelector(".bc-confirm-cmd")!.textContent).toContain("rm -rf");
+    expect(document.querySelector(".bc-confirm-hosts")!.textContent).toContain(HOST.name);
+    const before = (calls["write"] ?? []).length;
+    click(document.querySelector('.bc-confirm [data-act="deny"]'));
+    await flush(2);
+    const afterDeny = (calls["write"] ?? []).slice(before).map((a) => a[1]);
+    expect(afterDeny.filter((d) => d === "\x15").length).toBe(2);
+    expect(afterDeny.filter((d) => d === "\r").length).toBe(0);
+
+    /* 再来一次,这次确认 */
+    cbs[0]("rm -rf /tmp/bc-test");
+    cbs[0]("\r");
+    await waitFor(() => !!document.querySelector(".bc-confirm"));
+    const before2 = (calls["write"] ?? []).length;
+    click(document.querySelector('.bc-confirm [data-act="allow"]'));
+    await flush(2);
+    const afterAllow = (calls["write"] ?? []).slice(before2).map((a) => a[1]);
+    expect(afterAllow.filter((d) => d === "\r").length).toBe(2);
+  });
+
+  it("会话断开后自动移出广播组;组空则浮条消失", async () => {
+    let exitCb: ((info: unknown) => void) | null = null;
+    await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "onExit": (_id: number, cb: (info: unknown) => void) => { exitCb = cb; return () => undefined; },
+      },
+    });
+    await openSsh();
+    contextMenuOn(tabByKind("session"));
+    click(tabMenuItem("Join broadcast input"));
+    await waitFor(() => !!document.getElementById("bc-banner"));
+    exitCb!({ exitCode: 0 });
+    await flush(3);
+    expect(document.getElementById("bc-banner")).toBeNull();
+  });
+
+  it("本地 shell 不提供广播入口(避免误伤本机)", async () => {
+    await boot();
+    await openLocal();
+    contextMenuOn(tabByKind("session"));
+    const labels = [...document.querySelectorAll(".tab-menu-item")].map((b) => b.textContent);
+    expect(labels.some((l) => l?.includes("broadcast input"))).toBe(false);
+  });
+});
 
 /* ================= 用例 ================= */
 
