@@ -21,7 +21,6 @@ process.env.HOME = HOME;
 process.env.USERPROFILE = HOME;   // Windows:os.homedir() 读 USERPROFILE
 
 let SshService: typeof import("../../src/main/ssh").SshService;
-let addHostKey: typeof import("../../src/main/knownhosts").addHostKey;
 let server: RealSshd;
 
 /** 收集渲染层会收到的消息(真实异步流 → 用小轮询等待) */
@@ -58,8 +57,6 @@ const host = (over: Partial<HostRecord> = {}): HostRecord => ({
 
 beforeAll(async () => {
   vi.resetModules();
-  const kh = await import("../../src/main/knownhosts");
-  addHostKey = kh.addHostKey;
   ({ SshService } = await import("../../src/main/ssh"));
   server = await startRealSshd();
 });
@@ -121,8 +118,8 @@ describe("真实协议:密码认证 + shell 通道", () => {
   it("密码错误:真实 ssh2 的失败被识别为 auth(而不是笼统的 error)", async () => {
     const svc = new SshService();
     const s = makeSender();
-    // 先把这个主机写进 known_hosts,避免被主机密钥询问拦住
-    addHostKey(`[127.0.0.1]:${server.port}`, Buffer.from("placeholder-not-used"), "ssh-rsa");
+    /* 这台主机在上一个用例里已用真实主机密钥 pin 进临时 HOME 的 known_hosts,
+       所以这里不会再弹主机密钥询问;若将来顺序变了,下面的 cancel 仍能兜住。 */
     const p = svc.connect(s.sender, host({ id: "h_bad" }), { password: "wrong" }, { cols: 80, rows: 24 });
     const req = s.ask[0];
     if (req) svc.answerHostKey(String(req.reqId), "cancel");
@@ -130,6 +127,12 @@ describe("真实协议:密码认证 + shell 通道", () => {
     await waitFor(() => s.exits.length > 0);
     expect(s.exits[0]).toMatchObject({ reason: "auth" });
     expect(server.observed.authFailures).toBeGreaterThan(0);
+  });
+
+  it("回归:known_hosts 只写临时 HOME,不在仓库根目录留下 ssh-rsa 垃圾文件", () => {
+    /* 曾经的 bug:addHostKey(host, key, "ssh-rsa") 的第三参是 **file**,于是每个测试
+       run 都往 cwd 写一行 "[127.0.0.1]:port unknown ...",还被 git add -A 带进提交。 */
+    expect(fs.existsSync(path.join(process.cwd(), "ssh-rsa"))).toBe(false);
   });
 });
 

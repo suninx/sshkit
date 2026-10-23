@@ -15,3 +15,6 @@ release/
 test-results/
 playwright-report/
 test/.coverage/
+# 回归兜底:real-ssh 用例曾把 addHostKey 的第 3 参(file)误写成 "ssh-rsa",
+# 每个 run 往仓库根写一行。根因已修,这里再挡一层,避免同类垃圾被 git add -A 带进提交。
+/ssh-rsa
