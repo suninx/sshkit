@@ -18,6 +18,18 @@
       src: url("./fonts/MesloLGSNerdFontMono-Bold.ttf") format("truetype");
       font-weight: 700; font-style: normal; font-display: block;
     }
+    /* 随包的 Nerd Fonts(用户要求"打包进来",这样没装字体也能选):
+       JetBrainsMono / FiraCode,取自 Nerd Fonts v3.2.1 官方 release,见 fonts/LICENSE.txt */
+    @font-face {
+      font-family: "JetBrainsMono Nerd Font Mono";
+      src: url("./fonts/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");
+      font-weight: 400; font-style: normal; font-display: block;
+    }
+    @font-face {
+      font-family: "FiraCode Nerd Font Mono";
+      src: url("./fonts/FiraCodeNerdFontMono-Regular.ttf") format("truetype");
+      font-weight: 400; font-style: normal; font-display: block;
+    }
     :root {
       /* ===== 配色:全部取自原版自身(有据)=====
          内容区 #1D2033 与 导航栏 #282B3D 来自其包内 SVG 填充(精确值);

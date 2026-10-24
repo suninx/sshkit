@@ -1171,8 +1171,10 @@ let TERM_FONT = FONT_CHOICES[0].id;
 
 /** 随包附带的 MesloLGS NF 是网页字体(@font-face)。canvas 渲染器的字形图集拿不到网页字体,
     Windows 上会静默回退成细体 Courier New —— 选中它时必须改用 DOM 渲染器。 */
+/** 随包字体(网页字体):没装系统字体也能用,但 canvas 字形图集拿不到,必须走 DOM 渲染 */
+export const BUNDLED_WEB_FONTS = ["MesloLGS NF", "JetBrainsMono Nerd Font Mono", "FiraCode Nerd Font Mono"];
 export function isBundledWebFont(family: string): boolean {
-  return family.includes("MesloLGS NF");
+  return BUNDLED_WEB_FONTS.some((f) => family.includes(f));
 }
 
 /** 是否该用 canvas 渲染器:用户没强制 dom,且当前字体不是随包网页字体。 */
@@ -1586,6 +1588,9 @@ function openFontPicker(): void {
       fontFamily = f.id;
       localStorage.setItem("sshkit.fontFamily", fontFamily);
       applyAppearance();
+      /* 侧栏「字体」行同步显示新字体名(否则选完还显示旧的,像没生效)。
+         选择器是从侧栏打开的,该节点必然存在。 */
+      (document.querySelector("#panel-font .sp-font-name") as HTMLElement).textContent = f.label;
       wrap.remove();
     });
     box.append(row);

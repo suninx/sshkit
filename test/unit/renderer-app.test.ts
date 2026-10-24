@@ -1269,6 +1269,19 @@ const lastToast = (): string | null => {
 };
 
 describe("终端侧栏与提示条", () => {
+  it("随包字体(JetBrainsMono/FiraCode)算可用,且强制 DOM 渲染", async () => {
+    await boot();
+    const app = await import("../../src/renderer/app");
+    expect(app.BUNDLED_WEB_FONTS).toContain("JetBrainsMono Nerd Font Mono");
+    expect(app.BUNDLED_WEB_FONTS).toContain("FiraCode Nerd Font Mono");
+    for (const f of app.BUNDLED_WEB_FONTS) {
+      expect(app.isBundledWebFont(`"${f}", monospace`)).toBe(true);
+      expect(app.useCanvasRenderer(`"${f}", monospace`, null)).toBe(false);   // 网页字体 → DOM 渲染
+    }
+    expect(app.isBundledWebFont("Menlo, monospace")).toBe(false);
+    expect(app.useCanvasRenderer("Menlo, monospace", null)).toBe(true);
+  });
+
   it("字体选择器:未安装的字体置灰不可选,随包 Meslo 始终可用", async () => {
     await boot({ overrides: { "hosts.list": async () => [HOST] } });
     /* 伪造 canvas 度量(必须在 boot 之后:boot 会把 getContext 重置成 null)。
@@ -1417,10 +1430,13 @@ describe("终端侧栏与提示条", () => {
     expect(document.querySelector(".font-picker")).toBeTruthy();
     expect(document.querySelector(".prefs")).toBeNull();
     expect(document.querySelectorAll(".font-picker .fp-row").length).toBeGreaterThan(3);
-    click(document.querySelector(".font-picker .fp-row"));   // 选第一项
+    click(document.querySelectorAll(".font-picker .fp-row")[1] as HTMLElement);   // 选第二项(与当前不同)
     await flush(2);
     expect(document.querySelector(".font-picker")).toBeNull();
     expect(localStorage.getItem("sshkit.fontFamily")).toBeTruthy();
+    /* 侧栏字体名要同步成新选的字体,不能还显示旧的 */
+    const picked = (localStorage.getItem("sshkit.fontFamily") ?? "").replace(/^"|".*$/g, "");
+    expect(document.querySelector("#panel-font .sp-font-name")!.textContent).toBe(picked);
 
     const other = [...document.querySelectorAll<HTMLElement>(".sp-theme-row")]
       .find((t) => t.dataset.theme !== current.dataset.theme)!;

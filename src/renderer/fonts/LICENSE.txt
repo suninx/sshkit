@@ -208,3 +208,10 @@ src/renderer/fonts/MesloLGSNerdFontMono-{Regular,Bold}.ttf
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+JetBrainsMono Nerd Font Mono / FiraCode Nerd Font Mono — 同样打包进本仓库
+src/renderer/fonts/{JetBrainsMono,FiraCode}NerdFontMono-Regular.ttf
+
+- JetBrains Mono(原始设计,JetBrains)以 SIL Open Font License 1.1 发布;
+- Fira Code(原始设计,Nikhil Marathe / Mozilla)以 SIL Open Font License 1.1 发布;
+- 两者的 Nerd Fonts 补丁与图标字形见 https://github.com/ryanoasis/nerd-fonts/blob/master/LICENSE。
