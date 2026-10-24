@@ -485,6 +485,12 @@
     .sp-menu-item.danger { color: var(--danger); }
     /* ===== 终端侧栏:Font / Themes(原版两栏模式的视觉) ===== */
     .sp-scroll { flex: 1; overflow: auto; }
+    .sp-rail { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--wire); }
+    .sp-tab { width: 30px; height: 28px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--fg-dim); cursor: pointer; }
+    .sp-tab:hover { background: var(--h09); color: var(--fg); }
+    .sp-tab.on { background: rgba(62,207,142,.12); color: #3ecf8e; border-color: rgba(62,207,142,.35); }
+    .sp-view[hidden] { display: none; }
     .sp-font-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--wire);
       cursor: pointer; color: var(--fg); font-size: 13px; }
     .sp-font-row:hover { background: var(--h09); }
@@ -1239,28 +1245,45 @@
         <div id="ws-rail"></div>
         <div id="stage"></div>
         <div id="sidepanel">
-          <div class="sp-head"><span data-i18n="panel.terminal">Terminal</span><span style="flex:1"></span>
-            <button class="btn sp-close" title="Hide side-panel" data-i18n-title="panel.hide">✕</button></div>
+          <div class="sp-rail">
+            <button class="sp-tab" data-sp-tab="appearance" title="Appearance" aria-label="Appearance">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18c1.2 0 1.8-.9 1.8-1.9 0-.6-.3-1.1-.3-1.7 0-.9.7-1.4 1.6-1.4H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z"/><circle cx="8.5" cy="10" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="15.5" cy="10" r="1"/></svg>
+            </button>
+            <button class="sp-tab" data-sp-tab="snippets" title="Snippets" aria-label="Snippets">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M8 5l-5 7 5 7M16 5l5 7-5 7"/></svg>
+            </button>
+            <button class="sp-tab" data-sp-tab="jump" title="Jump to" aria-label="Jump to">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+            <span style="flex:1"></span>
+            <button class="btn sp-close" title="Hide side-panel" data-i18n-title="panel.hide">✕</button>
+          </div>
           <div class="sp-scroll">
-            <div class="sp-sec sp-font-sec">
-              <div class="sp-title" data-i18n="panel.font">Font</div>
-              <div id="panel-font" class="sp-font-row"><span class="sp-font-name"></span><span class="sp-chev">›</span></div>
+            <div class="sp-view" data-view="appearance">
+              <div class="sp-sec">
+                <div class="sp-title" data-i18n="panel.font">Font</div>
+                <div id="panel-font" class="sp-font-row"><span class="sp-font-name"></span><span class="sp-chev">›</span></div>
+              </div>
+              <div class="sp-sec">
+                <div class="sp-title" data-i18n="panel.themes">Themes</div>
+                <div id="panel-theme-list" class="panel-themes"></div>
+              </div>
             </div>
-            <div class="sp-sec">
-              <div class="sp-title" data-i18n="panel.themes">Themes</div>
-              <div id="panel-theme-list" class="panel-themes"></div>
+            <div class="sp-view" data-view="snippets" hidden>
+              <div class="sp-sec">
+                <div class="sp-title" data-i18n="panel.snippets">Snippets</div>
+                <div id="snip-list" class="sp-list"></div>
+                <div class="snip-add">
+                  <input class="snip-name" placeholder="Name" data-i18n-placeholder="panel.snipName" spellcheck="false" autocomplete="off">
+                  <input class="snip-cmd" placeholder="Command" data-i18n-placeholder="panel.snipCommand" spellcheck="false" autocomplete="off">
+                  <button class="btn snip-save" data-i18n="panel.save">Save</button>
+                </div>
+              </div>
             </div>
-            <div class="sp-sec">
-              <div class="sp-title" data-i18n="panel.jumpTo">Jump to</div>
-              <div id="jump-list" class="sp-list"></div>
-            </div>
-            <div class="sp-sec">
-              <div class="sp-title" data-i18n="panel.snippets">Snippets</div>
-              <div id="snip-list" class="sp-list"></div>
-              <div class="snip-add">
-                <input class="snip-name" placeholder="Name" data-i18n-placeholder="panel.snipName" spellcheck="false" autocomplete="off">
-                <input class="snip-cmd" placeholder="Command" data-i18n-placeholder="panel.snipCommand" spellcheck="false" autocomplete="off">
-                <button class="btn snip-save" data-i18n="panel.save">Save</button>
+            <div class="sp-view" data-view="jump" hidden>
+              <div class="sp-sec">
+                <div class="sp-title" data-i18n="panel.jumpTo">Jump to</div>
+                <div id="jump-list" class="sp-list"></div>
               </div>
             </div>
           </div>

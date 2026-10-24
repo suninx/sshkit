@@ -116,11 +116,24 @@ function setSftpSession(s: CurrentSession | null): void {
    原版还有 `Serial` 分区 —— 本项目**不做串口**(2026-10-22 决定并移除全部入口)。 */
 let PANEL_OPEN = localStorage.getItem("sshkit.sidePanel") === "1";
 
+/** 侧栏当前 tab(外观/片段/跳转);记住上次选择 */
+let panelTab: "appearance" | "snippets" | "jump" =
+  (localStorage.getItem("sshkit.panelTab") as "appearance" | "snippets" | "jump") || "appearance";
+
+function paintPanelTab(): void {
+  for (const b of document.querySelectorAll<HTMLElement>("#sidepanel .sp-tab")) {
+    b.classList.toggle("on", b.dataset.spTab === panelTab);
+  }
+  for (const v of document.querySelectorAll<HTMLElement>("#sidepanel .sp-view")) {
+    v.hidden = v.dataset.view !== panelTab;
+  }
+}
+
 function applyPanel(): void {
   document.body.dataset.panel = PANEL_OPEN ? "1" : "0";
   const b = document.getElementById("btn-panel");
   if (b) { b.classList.toggle("on", PANEL_OPEN); b.title = PANEL_OPEN ? "Hide terminal side-panel" : "Show terminal side-panel"; }
-  if (PANEL_OPEN) void renderSidePanel();
+  if (PANEL_OPEN) { paintPanelTab(); void renderSidePanel(); }
   const t = activeTab();
   if (t?.fit) { try { t.fit.fit(); } catch { /* 布局未稳 */ } }
 }
@@ -1615,6 +1628,13 @@ function openPrefs(): void {
 /* T2:工作区视图开关(原版动作 toggleWorkspaceViewMode) */
 document.getElementById("btn-tabview")!.addEventListener("click", () => toggleTabView());
 document.getElementById("btn-panel")!.addEventListener("click", () => togglePanel());
+for (const b of document.querySelectorAll<HTMLElement>("#sidepanel .sp-tab")) {
+  b.addEventListener("click", () => {
+    panelTab = b.dataset.spTab as typeof panelTab;
+    localStorage.setItem("sshkit.panelTab", panelTab);
+    paintPanelTab();
+  });
+}
 document.querySelector(".sp-close")!.addEventListener("click", () => { if (PANEL_OPEN) togglePanel(); });
 document.querySelector(".snip-save")!.addEventListener("click", () => {
   const name = (document.querySelector(".snip-name") as HTMLInputElement).value.trim();

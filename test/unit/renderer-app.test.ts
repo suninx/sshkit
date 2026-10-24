@@ -1269,6 +1269,41 @@ const lastToast = (): string | null => {
 };
 
 describe("终端侧栏与提示条", () => {
+  it("侧栏 tab:代码片段是独立 tab,切换后内容与选中态跟着变并记住", async () => {
+    await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "snippets.list": async () => [{ id: "s1", name: "Deploy", command: "make deploy" }],
+      },
+    });
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await waitFor(() => document.body.dataset.panel === "1");
+    const visible = (): string => {
+      const v = [...document.querySelectorAll<HTMLElement>("#sidepanel .sp-view")].find((x) => !x.hidden);
+      return v?.dataset.view ?? "";
+    };
+    expect(visible()).toBe("appearance");
+
+    click(document.querySelector('#sidepanel .sp-tab[data-sp-tab="snippets"]'));
+    await flush(2);
+    expect(visible()).toBe("snippets");
+    expect(document.querySelector('#sidepanel .sp-tab.on')!.getAttribute("data-sp-tab")).toBe("snippets");
+    expect(document.querySelector("#snip-list .sp-nm")!.textContent).toBe("Deploy");
+    expect(localStorage.getItem("sshkit.panelTab")).toBe("snippets");
+
+    click(document.querySelector('#sidepanel .sp-tab[data-sp-tab="jump"]'));
+    await flush(2);
+    expect(visible()).toBe("jump");
+    expect(document.querySelector("#jump-list .sp-item")).toBeTruthy();
+
+    /* 关掉再开:停在上次的 tab */
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await flush(2);
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await flush(2);
+    expect(visible()).toBe("jump");
+  });
+
   it("侧栏外观区:Font 行 + Themes 缩略色卡;点主题立即应用并落盘", async () => {
     /* 自定义字体族(不在清单里):启动时读 localStorage,Font 行应直接把该串当名字 */
     await boot({
