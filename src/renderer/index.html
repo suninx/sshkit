@@ -514,6 +514,20 @@
     .sp-theme-badge { font-size: 11px; color: var(--fg-dim); }
     .sp-theme-row.on .sp-theme-badge { color: #3ecf8e; }
 
+    /* ===== 字体选择器(侧栏「字体」行) ===== */
+    .font-picker-backdrop { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.35); }
+    .font-picker { width: 380px; max-width: calc(100vw - 48px); max-height: 60vh; overflow: auto; background: var(--bg2);
+      border: 1px solid var(--wire); border-radius: 12px; padding: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.45);
+      display: flex; flex-direction: column; gap: 4px; }
+    .fp-title { font-size: 13px; font-weight: 600; color: var(--fg); padding: 2px 6px 8px; }
+    .fp-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 0; border-radius: 8px;
+      background: transparent; color: var(--fg); cursor: pointer; text-align: left; font-size: 13px; }
+    .fp-row:hover { background: var(--h09); }
+    .fp-row.on { background: rgba(62,207,142,.12); }
+    .fp-row span:first-child { flex: 1; }
+    .fp-preview { color: var(--fg-dim); font-size: 12.5px; }
+
     /* ===== 多主机命令面板 ===== */
     .me-overlay { position: fixed; inset: 0; z-index: 62; display: flex; align-items: center; justify-content: center;
       background: rgba(0,0,0,.45); }

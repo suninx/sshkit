@@ -137,10 +137,9 @@ function bindPanelActions(): void {
   if (panelActionsBound) return;
   panelActionsBound = true;
   const fontRow = document.getElementById("panel-font");
-  /* 必须 stopPropagation:document 上有"点外部关闭 .prefs"的监听,
-     这次点击会冒泡上去,刚打开的偏好设置会被同一次点击立刻关掉
-     (用户看到的现象就是"字体行点了没反应")。 */
-  fontRow?.addEventListener("click", (ev) => { ev.stopPropagation(); openPrefs(); });
+  /* 字体行只开"字体选择器"(不弹整个偏好设置,免得里面还有颜色/主题让人困惑)。
+     必须 stopPropagation:document 上有"点外部关闭"的监听,否则刚开的弹框会被同一次点击关掉。 */
+  fontRow?.addEventListener("click", (ev) => { ev.stopPropagation(); openFontPicker(); });
   const sizeInput = document.getElementById("panel-font-size") as HTMLInputElement;
   const syncSize = (): void => { sizeInput.value = String(fontSize); };
   /* 与偏好设置共用 setFontSize:夹紧 4–40、落盘、应用到所有终端 */
@@ -1548,6 +1547,44 @@ function applyUiTheme(): void {
   for (const b of document.querySelectorAll<HTMLElement>(".ui-mode")) {
     b.classList.toggle("on", b.dataset.mode === UI_THEME);
   }
+}
+
+/** 字体选择器:只列字体,选中即应用(侧栏「字体」行用) */
+function openFontPicker(): void {
+  /* 只留一层:之前打开过的先清掉(查询遮罩类,避免只删了内层留下空遮罩) */
+  const existing = document.querySelector(".font-picker-backdrop");
+  if (existing) { existing.remove(); return; }
+  const wrap = document.createElement("div");
+  wrap.className = "font-picker-backdrop";
+  const box = document.createElement("div");
+  box.className = "font-picker";
+  const title = document.createElement("div");
+  title.className = "fp-title";
+  title.textContent = tr("prefs.font");
+  box.append(title);
+  for (const f of FONT_CHOICES) {
+    const row = document.createElement("button");
+    row.className = `fp-row${f.id === fontFamily ? " on" : ""}`;
+    row.dataset.font = f.id;
+    const nm = document.createElement("span");
+    nm.textContent = f.label;
+    const preview = document.createElement("span");
+    preview.className = "fp-preview";
+    preview.textContent = "Aa 0123";
+    preview.style.fontFamily = f.id;
+    row.append(nm, preview);
+    row.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      fontFamily = f.id;
+      localStorage.setItem("sshkit.fontFamily", fontFamily);
+      applyAppearance();
+      wrap.remove();
+    });
+    box.append(row);
+  }
+  wrap.append(box);
+  wrap.addEventListener("click", (ev) => { if (ev.target === wrap) wrap.remove(); });
+  document.body.append(wrap);
 }
 
 function openPrefs(): void {

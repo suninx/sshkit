@@ -1274,14 +1274,26 @@ describe("终端侧栏与提示条", () => {
     key(document, { code: "Period", key: ".", metaKey: true });
     await waitFor(() => document.body.dataset.panel === "1");
 
-    /* Font 行:点一次打开偏好设置,不会被自身第二次回调关掉 */
+    /* 已存在一层时再打开:旧的先被清掉,不会叠出两层 */
+    const stale = document.createElement("div");
+    stale.className = "font-picker-backdrop";
+    document.body.append(stale);
     click(document.querySelector("#panel-font"));
     await flush(3);
-    expect(document.querySelector(".prefs")).toBeTruthy();
-    /* 点外部关闭,给后续字号操作让出界面 */
-    click(document.body);
+    expect(stale.isConnected).toBe(false);      // 旧的那层被清掉
+    expect(document.querySelector(".font-picker")).toBeNull();
+    click(document.querySelector("#panel-font")); // 再点一次才真正打开
+    await flush(3);
+    expect(document.querySelectorAll(".font-picker-backdrop").length).toBe(1);
+    expect(document.querySelector(".font-picker")).toBeTruthy();
+    /* 点弹框内部不关闭 */
+    click(document.querySelector(".font-picker .fp-title"));
     await flush(2);
-    expect(document.querySelector(".prefs")).toBeNull();
+    expect(document.querySelector(".font-picker")).toBeTruthy();
+    /* 点遮罩关闭,给后续字号操作让出界面 */
+    click(document.querySelector(".font-picker-backdrop"));
+    await flush(2);
+    expect(document.querySelector(".font-picker")).toBeNull();
 
     /* 字号:A+ 增大并落盘、A− 减小、输入框直接设定、越界夹紧 */
     const input = document.querySelector("#panel-font-size") as HTMLInputElement;
@@ -1364,10 +1376,17 @@ describe("终端侧栏与提示条", () => {
     /* 默认主题不落盘,所以"未设置"时也要认 Termius Dark */
     expect(current.dataset.theme).toBe(localStorage.getItem("sshkit.scheme") ?? "Termius Dark");
 
-    /* Font 行:自定义字体的回退显示 */
+    /* Font 行:自定义字体的回退显示;点击只弹字体选择器(不是整个偏好设置) */
     expect(document.querySelector("#panel-font .sp-font-name")!.textContent).toBe("Some Custom Mono");
     click(document.querySelector("#panel-font"));
     await flush(3);
+    expect(document.querySelector(".font-picker")).toBeTruthy();
+    expect(document.querySelector(".prefs")).toBeNull();
+    expect(document.querySelectorAll(".font-picker .fp-row").length).toBeGreaterThan(3);
+    click(document.querySelector(".font-picker .fp-row"));   // 选第一项
+    await flush(2);
+    expect(document.querySelector(".font-picker")).toBeNull();
+    expect(localStorage.getItem("sshkit.fontFamily")).toBeTruthy();
 
     const other = [...document.querySelectorAll<HTMLElement>(".sp-theme-row")]
       .find((t) => t.dataset.theme !== current.dataset.theme)!;
