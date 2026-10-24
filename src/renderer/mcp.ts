@@ -47,7 +47,7 @@ export function clientConfig(s: McpStatus): string {
     mcpServers: {
       "sshkit-streamable-http": {
         type: "http",
-        url: `http://127.0.0.1:${s.port}/mcp`,
+        url: `http://127.0.0.1:${s.port}/stream`,
         headers: { Authorization: `Bearer ${s.token}` },
       },
       "sshkit-http-sse": {
@@ -88,7 +88,7 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
       row.append(p, u);
       return row;
     };
-    addr.append(line(tr("mcp.protoStreamable"), "/mcp"), line(tr("mcp.protoSse"), "/sse"));
+    addr.append(line(tr("mcp.protoStreamable"), "/stream"), line(tr("mcp.protoSse"), "/sse"));
   } else {
     addr.textContent = tr("mcp.offHint");
   }

@@ -77,7 +77,7 @@ describe("MCP 状态卡", () => {
       mcpServers: { sshkit: { type: string; url: string; headers: { Authorization: string } } };
     };
     expect(cfg.mcpServers["sshkit-streamable-http"]).toMatchObject({
-      type: "http", url: "http://127.0.0.1:9999/mcp", headers: { Authorization: "Bearer abc" },
+      type: "http", url: "http://127.0.0.1:9999/stream", headers: { Authorization: "Bearer abc" },
     });
     expect(cfg.mcpServers["sshkit-http-sse"]).toMatchObject({
       type: "sse", url: "http://127.0.0.1:9999/sse", headers: { Authorization: "Bearer abc" },
@@ -94,7 +94,7 @@ describe("MCP 状态卡", () => {
     mcp.paintMcp(box, status({ running: true, clients: ["Claude Code 2.0", "Codex"], error: "端口被占" }));
     expect(text(box)).toContain("Streamable HTTP");
     expect(text(box)).toContain("HTTP+SSE");
-    expect(text(box)).toContain("http://127.0.0.1:7788/mcp");
+    expect(text(box)).toContain("http://127.0.0.1:7788/stream");
     expect(text(box)).toContain("http://127.0.0.1:7788/sse");
     expect(text(box)).toContain("Claude Code 2.0 · Codex");
     expect(text(box)).toContain("端口被占");
@@ -117,7 +117,7 @@ describe("MCP 状态卡", () => {
     (box.querySelectorAll("button")[2] as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
     expect(calls["mcp.regenerateToken"].length).toBe(1);
-    expect(text(box)).toContain("http://127.0.0.1:7788/mcp");
+    expect(text(box)).toContain("http://127.0.0.1:7788/stream");
   });
 
   it("权限档:徽章跟随;下拉切换会调用 mcp:set", async () => {

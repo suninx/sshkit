@@ -57,6 +57,20 @@ describe("MCP 服务器:鉴权与路由", () => {
     expect(res.status).toBe(404);
   });
 
+  it("Streamable HTTP 走规范路径 /stream(/mcp 是兼容别名)", async () => {
+    const h = await boot();
+    const res = await fetch(`http://127.0.0.1:${h.port}/stream`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "stream" } } }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("mcp-session-id")).toMatch(/^[0-9a-f]{32}$/);
+    /* 兼容别名仍然可用 */
+    const alias = await rpc(h.port, { jsonrpc: "2.0", id: 2, method: "initialize", params: { clientInfo: { name: "alias" } } });
+    expect(alias.status).toBe(200);
+  });
+
   it("initialize:回协商后的协议版本 + 会话头;不支持的版本回落到最新", async () => {
     const h = await boot();
     const ok = await init(h.port);

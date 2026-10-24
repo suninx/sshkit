@@ -111,7 +111,7 @@ bash bench/down.sh                      # 收台(路径锚定,不误杀别的应
 **sshkit 当 MCP 服务器,AI 客户端(Claude Code / Codex / IDEA+Junie)通过 MCP 操作主机,
 sshkit 负责执行并把每次调用渲染到界面**。不是内置 agent(不接模型 API、不要 API key)。
 
-- 传输:**Streamable HTTP**(`POST/GET/DELETE /mcp`),只绑 `127.0.0.1`,默认端口 **7788**,
+- 传输:**Streamable HTTP**(`POST/GET/DELETE /stream`;早期 `/mcp` 保留为兼容别名),只绑 `127.0.0.1`,默认端口 **7788**,
   `Authorization: Bearer <token>`。协议版本协商 `2025-06-18 / 2025-03-26 / 2024-11-05`。
 - 令牌:32 字节随机,**存系统钥匙串**(account = `mcp:token`),首次启动生成;
   `mcp:regenerateToken` 会换令牌并重启服务器。
@@ -230,7 +230,7 @@ knownHosts.group);分区 tab 标题改用 `rail.*` 已有文案。
 
 ### 两种 MCP 传输并存(2026-10-24)
 
-- **Streamable HTTP**(2025-06-18):`POST/GET/DELETE /mcp`,会话头 `Mcp-Session-Id`;
+- **Streamable HTTP**(2025-06-18):`POST/GET/DELETE /stream`(`/mcp` 为兼容别名),会话头 `Mcp-Session-Id`;
   现有实现,IDE / Claude Code 等新客户端走这条。
 - **旧版 HTTP+SSE**(2024-11-05):`GET /sse` 建流,服务器先发
   `event: endpoint` + `data: /messages?sessionId=…`;客户端把 JSON-RPC POST 到

@@ -314,7 +314,8 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
         return;
       }
 
-      if (url.pathname !== "/mcp") {
+      /* Streamable HTTP 的规范路径是 /stream;早期版本用过 /mcp,保留为兼容别名 */
+      if (url.pathname !== "/stream" && url.pathname !== "/mcp") {
         res.writeHead(404).end();
         return;
       }
