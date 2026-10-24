@@ -1139,6 +1139,31 @@ describe("MCP 服务器接线", () => {
     }
   });
 
+  it("配置端口被占用:顺延并**持久化**新端口;界面仍显示原端口", async () => {
+    const port = await freePort();
+    const net = await import("node:net");
+    const blocker = net.createServer();
+    await new Promise<void>((r) => blocker.listen(port, "127.0.0.1", () => r()));
+    try {
+      await em.invoke("mcp:set", { enabled: false, port });
+      const st = (await em.invoke("mcp:set", { enabled: true })) as any;
+      expect(st.running).toBe(true);
+      expect(st.port).not.toBe(port);
+      expect(st.portFallbackFrom).toBe(port);
+      const actual = st.port as number;
+      await em.invoke("mcp:set", { enabled: false });
+
+      /* 停掉占用的进程后重新启用:因为已持久化,应直接用新端口(不再顺延) */
+      await new Promise<void>((r) => blocker.close(() => r()));
+      const again = (await em.invoke("mcp:set", { enabled: true })) as any;
+      expect(again.port).toBe(actual);
+      expect(again.portFallbackFrom).toBeNull();
+      await em.invoke("mcp:set", { enabled: false });
+    } finally {
+      try { await new Promise<void>((r) => blocker.close(() => r())); } catch { /* already closed */ }
+    }
+  });
+
   it("配置端口被占用时自动顺延到下一个端口,并在状态里标出原端口", async () => {
     const port = await freePort();
     const net = await import("node:net");

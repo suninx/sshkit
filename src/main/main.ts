@@ -404,13 +404,15 @@ let mcpHandle: McpServerHandle | null = null;
 let mcpToken = "";
 let mcpClients: string[] = [];
 let mcpError: string | null = null;
+/** 本次运行里"配置端口被占用、换成了别的端口"的原值(持久化后 status 仍能说明原因) */
+let mcpPortFallbackFrom: number | null = null;
 const mcpActivity: McpActivity[] = [];
 
 const mcpStatus = (): McpStatus => ({
   running: mcpHandle !== null,
   port: mcpHandle?.port ?? getSettings().mcp.port,
   /* 端口被占用了就顺延:告诉界面"本该是 X,实际用了 Y" */
-  portFallbackFrom: mcpHandle && mcpHandle.port !== getSettings().mcp.port ? getSettings().mcp.port : null,
+  portFallbackFrom: mcpPortFallbackFrom,
   token: mcpToken,
   policy: getSettings().mcp.policy,
   clients: mcpClients,
@@ -547,6 +549,7 @@ const mcpDeps: McpToolDeps = {
 /** 在一串候选端口上尝试启动(导出便于单测"全部失败"的兜底分支) */
 export async function startMcpOnPorts(ports: number[]): Promise<void> {
   mcpError = null;
+  const configured = getSettings().mcp.port;
   let lastErr: unknown = null;
   for (const port of ports) {
     try {
@@ -567,6 +570,14 @@ export async function startMcpOnPorts(ports: number[]): Promise<void> {
         onActivity: pushMcpActivity,
         onClients: (clients) => { mcpClients = clients; pushMcpStatus(); },
       });
+      /* 端口被占用顺延成功:把实际端口写回设置(用户要求"占用后永久改到新端口"),
+         并把原端口记在会话状态里,界面上仍能看到"是从 X 换过来的" */
+      if (port !== configured) {
+        mcpPortFallbackFrom = configured;
+        setSetting("mcp", { ...getSettings().mcp, port: mcpHandle.port });
+      } else {
+        mcpPortFallbackFrom = null;
+      }
       pushMcpStatus();
       return;
     } catch (err) {
@@ -629,6 +640,7 @@ ipcMain.handle("mcp:set", async (_e, patch: { enabled?: boolean; port?: number; 
     policy: patch.policy ?? cur.policy,
   };
   setSetting("mcp", next);
+  if (typeof patch.port === "number" && patch.port > 0) mcpPortFallbackFrom = null;
   const wasRunning = mcpHandle !== null;
   if (next.enabled) {
     if (wasRunning) await stopMcp();
