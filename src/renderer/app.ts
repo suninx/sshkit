@@ -153,6 +153,45 @@ async function renderSidePanel(): Promise<void> {
   const snips = document.getElementById("snip-list");
   if (!jump || !snips) return;
 
+  /* 外观区(原版终端右侧栏的 Font / Themes):先渲染,再渲染主机与片段 */
+  const fontRow = document.getElementById("panel-font");
+  const fontName = fontRow?.querySelector(".sp-font-name") as HTMLElement | null;
+  if (fontName) {
+    /* fontFamily 一定是 FONT_CHOICES 里的 id 或同值字符串,找不到时直接把 id 当名字显示 */
+    fontName.textContent = FONT_CHOICES.find((f) => f.id === fontFamily)?.label ?? fontFamily;
+  }
+  fontRow?.addEventListener("click", () => { openPrefs(); });
+  const themeList = document.getElementById("panel-theme-list");
+  if (themeList) {
+    const draw = (): void => {
+      themeList.replaceChildren(...TERM_SCHEMES.map((sc) => {
+        const b = document.createElement("button");
+        const cur = sc.name === schemeName;
+        b.className = `sp-theme-row${cur ? " on" : ""}`;
+        b.dataset.theme = sc.name;
+        const thumb = schemeSwatches(sc, "sp-thumb");
+        const meta = document.createElement("span");
+        meta.className = "sp-theme-meta";
+        const nm = document.createElement("span");
+        nm.className = "sp-theme-name";
+        nm.textContent = sc.name;
+        const badge = document.createElement("span");
+        badge.className = "sp-theme-badge";
+        badge.textContent = cur ? tr("panel.current") : "";
+        meta.append(nm, badge);
+        b.append(thumb, meta);
+        b.addEventListener("click", () => {
+          schemeName = sc.name;
+          localStorage.setItem("sshkit.scheme", schemeName);
+          applyAppearance();
+          draw();
+        });
+        return b;
+      }));
+    };
+    draw();
+  }
+
   const hosts = await bridge.hosts.list();
   jump.replaceChildren(
     ...hosts.map((h) => {
@@ -1373,6 +1412,18 @@ function scheme(): TermScheme {
   return TERM_SCHEMES.find((s) => s.name === schemeName) ?? TERM_SCHEMES[0];
 }
 
+/** 一套配色的小色带(背景 + 前景色 + 前几个 ANSI 色)。prefs 与终端侧栏共用。 */
+function schemeSwatches(sc: TermScheme, cls: string): HTMLElement {
+  const sw = document.createElement("span");
+  sw.className = cls;
+  for (const c of [sc.background, sc.palette[1], sc.palette[7], sc.palette[3], sc.palette[4]]) {
+    const i = document.createElement("i");
+    i.style.background = c;
+    sw.append(i);
+  }
+  return sw;
+}
+
 /** 应用外观:所有活动终端 + 窗口 chrome(tab 条底色随主题,原版实测如此) */
 /** 按背景亮度选前景色(简单相对亮度,阈值 0.55)。 */
 function pickOnColor(bg: string): string {
@@ -1506,14 +1557,7 @@ function openPrefs(): void {
     list.replaceChildren(...TERM_SCHEMES.map((sc) => {
       const b = document.createElement("button");
       b.className = `scheme${sc.name === schemeName ? " on" : ""}`;
-      const sw = document.createElement("span");
-      sw.className = "swatches";
-      // 用背景 + 前 8 色做个小色带,便于一眼认出
-      for (const c of [sc.background, ...sc.palette.slice(0, 7)]) {
-        const i = document.createElement("i");
-        i.style.background = c;
-        sw.append(i);
-      }
+      const sw = schemeSwatches(sc, "swatches");
       const nm = document.createElement("span");
       nm.textContent = sc.name;
       nm.style.flex = "1";

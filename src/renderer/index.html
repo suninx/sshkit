@@ -483,6 +483,27 @@
       padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
     .sp-menu-item:hover { background: var(--h09); }
     .sp-menu-item.danger { color: var(--danger); }
+    /* ===== 终端侧栏:Font / Themes(原版两栏模式的视觉) ===== */
+    .sp-scroll { flex: 1; overflow: auto; }
+    .sp-font-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--wire);
+      cursor: pointer; color: var(--fg); font-size: 13px; }
+    .sp-font-row:hover { background: var(--h09); }
+    .sp-font-name { flex: 1; }
+    .sp-chev { color: var(--fg-dim); font-size: 13px; }
+    .panel-themes { display: flex; flex-direction: column; padding: 4px 8px 8px; }
+    .sp-theme-row { display: flex; align-items: center; gap: 12px; padding: 9px 8px; border: 0; background: transparent;
+      border-radius: 8px; cursor: pointer; text-align: left; color: var(--fg); }
+    .sp-theme-row:hover { background: var(--h09); }
+    .sp-theme-row.on { background: rgba(62,207,142,.10); }
+    .sp-thumb { width: 74px; height: 40px; border-radius: 6px; overflow: hidden; flex: none;
+      display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 5px 6px; box-sizing: border-box;
+      border: 1px solid var(--wire); }
+    .sp-thumb i { display: block; height: 5px; border-radius: 2px; }
+    .sp-theme-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .sp-theme-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-theme-badge { font-size: 11px; color: var(--fg-dim); }
+    .sp-theme-row.on .sp-theme-badge { color: #3ecf8e; }
+
     /* ===== 多主机命令面板 ===== */
     .me-overlay { position: fixed; inset: 0; z-index: 62; display: flex; align-items: center; justify-content: center;
       background: rgba(0,0,0,.45); }
@@ -1220,17 +1241,27 @@
         <div id="sidepanel">
           <div class="sp-head"><span data-i18n="panel.terminal">Terminal</span><span style="flex:1"></span>
             <button class="btn sp-close" title="Hide side-panel" data-i18n-title="panel.hide">✕</button></div>
-          <div class="sp-sec">
-            <div class="sp-title" data-i18n="panel.jumpTo">Jump to</div>
-            <div id="jump-list" class="sp-list"></div>
-          </div>
-          <div class="sp-sec">
-            <div class="sp-title" data-i18n="panel.snippets">Snippets</div>
-            <div id="snip-list" class="sp-list"></div>
-            <div class="snip-add">
-              <input class="snip-name" placeholder="Name" data-i18n-placeholder="panel.snipName" spellcheck="false" autocomplete="off">
-              <input class="snip-cmd" placeholder="Command" data-i18n-placeholder="panel.snipCommand" spellcheck="false" autocomplete="off">
-              <button class="btn snip-save" data-i18n="panel.save">Save</button>
+          <div class="sp-scroll">
+            <div class="sp-sec sp-font-sec">
+              <div class="sp-title" data-i18n="panel.font">Font</div>
+              <div id="panel-font" class="sp-font-row"><span class="sp-font-name"></span><span class="sp-chev">›</span></div>
+            </div>
+            <div class="sp-sec">
+              <div class="sp-title" data-i18n="panel.themes">Themes</div>
+              <div id="panel-theme-list" class="panel-themes"></div>
+            </div>
+            <div class="sp-sec">
+              <div class="sp-title" data-i18n="panel.jumpTo">Jump to</div>
+              <div id="jump-list" class="sp-list"></div>
+            </div>
+            <div class="sp-sec">
+              <div class="sp-title" data-i18n="panel.snippets">Snippets</div>
+              <div id="snip-list" class="sp-list"></div>
+              <div class="snip-add">
+                <input class="snip-name" placeholder="Name" data-i18n-placeholder="panel.snipName" spellcheck="false" autocomplete="off">
+                <input class="snip-cmd" placeholder="Command" data-i18n-placeholder="panel.snipCommand" spellcheck="false" autocomplete="off">
+                <button class="btn snip-save" data-i18n="panel.save">Save</button>
+              </div>
             </div>
           </div>
         </div>

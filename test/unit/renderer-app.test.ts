@@ -1269,6 +1269,39 @@ const lastToast = (): string | null => {
 };
 
 describe("终端侧栏与提示条", () => {
+  it("侧栏外观区:Font 行 + Themes 缩略色卡;点主题立即应用并落盘", async () => {
+    /* 自定义字体族(不在清单里):启动时读 localStorage,Font 行应直接把该串当名字 */
+    await boot({
+      overrides: { "hosts.list": async () => [HOST] },
+      storage: { "sshkit.fontFamily": "Some Custom Mono" },
+    });
+    /* 用快捷键开侧栏(与其它侧栏用例一致,避免依赖按钮所在视图) */
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await waitFor(() => document.body.dataset.panel === "1");
+    const themes = [...document.querySelectorAll<HTMLElement>(".sp-theme-row")];
+    expect(themes.length).toBeGreaterThan(10);
+    expect(themes[0].querySelectorAll(".sp-thumb i").length).toBe(5);
+    const current = themes.find((t) => t.querySelector(".sp-theme-badge")!.textContent === "current")!;
+    expect(current).toBeTruthy();
+    /* 默认主题不落盘,所以"未设置"时也要认 Termius Dark */
+    expect(current.dataset.theme).toBe(localStorage.getItem("sshkit.scheme") ?? "Termius Dark");
+
+    /* Font 行:自定义字体的回退显示 */
+    expect(document.querySelector("#panel-font .sp-font-name")!.textContent).toBe("Some Custom Mono");
+    click(document.querySelector("#panel-font"));
+    await flush(3);
+
+    const other = [...document.querySelectorAll<HTMLElement>(".sp-theme-row")]
+      .find((t) => t.dataset.theme !== current.dataset.theme)!;
+    other.click();
+    await flush(2);
+    expect(localStorage.getItem("sshkit.scheme")).toBe(other.dataset.theme);
+    const after = [...document.querySelectorAll<HTMLElement>(".sp-theme-row")]
+      .find((t) => t.dataset.theme === other.dataset.theme)!;
+    expect(after.className).toContain("on");
+    expect(after.querySelector(".sp-theme-badge")!.textContent).toBe("current");
+  });
+
   it("⌘. 开关侧栏并渲染 Jump to / Snippets;点主机连它,点片段发到当前会话,可删除片段", async () => {
     const { calls } = await boot({
       overrides: {
