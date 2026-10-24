@@ -59,40 +59,51 @@ let current: McpStatus | null = null;
 export function paintMcp(box: HTMLElement, s: McpStatus): void {
   current = s;
   box.innerHTML = "";
-  const head = document.createElement("div");
-  head.className = "mcp-head";
+  const card = document.createElement("div");
+  card.className = "mcp-card";
 
-  const line1 = document.createElement("div");
-  line1.className = "mcp-line";
+  /* ---- 第一行:状态 / 地址 / 开关 ---- */
+  const top = document.createElement("div");
+  top.className = "mcp-top";
   const pill = document.createElement("span");
   pill.className = `mcp-pill ${s.running ? "on" : "off"}`;
   pill.textContent = s.running ? tr("mcp.running") : tr("mcp.stopped");
   const addr = document.createElement("span");
   addr.className = "mcp-addr";
   addr.textContent = s.running ? `http://127.0.0.1:${s.port}/mcp` : tr("mcp.offHint");
-  line1.append(pill, addr);
+  const toggle = document.createElement("button");
+  toggle.className = `mcp-btn ${s.running ? "danger" : "primary"}`;
+  toggle.textContent = s.running ? tr("mcp.disable") : tr("mcp.enable");
+  toggle.addEventListener("click", () => {
+    void bridge.mcp.set({ enabled: !s.running }).then((st) => { current = st; paintMcp(box, st); });
+  });
+  const spacer = document.createElement("span");
+  spacer.className = "mcp-spacer";
+  top.append(pill, addr, spacer, toggle);
   if (s.error) {
-    const err = document.createElement("span");
+    const err = document.createElement("div");
     err.className = "mcp-err";
     err.textContent = s.error;
-    line1.append(err);
+    top.append(err);
   }
 
-  const line2 = document.createElement("div");
-  line2.className = "mcp-line";
+  /* ---- 第二行:客户端 / 权限档 ---- */
+  const meta = document.createElement("div");
+  meta.className = "mcp-meta";
   const clients = document.createElement("span");
   clients.className = "mcp-clients";
   clients.textContent = s.clients.length > 0
-    ? tr("mcp.connected", { who: s.clients.join(", ") })
+    ? tr("mcp.connected", { who: s.clients.join(" · ") })
     : tr("mcp.noClient");
-  const mode = document.createElement("span");
   const modeClass: Record<McpPolicy, string> = { full: "full", standard: "std", "read-only": "ro" };
+  const mode = document.createElement("span");
   mode.className = `mcp-mode ${modeClass[s.policy]}`;
   mode.textContent = `${tr("mcp.policy")}:${policyLabel(s.policy)}`;
-  line2.append(clients, mode);
+  meta.append(clients, mode);
 
-  const line3 = document.createElement("div");
-  line3.className = "mcp-line mcp-actions";
+  /* ---- 第三行:操作(顺序保持不变:停用/复制/换令牌/全部中断 + 权限下拉) ---- */
+  const actions = document.createElement("div");
+  actions.className = "mcp-actions";
   const mk = (label: string, cls: string, onClick: () => void): HTMLButtonElement => {
     const b = document.createElement("button");
     b.className = `mcp-btn ${cls}`;
@@ -100,13 +111,8 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
     b.addEventListener("click", onClick);
     return b;
   };
-  const toggle = mk(s.running ? tr("mcp.disable") : tr("mcp.enable"), s.running ? "danger" : "primary", () => {
-    void bridge.mcp.set({ enabled: !s.running }).then((st) => { current = st; paintMcp(box, st); });
-  });
-  const copy = mk(tr("mcp.copyConfig"), "", () => {
-    void bridge.clipboard.write(clientConfig(s));
-  });
-  const regen = mk(s.running ? tr("mcp.regenerate") : tr("mcp.regenerate"), "ghost", () => {
+  const copy = mk(tr("mcp.copyConfig"), "ghost", () => { void bridge.clipboard.write(clientConfig(s)); });
+  const regen = mk(tr("mcp.regenerate"), "ghost", () => {
     void bridge.mcp.regenerateToken().then((st) => { current = st; paintMcp(box, st); });
   });
   const stop = mk(tr("mcp.stop"), "danger", () => { void bridge.mcp.abort(); });
@@ -122,14 +128,19 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
   policy.addEventListener("change", () => {
     void bridge.mcp.set({ policy: policy.value as McpPolicy }).then((st) => { current = st; paintMcp(box, st); });
   });
-  line3.append(toggle, copy, regen, stop, policy);
-  head.append(line1, line2, line3);
+  actions.append(copy, regen, stop, policy);
+
+  /* ---- 配置预览(只读;复制按钮给客户端配置) ---- */
+  const cfg = document.createElement("pre");
+  cfg.className = "mcp-cfg";
+  cfg.textContent = clientConfig(s);
 
   const hint = document.createElement("div");
   hint.className = "mcp-hint";
   hint.textContent = tr("mcp.hint");
 
-  box.append(head, hint);
+  card.append(top, meta, actions, cfg, hint);
+  box.append(card);
 }
 
 /** 活动行(可点开看参数/结果) */
@@ -151,6 +162,10 @@ export function activityRow(ev: McpActivity): HTMLElement {
   st.className = "mcp-act-status";
   st.textContent = statusText(ev.status) + (ev.ms === undefined ? "" : ` · ${ev.ms}ms`);
   head.append(time, who, title, st);
+  const chev = document.createElement("span");
+  chev.className = "mcp-act-chev";
+  chev.textContent = "›";
+  head.append(chev);
   row.append(head);
 
   const detail: string[] = [];

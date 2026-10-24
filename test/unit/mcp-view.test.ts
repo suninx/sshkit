@@ -90,7 +90,7 @@ describe("MCP 状态卡", () => {
     document.body.append(box);
     mcp.paintMcp(box, status({ running: true, clients: ["Claude Code 2.0", "Codex"], error: "端口被占" }));
     expect(text(box)).toContain("http://127.0.0.1:7788/mcp");
-    expect(text(box)).toContain("Claude Code 2.0, Codex");
+    expect(text(box)).toContain("Claude Code 2.0 · Codex");
     expect(text(box)).toContain("端口被占");
     expect(mcp.currentMcpStatus()).toMatchObject({ running: true });
 
