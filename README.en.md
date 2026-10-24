@@ -12,6 +12,16 @@ sync, no telemetry. Electron + TypeScript + xterm, an **original implementation*
 
 `0.1.0-rc.3` (pre-release) → [Releases](https://github.com/suninx/sshkit/releases)
 
+## Screenshots
+
+| Host book | Terminal + appearance side panel |
+|---|---|
+| ![Host book](./docs/screenshots/hosts.png) | ![Terminal and appearance panel](./docs/screenshots/terminal-appearance-panel.png) |
+
+| Broadcast input (two hosts, panel collapsed) | MCP (AI integration) |
+|---|---|
+| ![Broadcast input](./docs/screenshots/broadcast-input.png) | ![MCP section](./docs/screenshots/mcp.png) |
+
 ## Features
 
 ### Connections & terminal
