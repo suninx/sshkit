@@ -491,6 +491,10 @@
     .sp-tab:hover { background: var(--h09); color: var(--fg); }
     .sp-tab.on { background: rgba(62,207,142,.12); color: #3ecf8e; border-color: rgba(62,207,142,.35); }
     .sp-view[hidden] { display: none; }
+    .sp-size-row { gap: 8px; }
+    .sp-size-row .sp-size { width: 64px; height: 26px; text-align: center; background: var(--bg2); color: var(--fg);
+      border: 1px solid var(--wire); border-radius: 6px; font-size: 12.5px; }
+    .sp-size-row .btn { height: 26px; padding: 0 10px; font-size: 12.5px; }
     .sp-font-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--wire);
       cursor: pointer; color: var(--fg); font-size: 13px; }
     .sp-font-row:hover { background: var(--h09); }
@@ -1263,6 +1267,14 @@
               <div class="sp-sec">
                 <div class="sp-title" data-i18n="panel.font">Font</div>
                 <div id="panel-font" class="sp-font-row"><span class="sp-font-name"></span><span class="sp-chev">›</span></div>
+              </div>
+              <div class="sp-sec">
+                <div class="sp-title" data-i18n="panel.fontSize">Font size</div>
+                <div class="sp-font-row sp-size-row">
+                  <button class="btn ps-down" title="Smaller">A−</button>
+                  <input type="number" id="panel-font-size" class="sp-size" min="4" max="40" step="1">
+                  <button class="btn ps-up" title="Larger">A+</button>
+                </div>
               </div>
               <div class="sp-sec">
                 <div class="sp-title" data-i18n="panel.themes">Themes</div>

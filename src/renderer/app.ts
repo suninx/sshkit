@@ -129,11 +129,33 @@ function paintPanelTab(): void {
   }
 }
 
+/* 侧栏外观区交互:Font 行打开偏好设置;字号 A−/A+/输入框直接改字号。
+   只在第一次打开面板时绑一次 —— 每次重渲染都绑的话,一次点击会跑两次回调
+   (openPrefs 自己把自己关掉),用户看到的就是"字体点了没反应"。 */
+let panelActionsBound = false;
+function bindPanelActions(): void {
+  if (panelActionsBound) return;
+  panelActionsBound = true;
+  const fontRow = document.getElementById("panel-font");
+  /* 必须 stopPropagation:document 上有"点外部关闭 .prefs"的监听,
+     这次点击会冒泡上去,刚打开的偏好设置会被同一次点击立刻关掉
+     (用户看到的现象就是"字体行点了没反应")。 */
+  fontRow?.addEventListener("click", (ev) => { ev.stopPropagation(); openPrefs(); });
+  const sizeInput = document.getElementById("panel-font-size") as HTMLInputElement;
+  const syncSize = (): void => { sizeInput.value = String(fontSize); };
+  /* 与偏好设置共用 setFontSize:夹紧 4–40、落盘、应用到所有终端 */
+  const setSize = (n: number): void => { setFontSize(n); syncSize(); };
+  document.querySelector("#sidepanel .ps-down")?.addEventListener("click", () => setSize(fontSize - 1));
+  document.querySelector("#sidepanel .ps-up")?.addEventListener("click", () => setSize(fontSize + 1));
+  sizeInput.addEventListener("change", () => { setSize(Number(sizeInput.value)); });
+  syncSize();
+}
+
 function applyPanel(): void {
   document.body.dataset.panel = PANEL_OPEN ? "1" : "0";
   const b = document.getElementById("btn-panel");
   if (b) { b.classList.toggle("on", PANEL_OPEN); b.title = PANEL_OPEN ? "Hide terminal side-panel" : "Show terminal side-panel"; }
-  if (PANEL_OPEN) { paintPanelTab(); void renderSidePanel(); }
+  if (PANEL_OPEN) { bindPanelActions(); paintPanelTab(); void renderSidePanel(); }
   const t = activeTab();
   if (t?.fit) { try { t.fit.fit(); } catch { /* 布局未稳 */ } }
 }
@@ -166,16 +188,17 @@ async function renderSidePanel(): Promise<void> {
   const snips = document.getElementById("snip-list");
   if (!jump || !snips) return;
 
-  /* 外观区(原版终端右侧栏的 Font / Themes):先渲染,再渲染主机与片段 */
+  /* 外观区(原版终端右侧栏的 Font / Themes):先渲染,再渲染主机与片段。
+     注意:事件绑定放在面板初始化里(font 行只在启动时绑一次),
+     否则每次重渲染都会叠一个 listener,点一下会"开了又立刻关掉"。 */
   const fontRow = document.getElementById("panel-font");
   const fontName = fontRow?.querySelector(".sp-font-name") as HTMLElement | null;
   if (fontName) {
     /* fontFamily 一定是 FONT_CHOICES 里的 id 或同值字符串,找不到时直接把 id 当名字显示 */
     fontName.textContent = FONT_CHOICES.find((f) => f.id === fontFamily)?.label ?? fontFamily;
   }
-  fontRow?.addEventListener("click", () => { openPrefs(); });
-  const themeList = document.getElementById("panel-theme-list");
-  if (themeList) {
+  const themeList = document.getElementById("panel-theme-list")!;
+  {
     const draw = (): void => {
       themeList.replaceChildren(...TERM_SCHEMES.map((sc) => {
         const b = document.createElement("button");
@@ -1480,7 +1503,7 @@ function setFontSize(next: number): void {
   localStorage.setItem("sshkit.fontSize", String(fontSize));
   applyAppearance();
   const i = document.querySelector(".ps-size") as HTMLInputElement | null;
-  if (i) i.value = String(fontSize);
+  if (i) i.value = String(fontSize);   // 偏好设置没打开时不存在,这里保持可选
   const v = document.querySelector(".ps-val");
   if (v) v.textContent = `${fontSize}px`;
 }

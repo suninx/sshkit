@@ -1269,6 +1269,49 @@ const lastToast = (): string | null => {
 };
 
 describe("终端侧栏与提示条", () => {
+  it("侧栏外观区可操作:Font 行只开不关(不再重复绑定);字号 A−/A+/输入框都生效且夹在 4–40", async () => {
+    await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    key(document, { code: "Period", key: ".", metaKey: true });
+    await waitFor(() => document.body.dataset.panel === "1");
+
+    /* Font 行:点一次打开偏好设置,不会被自身第二次回调关掉 */
+    click(document.querySelector("#panel-font"));
+    await flush(3);
+    expect(document.querySelector(".prefs")).toBeTruthy();
+    /* 点外部关闭,给后续字号操作让出界面 */
+    click(document.body);
+    await flush(2);
+    expect(document.querySelector(".prefs")).toBeNull();
+
+    /* 字号:A+ 增大并落盘、A− 减小、输入框直接设定、越界夹紧 */
+    const input = document.querySelector("#panel-font-size") as HTMLInputElement;
+    expect(input.value).toBe("14");
+    click(document.querySelector("#sidepanel .ps-up"));
+    await flush(2);
+    expect(input.value).toBe("15");
+    expect(localStorage.getItem("sshkit.fontSize")).toBe("15");
+    click(document.querySelector("#sidepanel .ps-down"));
+    await flush(2);
+    expect(input.value).toBe("14");
+
+    input.value = "22";
+    input.dispatchEvent(new Event("change"));
+    await flush(2);
+    expect(localStorage.getItem("sshkit.fontSize")).toBe("22");
+
+    click(document.querySelector("#sidepanel .ps-up"));
+    click(document.querySelector("#sidepanel .ps-up"));
+    await flush(2);
+    input.value = "99";
+    input.dispatchEvent(new Event("change"));
+    await flush(2);
+    expect(Number(localStorage.getItem("sshkit.fontSize"))).toBe(40);   // 上限
+    input.value = "1";
+    input.dispatchEvent(new Event("change"));
+    await flush(2);
+    expect(Number(localStorage.getItem("sshkit.fontSize"))).toBe(4);    // 下限
+  });
+
   it("侧栏 tab:代码片段是独立 tab,切换后内容与选中态跟着变并记住", async () => {
     await boot({
       overrides: {
