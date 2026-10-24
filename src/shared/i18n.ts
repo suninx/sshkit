@@ -225,7 +225,6 @@ export const en = {
   /* ---- 顶部栏 / 工具条 ---- */
   "top.newTab": "New Tab (⌘T)",
   "top.panel": "Terminal side-panel (⌘.)",
-  "top.notifications": "Notifications",
   /* ---- Windows 无边框窗口的自绘窗口按钮 ---- */
   "win.minimize": "Minimize",
   "win.maximize": "Maximize",
@@ -595,7 +594,6 @@ export const zh: Record<MsgKey, string> = {
 
   "top.newTab": "新建标签页(⌘T)",
   "top.panel": "终端侧栏(⌘.)",
-  "top.notifications": "通知",
   /* ---- Windows 无边框窗口的自绘窗口按钮 ---- */
   "win.minimize": "最小化",
   "win.maximize": "最大化",

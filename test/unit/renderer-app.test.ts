@@ -1648,6 +1648,13 @@ describe("分区屏", () => {
     }
   });
 
+  it("顶栏没有通知铃铛(产品没有通知系统,不摆假入口)", async () => {
+    await boot();
+    expect(document.getElementById("btn-bell")).toBeNull();
+    /* 顶栏右侧仍有侧栏开关与窗口按钮,只是不再有铃铛 */
+    expect(document.getElementById("btn-panel-top")).toBeTruthy();
+  });
+
   it("多主机执行:工具栏按钮打开面板,主机来自 hosts.list", async () => {
     const { calls } = await boot({ overrides: { "hosts.list": async () => [HOST] } });
     click(document.querySelector("#btn-multiexec"));
