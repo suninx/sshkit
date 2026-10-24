@@ -213,6 +213,21 @@ sshkit 负责执行并把每次调用渲染到界面**。不是内置 agent(不�
 验证:修复后同一窗口两个会话都是 31 行(修复前 35 vs 31);jsdom 用例覆盖
 "字体未就绪不发起会话 / 加载失败照常开会话"。
 
+### 修复:i18n 遗漏(新标签页等,2026-10-24)
+
+现象(用户截图):界面已是中文,但「新标签页」落地页仍是英文
+(Search hosts or tabs / Recent sessions / Your recent sessions will be visible here…)。
+
+根因:这些文案是 `newTabPage()` 里硬编码的字符串字面量,没走 `tr()`;
+同类遗漏还有 Cmd+K 命令面板搜索框、分屏选择器(Local shell / Connect)、
+终端搜索框、Known Hosts 分组标题、以及 snippets/logs 等分区 tab 标题。
+
+修法:全部改为 `tr(...)`,新增 9 个 key(tab.newTab / newtab.* / split.* / search.terminal /
+knownHosts.group);分区 tab 标题改用 `rail.*` 已有文案。
+
+回归测试:zh 下断言新标签页 tab 标题/搜索框/空态/提示、命令面板占位符、
+分屏选择器、snippets/logs tab 标题均为中文;en 下同一批文案为英文(双向都通)。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。

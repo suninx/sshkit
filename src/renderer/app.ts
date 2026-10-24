@@ -522,9 +522,9 @@ async function splitTab(tab: Tab): Promise<void> {
       <button class="btn split-close" title="${tr("menu.closePane")}">✕</button>
     </div>
     <div class="split-picker">
-      <button class="btn primary sp-local">Local shell</button>
+      <button class="btn primary sp-local">${tr("split.localShell")}</button>
       <select class="sp-host"></select>
-      <button class="btn sp-connect" disabled>${tr("menu.connect")}</button>
+      <button class="btn sp-connect" disabled>${tr("split.connect")}</button>
     </div>
     <div class="split-body"></div>`;
   tab.pane.append(pane);
@@ -861,7 +861,7 @@ function openVaultTab(): void {
 }
 
 function openSnippetsTab(): void {
-  openSection("snippets", "Snippets", (body) => {
+  openSection("snippets", tr("rail.snippets"), (body) => {
     body.innerHTML = `<div id="snip-sec-list" class="sec-list"></div>`;
     void renderSnippetsSection("snip-sec-list");
   }, [
@@ -935,7 +935,7 @@ function renderLogsSection(): void {
 }
 
 function openLogsTab(): void {
-  openSection("logs", "Logs", (body) => {
+  openSection("logs", tr("rail.logs"), (body) => {
     body.innerHTML = '<div id="logs-list" class="sec-list"></div>';
     renderLogsSection();
   });
@@ -978,16 +978,16 @@ function newTabPage(): Tab {
   pane.innerHTML = `
     <div class="newtab">
       <div class="nt-search">
-        <input placeholder="Search hosts or tabs" spellcheck="false" autocomplete="off">
+        <input placeholder="${tr("newtab.search")}" spellcheck="false" autocomplete="off">
         <span class="kbd">⌘+K</span>
       </div>
       <div class="nt-empty">
         <div class="nt-icon">⚡</div>
-        <h3>Recent sessions</h3>
-        <p>Your recent sessions will be visible here.<br>In the meantime, start connecting with CMD+K</p>
+        <h3>${tr("newtab.recent")}</h3>
+        <p>${tr("newtab.empty")}<br>${tr("newtab.hint")}</p>
       </div>
     </div>`;
-  const t: Tab = { id: `t${++seq}`, kind: "newtab", label: "New Tab", state: "idle", pane,
+  const t: Tab = { id: `t${++seq}`, kind: "newtab", label: tr("tab.newTab"), state: "idle", pane,
     term: null, fit: null, termId: null, disposers: [], sftp: null };
   tabs.push(t);
   activateTab(t.id);
@@ -1295,7 +1295,7 @@ function openKnownHostsTab(): void {
   body.className = "sec-body";
   const group = document.createElement("div");
   group.className = "group-label";
-  group.textContent = "Known Hosts";
+  group.textContent = tr("knownHosts.group");
   body.append(group, view.el);
   sec.append(band, body);
   pane.append(sec);
@@ -1823,7 +1823,7 @@ async function openSession(kind: "local" | "ssh", host?: HostRecord): Promise<vo
   bar.hidden = true;
   bar.innerHTML = `
     <span class="ts-ico"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="6.6" cy="6.6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.2 10.2 L14.4 14.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
-    <input placeholder="Search terminal - ⌘ + F" spellcheck="false" autocomplete="off">
+    <input placeholder="${tr("search.terminal")}" spellcheck="false" autocomplete="off">
     <button class="ts-btn" data-nav="prev" title="Previous match">⌃</button>
     <button class="ts-btn" data-nav="next" title="Next match">⌄</button>
     <button class="ts-btn" data-nav="close" title="Close">✕</button>`;
@@ -1907,7 +1907,7 @@ function openPalette(): void {
     const el = document.createElement("div");
     el.className = "palette-backdrop";
     el.innerHTML = `<div class="palette">
-        <input placeholder="Search hosts or tabs" spellcheck="false" autocomplete="off">
+        <input placeholder="${tr("newtab.search")}" spellcheck="false" autocomplete="off">
         <div class="pal-list"></div></div>`;
     document.body.append(el);
     const input = el.querySelector("input")! as HTMLInputElement;

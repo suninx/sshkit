@@ -17,6 +17,15 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "tab.newTab": "New Tab",
+  "newtab.search": "Search hosts or tabs",
+  "newtab.recent": "Recent sessions",
+  "newtab.empty": "Your recent sessions will be visible here.",
+  "newtab.hint": "In the meantime, start connecting with CMD+K",
+  "split.localShell": "Local shell",
+  "split.connect": "Connect",
+  "search.terminal": "Search terminal - ⌘ + F",
+  "knownHosts.group": "Known Hosts",
   "toolbar.multiExec": "Run on hosts",
   "me.title": "Run on multiple hosts",
   "me.placeholder": "Command to run on every selected host…",
@@ -371,6 +380,15 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "tab.newTab": "新标签页",
+  "newtab.search": "搜索主机或标签页",
+  "newtab.recent": "最近会话",
+  "newtab.empty": "最近会话会显示在这里。",
+  "newtab.hint": "现在先用 CMD+K 开始连接",
+  "split.localShell": "本地终端",
+  "split.connect": "连接",
+  "search.terminal": "搜索终端 - ⌘ + F",
+  "knownHosts.group": "已知主机",
   "toolbar.multiExec": "多主机执行",
   "me.title": "多主机执行",
   "me.placeholder": "要在每台选中主机上执行的命令…",

@@ -623,6 +623,56 @@ describe("标签页", () => {
     await waitFor(() => tabKinds().filter((k) => k === "newtab").length === 2);
   });
 
+  it("新标签页/命令面板/分屏选择器的文案跟随语言(zh 下没有英文残留)", async () => {
+    await boot({
+      overrides: {
+        "settings.getLocale": async () => ({ pref: "zh", system: "zh-CN", effective: "zh" }),
+        "hosts.list": async () => [HOST],
+      },
+    });
+    click(document.querySelector("#btn-new-tab"));
+    await waitFor(() => tabKinds().includes("newtab"));
+    await waitFor(() => tabKinds().includes("newtab"));
+    expect(title()).toBe("新标签页");
+    const input = document.querySelector(".newtab .nt-search input") as HTMLInputElement;
+    expect(input.placeholder).toBe("搜索主机或标签页");
+    expect(document.querySelector(".newtab .nt-empty h3")!.textContent).toBe("最近会话");
+    const hint = document.querySelector(".newtab .nt-empty p")!.textContent ?? "";
+    expect(hint).toContain("最近会话会显示在这里");
+    expect(hint).toContain("CMD+K");
+
+    /* Cmd+K 命令面板的搜索框 */
+    key(document, { code: "KeyK", key: "k", metaKey: true });
+    await waitFor(() => !!document.querySelector(".palette-backdrop"));
+    expect((document.querySelector(".palette input") as HTMLInputElement).placeholder).toBe("搜索主机或标签页");
+
+    /* 分屏选择器 */
+    await openSsh();
+    contextMenuOn(tabByKind("session"));
+    /* 中文语言下菜单项也是中文:按"分屏"定位(英文是 Split horizontally) */
+    click([...document.querySelectorAll<HTMLElement>(".tab-menu-item")].find((b) => b.textContent!.includes("分屏"))!);
+    await flush(3);
+    expect(document.querySelector(".split-picker .sp-local")!.textContent).toBe("本地终端");
+    expect(document.querySelector(".split-picker .sp-connect")!.textContent).toBe("连接");
+
+    /* 分区 tab 标题也跟随语言(不是只有左栏) */
+    click(document.querySelector('#rail .rail-item[data-nav="snippets"]'));
+    await waitFor(() => tabKinds().includes("snippets"));
+    expect(title()).toBe("代码片段");
+    click(document.querySelector('#rail .rail-item[data-nav="logs"]'));
+    await waitFor(() => tabKinds().includes("logs"));
+    expect(title()).toBe("日志");
+  });
+
+  it("en 下同一批文案是英文(i18n 两个方向都通)", async () => {
+    await boot();
+    key(document, { code: "KeyT", key: "t", metaKey: true });
+    await waitFor(() => tabKinds().includes("newtab"));
+    expect(title()).toBe("New Tab");
+    expect((document.querySelector(".newtab .nt-search input") as HTMLInputElement).placeholder).toBe("Search hosts or tabs");
+    expect(document.querySelector(".newtab .nt-empty h3")!.textContent).toBe("Recent sessions");
+  });
+
   it("点 tab 切换活动页,标题与 chrome 跟着 tab 类型变;SFTP 无会话时是 Connect to host 空态", async () => {
     const { calls } = await boot();
     click(tabByKind("sftp"));
