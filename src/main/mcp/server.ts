@@ -57,8 +57,10 @@ type JsonRpcId = string | number | null;
 interface Session {
   id: string;
   client: string;
-  /** 该会话上打开着的 SSE 流(GET /mcp) */
+  /** Streamable HTTP:该会话上打开着的 SSE 流(GET /mcp) */
   streams: Set<http.ServerResponse>;
+  /** 旧版 HTTP+SSE:GET /sse 建的那条流(POST /messages 的响应从这里回) */
+  legacyStream?: http.ServerResponse;
 }
 
 const MAX_BODY = 1 << 20;            // 1MB:JSON-RPC 请求体上限
@@ -140,6 +142,7 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
     msg: RpcRequest,
     req: http.IncomingMessage,
     res: http.ServerResponse,
+    legacySession?: Session,
   ): Promise<{ body: string | null; status: number; sessionId?: string }> => {
     const id = msg.id ?? null;
     const isNotification = msg.id === undefined;
@@ -152,8 +155,10 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
         ? wanted : MCP_LATEST_PROTOCOL;
       const info = (params.clientInfo ?? {}) as { name?: string; version?: string };
       const client = [info.name, info.version].filter(Boolean).join(" ") || "unknown";
-      const sessionId = randomBytes(16).toString("hex");
-      sessions.set(sessionId, { id: sessionId, client, streams: new Set() });
+      /* 旧版 SSE:会话在 GET /sse 时已建好,这里只更新客户端名,不再新建 */
+      const sessionId = legacySession ? legacySession.id : randomBytes(16).toString("hex");
+      if (legacySession) legacySession.client = client;
+      else sessions.set(sessionId, { id: sessionId, client, streams: new Set() });
       activity({ client, method: "initialize", tool: "-", status: "ok",
         args: clip(JSON.stringify(redactArgs(params))) });
       opts.onClients(clientList());
@@ -164,7 +169,8 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
           serverInfo: { name: MCP_SERVER_NAME, version: opts.version },
         }),
         status: 200,
-        sessionId,
+        /* 旧版传输的会话 id 已经通过 endpoint 事件给过客户端 */
+        sessionId: legacySession ? undefined : sessionId,
       };
     }
 
@@ -179,7 +185,7 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
     }
 
     /* ---- 其余请求都要求有效会话 ---- */
-    const session = requireSession(req);
+    const session = legacySession ?? requireSession(req);
     if (!session) {
       return { body: rpcError(id, -32000, "session not found"), status: 404 };
     }
@@ -257,13 +263,59 @@ export async function startMcpServer(opts: McpServerOptions): Promise<McpServerH
     void (async () => {
       /* node 的 http 请求一定有 url(即使为空也是字符串),不需要兜底分支 */
       const url = new URL(req.url as string, "http://127.0.0.1");
-      if (url.pathname !== "/mcp") {
-        res.writeHead(404).end();
-        return;
-      }
       if (!authorized(req)) {
         res.writeHead(401, { "WWW-Authenticate": 'Bearer realm="sshkit mcp"' })
           .end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+
+      /* ===== 旧版 HTTP+SSE 传输(2024-11-05):GET /sse + POST /messages =====
+         先 GET /sse 建流,服务器发 `event: endpoint` 告诉客户端往哪 POST;
+         之后所有 JSON-RPC 响应都从这条流回(客户端拿到 202 即可)。 */
+      if (url.pathname === "/sse" && req.method === "GET") {
+        const id = randomBytes(16).toString("hex");
+        const session: Session = { id, client: "unknown", streams: new Set() };
+        sessions.set(id, session);
+        res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+        res.write(`event: endpoint\ndata: /messages?sessionId=${id}\n\n`);
+        session.legacyStream = res;
+        const timer = setInterval(() => res.write(": ping\n\n"), opts.pingMs);
+        req.on("close", () => {
+          clearInterval(timer);
+          /* 旧版会话只有这一条流,关掉即清空 */
+          session.legacyStream = undefined;
+          sessions.delete(id);
+          opts.onClients(clientList());
+        });
+        opts.onClients(clientList());
+        return;
+      }
+      if (url.pathname === "/messages" && req.method === "POST") {
+        const session = sessions.get(url.searchParams.get("sessionId") ?? "");
+        if (!session) { res.writeHead(404).end(); return; }
+        let raw: string;
+        try { raw = await readBody(req); } catch {
+          res.writeHead(413).end(rpcError(null, -32700, "request body too large"));
+          return;
+        }
+        let parsed: unknown;
+        try { parsed = JSON.parse(raw); } catch {
+          res.writeHead(400, { "Content-Type": "application/json" }).end(rpcError(null, -32700, "parse error"));
+          return;
+        }
+        if (Array.isArray(parsed) || !parsed || typeof parsed !== "object") {
+          res.writeHead(400, { "Content-Type": "application/json" }).end(rpcError(null, -32600, "invalid request"));
+          return;
+        }
+        const out = await handleMessage(parsed as RpcRequest, req, res, session);
+        /* 响应走 SSE 流;POST 本身按规范回 202 */
+        if (out.body !== null) session.legacyStream?.write(`event: message\ndata: ${out.body}\n\n`);
+        res.writeHead(202).end();
+        return;
+      }
+
+      if (url.pathname !== "/mcp") {
+        res.writeHead(404).end();
         return;
       }
 

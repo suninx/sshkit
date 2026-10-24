@@ -299,3 +299,129 @@ describe("参数脱敏", () => {
     expect(redactArgs(null)).toBeNull();
   });
 });
+
+describe("旧版 HTTP+SSE 传输(GET /sse + POST /messages)", () => {
+  const openSse = async (port: number, token = TOKEN) => {
+    const ctl = new AbortController();
+    const res = await fetch(`http://127.0.0.1:${port}/sse`, {
+      headers: { authorization: `Bearer ${token}`, accept: "text/event-stream" }, signal: ctl.signal,
+    });
+    return { res, ctl };
+  };
+  const readEvents = async (reader: ReadableStreamDefaultReader<Uint8Array>, want: number): Promise<string> => {
+    const dec = new TextDecoder();
+    let buf = "";
+    for (let i = 0; i < 200 && (buf.match(/\n\n/g)?.length ?? 0) < want; i++) {
+      const next = await reader.read();
+      if (next.done) break;
+      buf += dec.decode(next.value);
+    }
+    return buf;
+  };
+  const postMsg = async (port: number, sessionId: string, body: unknown, token = TOKEN) => {
+    const res = await fetch(`http://127.0.0.1:${port}/messages?sessionId=${sessionId}`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(body),
+    });
+    return res.status;
+  };
+
+  it("先收到 endpoint 事件,再 POST initialize/tools.list,响应从 SSE 流回来", async () => {
+    const h = await boot();
+    const { res, ctl } = await openSse(h.port);
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    const first = await readEvents(reader, 1);
+    expect(first).toContain("event: endpoint");
+    const sessionId = /sessionId=([0-9a-f]{32})/.exec(first)![1];
+
+    const st1 = await postMsg(h.port, sessionId, {
+      jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", clientInfo: { name: "legacy", version: "1" } },
+    });
+    expect(st1).toBe(202);
+    const initEvt = await readEvents(reader, 1);
+    expect(initEvt).toContain("event: message");
+    expect(initEvt).toContain('"protocolVersion":"2024-11-05"');
+    expect(h.clients.at(-1)).toEqual(["legacy 1"]);
+
+    const st2 = await postMsg(h.port, sessionId, { jsonrpc: "2.0", id: 2, method: "tools/list" });
+    expect(st2).toBe(202);
+    const listEvt = await readEvents(reader, 1);
+    expect(listEvt).toContain('"tools"');
+
+    /* 通知:202 且不产生响应事件 */
+    expect(await postMsg(h.port, sessionId, { jsonrpc: "2.0", method: "notifications/initialized" })).toBe(202);
+    ctl.abort();
+  });
+
+  it("鉴权与错误路径:401 / 未知 session 404 / 非法 JSON 400", async () => {
+    const h = await boot();
+    const { res, ctl } = await openSse(h.port);
+    const reader = res.body!.getReader();
+    const first = await readEvents(reader, 1);
+    const sessionId = /sessionId=([0-9a-f]{32})/.exec(first)![1];
+
+    const unauth = await fetch(`http://127.0.0.1:${h.port}/sse`);
+    expect(unauth.status).toBe(401);
+    expect(await postMsg(h.port, "deadbeef", { jsonrpc: "2.0", id: 1, method: "ping" })).toBe(404);
+    expect(await postMsg(h.port, sessionId, { jsonrpc: "2.0", id: 1, method: "ping" }, "wrong")).toBe(401);
+
+    const bad = await fetch(`http://127.0.0.1:${h.port}/messages?sessionId=${sessionId}`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` }, body: "{oops",
+    });
+    expect(bad.status).toBe(400);
+    const batch = await fetch(`http://127.0.0.1:${h.port}/messages?sessionId=${sessionId}`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` }, body: "[]",
+    });
+    expect(batch.status).toBe(400);
+    /* 其它方法 */
+    expect((await fetch(`http://127.0.0.1:${h.port}/sse`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}` } })).status).toBe(404);
+    ctl.abort();
+  });
+
+  it("旧版 SSE 的 keep-alive、缺 sessionId、超大 body", async () => {
+    const h = await boot([BASE_TOOL], undefined, 20);
+    const { res, ctl } = await openSse(h.port);
+    const reader = res.body!.getReader();
+    let buf = await readEvents(reader, 1);
+    const sessionId = /sessionId=([0-9a-f]{32})/.exec(buf)![1];
+    /* 等一个 keep-alive(20ms 间隔) */
+    for (let i = 0; i < 40 && !buf.includes("ping"); i++) {
+      const next = await reader.read();
+      if (next.done) break;
+      buf += new TextDecoder().decode(next.value);
+    }
+    expect(buf).toContain("ping");
+
+    /* 没有 sessionId → 404 */
+    const noSession = await fetch(`http://127.0.0.1:${h.port}/messages`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+    });
+    expect(noSession.status).toBe(404);
+
+    /* 超大 body → 413 */
+    const huge = await fetch(`http://127.0.0.1:${h.port}/messages?sessionId=${sessionId}`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping", pad: "x".repeat(1_200_000) }),
+    }).catch(() => null);
+    if (huge) expect([413, 400]).toContain(huge.status);
+    ctl.abort();
+  });
+
+  it("工具调用经旧版传输同样可用,并进入活动流", async () => {
+    const h = await boot();
+    const { res, ctl } = await openSse(h.port);
+    const reader = res.body!.getReader();
+    const first = await readEvents(reader, 1);
+    const sessionId = /sessionId=([0-9a-f]{32})/.exec(first)![1];
+    await postMsg(h.port, sessionId, { jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "legacy" } } });
+    await readEvents(reader, 1);
+    expect(await postMsg(h.port, sessionId, {
+      jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "echo", arguments: { text: "hi" } },
+    })).toBe(202);
+    const evt = await readEvents(reader, 1);
+    expect(evt).toContain("echo:hi");
+    expect(h.activities.some((a) => a.tool === "echo" && a.status === "ok")).toBe(true);
+    ctl.abort();
+  });
+});

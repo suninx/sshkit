@@ -228,6 +228,21 @@ knownHosts.group);分区 tab 标题改用 `rail.*` 已有文案。
 回归测试:zh 下断言新标签页 tab 标题/搜索框/空态/提示、命令面板占位符、
 分屏选择器、snippets/logs tab 标题均为中文;en 下同一批文案为英文(双向都通)。
 
+### 两种 MCP 传输并存(2026-10-24)
+
+- **Streamable HTTP**(2025-06-18):`POST/GET/DELETE /mcp`,会话头 `Mcp-Session-Id`;
+  现有实现,IDE / Claude Code 等新客户端走这条。
+- **旧版 HTTP+SSE**(2024-11-05):`GET /sse` 建流,服务器先发
+  `event: endpoint` + `data: /messages?sessionId=…`;客户端把 JSON-RPC POST 到
+  `/messages?sessionId=…`(回 202),**响应从 SSE 流以 `event: message` 回来**。
+  鉴权同样是 `Authorization: Bearer <token>`;keep-alive 与 Streamable 共用 `pingMs`。
+- 两种传输共用同一套会话/工具/活动流/审计:旧版 initialize 不再新建会话,
+  而是更新 `/sse` 时建的那个会话的客户端名。
+- 界面:提示文案写明两种传输;「复制客户端配置」同时给出 `type:"http"` 与 `type:"sse"` 两份。
+
+真机验证(旧版 SSE 客户端):GET /sse 200 → endpoint 事件 → initialize 202 且回包走 SSE
+→ tools/call `sftp_list /root` 返回 22 项。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。

@@ -49,6 +49,11 @@ export function clientConfig(s: McpStatus): string {
         url: `http://127.0.0.1:${s.port}/mcp`,
         headers: { Authorization: `Bearer ${s.token}` },
       },
+      "sshkit-sse": {
+        type: "sse",
+        url: `http://127.0.0.1:${s.port}/sse`,
+        headers: { Authorization: `Bearer ${s.token}` },
+      },
     },
   }, null, 2);
 }
