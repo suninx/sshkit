@@ -1269,6 +1269,40 @@ const lastToast = (): string | null => {
 };
 
 describe("终端侧栏与提示条", () => {
+  it("字体选择器:未安装的字体置灰不可选,随包 Meslo 始终可用", async () => {
+    await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    /* 伪造 canvas 度量(必须在 boot 之后:boot 会把 getContext 重置成 null)。
+       只有 "Menlo" 与缺失基线宽度不同(视为已安装),其它都等于基线(未安装) */
+    const orig = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = (() => ({
+      font: "",
+      /* 必须是普通函数:fontAvailable 用 c.measureText(...) 调用,this 指向上下文 */
+      measureText(this: { font: string }) { return { width: this.font.includes("Menlo") ? 120 : 100 }; },
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+    try {
+      key(document, { code: "Period", key: ".", metaKey: true });
+      await waitFor(() => document.body.dataset.panel === "1");
+      click(document.querySelector("#panel-font"));
+      await flush(3);
+      expect(document.querySelector(".font-picker")).toBeTruthy();
+      expect(document.querySelectorAll(".fp-row").length).toBeGreaterThan(5);
+
+      const row = (prefix: string): HTMLButtonElement =>
+        [...document.querySelectorAll<HTMLButtonElement>(".fp-row")].find((r) => r.dataset.font!.includes(prefix))!;
+      expect(row("Menlo").disabled).toBe(false);
+      expect(row("MesloLGS").disabled).toBe(false);          // 网页字体特例
+      const missing = [...document.querySelectorAll<HTMLButtonElement>(".fp-row")].find((r) => r.disabled && !r.dataset.font!.includes("Meslo"));
+      expect(missing).toBeTruthy();
+      expect(missing!.querySelector(".fp-preview")!.textContent).toBe("not installed");
+      missing!.click();
+      await flush(2);
+      expect(localStorage.getItem("sshkit.fontFamily")).not.toBe(missing!.dataset.font);   // 点了也不生效
+      expect(document.querySelector(".font-picker")).toBeTruthy();                          // 也不关闭
+    } finally {
+      HTMLCanvasElement.prototype.getContext = orig;
+    }
+  });
+
   it("侧栏外观区可操作:Font 行只开不关(不再重复绑定);字号 A−/A+/输入框都生效且夹在 4–40", async () => {
     await boot({ overrides: { "hosts.list": async () => [HOST] } });
     key(document, { code: "Period", key: ".", metaKey: true });

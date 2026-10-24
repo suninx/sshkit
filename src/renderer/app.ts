@@ -1157,7 +1157,9 @@ function fontAvailable(family: string): boolean {
     const c = document.createElement("canvas").getContext("2d");
     if (!c) return true;
     const probe = "mmmmmmmmmmlliWW";
-    c.font = `72px "__sshkit_missing_font__"`;
+    /* 基线也要带同样的 generic 回退(monospace):否则"未知字体 → 浏览器默认字体"和
+       "未知字体 → monospace"宽度天然不同,所有字体都会被误判为已安装。 */
+    c.font = `72px "__sshkit_missing_font__", monospace`;
     const base = c.measureText(probe).width;
     c.font = `72px ${family}`;
     return Math.abs(c.measureText(probe).width - base) > 0.5;
@@ -1566,13 +1568,19 @@ function openFontPicker(): void {
     const row = document.createElement("button");
     row.className = `fp-row${f.id === fontFamily ? " on" : ""}`;
     row.dataset.font = f.id;
+    /* 随包 Meslo 是网页字体,canvas 量不出来,但确实可用;其余字体要本机装了才算可用,
+       没装就置灰 + 标「未安装」—— 否则用户选了它字体只会静默回退,看起来像"没换" */
+    const usable = isBundledWebFont(f.id) || f.id === fontFamily || fontAvailable(f.id);
+    row.disabled = !usable;
+    if (!usable) row.title = tr("panel.fontMissing");
     const nm = document.createElement("span");
     nm.textContent = f.label;
     const preview = document.createElement("span");
     preview.className = "fp-preview";
-    preview.textContent = "Aa 0123";
+    preview.textContent = usable ? "Aa 0123" : tr("panel.fontMissing");
     preview.style.fontFamily = f.id;
     row.append(nm, preview);
+    /* 不可用的行是 disabled,浏览器不会派发 click,不需要额外守卫 */
     row.addEventListener("click", (ev) => {
       ev.stopPropagation();
       fontFamily = f.id;

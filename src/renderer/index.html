@@ -525,6 +525,8 @@
       background: transparent; color: var(--fg); cursor: pointer; text-align: left; font-size: 13px; }
     .fp-row:hover { background: var(--h09); }
     .fp-row.on { background: rgba(62,207,142,.12); }
+    .fp-row[disabled] { opacity: .45; cursor: not-allowed; }
+    .fp-row[disabled]:hover { background: transparent; }
     .fp-row span:first-child { flex: 1; }
     .fp-preview { color: var(--fg-dim); font-size: 12.5px; }
 

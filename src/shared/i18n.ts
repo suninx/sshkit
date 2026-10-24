@@ -17,6 +17,7 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "panel.fontMissing": "not installed",
   "panel.fontSize": "Font size",
   "panel.font": "Font",
   "panel.themes": "Themes",
@@ -388,6 +389,7 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "panel.fontMissing": "未安装",
   "panel.fontSize": "字体大小",
   "panel.font": "字体",
   "panel.themes": "主题",
