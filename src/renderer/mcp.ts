@@ -40,22 +40,14 @@ export function activityTitle(ev: McpActivity): string {
   return hint ? `${ev.tool}  ${hint}` : ev.tool;
 }
 
-/** 复制到剪贴板的客户端配置(Streamable HTTP;Claude Code / Codex / VS Code 都用这种写法) */
-export function clientConfig(s: McpStatus): string {
+/** 单个协议的客户端配置(两种传输分开复制,键名用协议名) */
+export function clientConfigFor(s: McpStatus, proto: "stream" | "sse"): string {
+  const entry = proto === "stream"
+    ? { type: "http", url: `http://127.0.0.1:${s.port}/stream` }
+    : { type: "sse", url: `http://127.0.0.1:${s.port}/sse` };
+  const key = proto === "stream" ? "sshkit-streamable-http" : "sshkit-http-sse";
   return JSON.stringify({
-    /* 键名直接用协议名:两个入口一眼能分清是哪种传输 */
-    mcpServers: {
-      "sshkit-streamable-http": {
-        type: "http",
-        url: `http://127.0.0.1:${s.port}/stream`,
-        headers: { Authorization: `Bearer ${s.token}` },
-      },
-      "sshkit-http-sse": {
-        type: "sse",
-        url: `http://127.0.0.1:${s.port}/sse`,
-        headers: { Authorization: `Bearer ${s.token}` },
-      },
-    },
+    mcpServers: { [key]: { ...entry, headers: { Authorization: `Bearer ${s.token}` } } },
   }, null, 2);
 }
 
@@ -77,7 +69,8 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
   const addr = document.createElement("div");
   addr.className = "mcp-addr";
   if (s.running) {
-    const line = (proto: string, path: string): HTMLElement => {
+    /* 两种传输的配置分开:每行一个独立的"复制配置"按钮 */
+    const line = (proto: string, path: string, kind: "stream" | "sse"): HTMLElement => {
       const row = document.createElement("div");
       row.className = "mcp-addr-row";
       const p = document.createElement("span");
@@ -85,10 +78,14 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
       p.textContent = proto;
       const u = document.createElement("code");
       u.textContent = `http://127.0.0.1:${s.port}${path}`;
-      row.append(p, u);
+      const copyOne = document.createElement("button");
+      copyOne.className = "mcp-btn ghost mcp-copy-one";
+      copyOne.textContent = tr("mcp.copyConfig");
+      copyOne.addEventListener("click", () => { void bridge.clipboard.write(clientConfigFor(s, kind)); });
+      row.append(p, u, copyOne);
       return row;
     };
-    addr.append(line(tr("mcp.protoStreamable"), "/stream"), line(tr("mcp.protoSse"), "/sse"));
+    addr.append(line(tr("mcp.protoStreamable"), "/stream", "stream"), line(tr("mcp.protoSse"), "/sse", "sse"));
   } else {
     addr.textContent = tr("mcp.offHint");
   }
@@ -132,7 +129,6 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
     b.addEventListener("click", onClick);
     return b;
   };
-  const copy = mk(tr("mcp.copyConfig"), "ghost", () => { void bridge.clipboard.write(clientConfig(s)); });
   const regen = mk(tr("mcp.regenerate"), "ghost", () => {
     void bridge.mcp.regenerateToken().then((st) => { current = st; paintMcp(box, st); });
   });
@@ -149,18 +145,13 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
   policy.addEventListener("change", () => {
     void bridge.mcp.set({ policy: policy.value as McpPolicy }).then((st) => { current = st; paintMcp(box, st); });
   });
-  actions.append(copy, regen, stop, policy);
-
-  /* ---- 配置预览(只读;复制按钮给客户端配置) ---- */
-  const cfg = document.createElement("pre");
-  cfg.className = "mcp-cfg";
-  cfg.textContent = clientConfig(s);
+  actions.append(regen, stop, policy);
 
   const hint = document.createElement("div");
   hint.className = "mcp-hint";
   hint.textContent = tr("mcp.hint");
 
-  card.append(top, meta, actions, cfg, hint);
+  card.append(top, meta, actions, hint);
   box.append(card);
 }
 

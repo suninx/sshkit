@@ -73,15 +73,18 @@ describe("MCP 活动行", () => {
 describe("MCP 状态卡", () => {
   it("客户端配置包含 URL 与 Bearer token", async () => {
     await boot();
-    const cfg = JSON.parse(mcp.clientConfig(status({ port: 9999, token: "abc" }))) as {
-      mcpServers: { sshkit: { type: string; url: string; headers: { Authorization: string } } };
+    const stream = JSON.parse(mcp.clientConfigFor(status({ port: 9999, token: "abc" }), "stream")) as {
+      mcpServers: Record<string, { type: string; url: string; headers: { Authorization: string } }>;
     };
-    expect(cfg.mcpServers["sshkit-streamable-http"]).toMatchObject({
+    expect(stream.mcpServers["sshkit-streamable-http"]).toMatchObject({
       type: "http", url: "http://127.0.0.1:9999/stream", headers: { Authorization: "Bearer abc" },
     });
-    expect(cfg.mcpServers["sshkit-http-sse"]).toMatchObject({
-      type: "sse", url: "http://127.0.0.1:9999/sse", headers: { Authorization: "Bearer abc" },
-    });
+    expect(Object.keys(stream.mcpServers)).toEqual(["sshkit-streamable-http"]);
+    const sse = JSON.parse(mcp.clientConfigFor(status({ port: 9999, token: "abc" }), "sse")) as {
+      mcpServers: Record<string, { type: string; url: string }>;
+    };
+    expect(sse.mcpServers["sshkit-http-sse"]).toMatchObject({ type: "sse", url: "http://127.0.0.1:9999/sse" });
+    expect(Object.keys(sse.mcpServers)).toEqual(["sshkit-http-sse"]);
   });
 
   it("运行中:显示地址/客户端/错误,按钮各司其职", async () => {
@@ -101,20 +104,31 @@ describe("MCP 状态卡", () => {
     expect(mcp.currentMcpStatus()).toMatchObject({ running: true });
 
     const btns = [...box.querySelectorAll("button")].map((b) => b.textContent);
+    /* DOM 顺序:地址区两个"复制配置"在前,然后才是启用/停用与换令牌、中断 */
     expect(btns).toEqual([
-      i18n.tr("mcp.disable"), i18n.tr("mcp.copyConfig"), i18n.tr("mcp.regenerate"), i18n.tr("mcp.stop"),
+      i18n.tr("mcp.copyConfig"), i18n.tr("mcp.copyConfig"),
+      i18n.tr("mcp.disable"), i18n.tr("mcp.regenerate"), i18n.tr("mcp.stop"),
     ]);
 
+    /* 第一个复制按钮 = Streamable HTTP,第二个 = HTTP+SSE(两者内容不同) */
+    (box.querySelectorAll("button")[0] as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    const first = String(calls["clipboard.write"].at(-1)![0]);
+    expect(first).toContain("sshkit-streamable-http");
+    expect(first).toContain("/stream");
     (box.querySelectorAll("button")[1] as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(String(calls["clipboard.write"].at(-1)![0])).toContain("Bearer tok");
+    const second = String(calls["clipboard.write"].at(-1)![0]);
+    expect(second).toContain("sshkit-http-sse");
+    expect(second).toContain("/sse");
 
-    (box.querySelectorAll("button")[0] as HTMLElement).click();
+    (box.querySelectorAll("button")[2] as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
     expect(calls["mcp.set"].at(-1)![0]).toEqual({ enabled: false });
     expect(text(box)).toContain(i18n.tr("mcp.enable"));
 
-    (box.querySelectorAll("button")[2] as HTMLElement).click();
+    /* 停用后重绘:没有地址行 → 按钮只剩 [启用, 换令牌, 全部中断] */
+    (box.querySelectorAll("button")[1] as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
     expect(calls["mcp.regenerateToken"].length).toBe(1);
     expect(text(box)).toContain("http://127.0.0.1:7788/stream");
@@ -139,7 +153,7 @@ describe("MCP 状态卡", () => {
     expect(text(box.querySelector(".mcp-mode"))).toContain(i18n.tr("mcp.policyReadOnly"));
 
     /* STOP 按钮:调用中断 */
-    (box.querySelectorAll("button")[3] as HTMLElement).click();
+    (box.querySelectorAll("button")[4] as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
     expect(calls["mcp.abort"].length).toBe(1);
   });
