@@ -17,6 +17,8 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "mcp.protoStreamable": "Streamable HTTP",
+  "mcp.protoSse": "HTTP+SSE (legacy)",
   "tab.newTab": "New Tab",
   "newtab.search": "Search hosts or tabs",
   "newtab.recent": "Recent sessions",
@@ -380,6 +382,8 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "mcp.protoStreamable": "Streamable HTTP",
+  "mcp.protoSse": "HTTP+SSE(旧版)",
   "tab.newTab": "新标签页",
   "newtab.search": "搜索主机或标签页",
   "newtab.recent": "最近会话",

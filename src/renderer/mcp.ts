@@ -43,13 +43,14 @@ export function activityTitle(ev: McpActivity): string {
 /** 复制到剪贴板的客户端配置(Streamable HTTP;Claude Code / Codex / VS Code 都用这种写法) */
 export function clientConfig(s: McpStatus): string {
   return JSON.stringify({
+    /* 键名直接用协议名:两个入口一眼能分清是哪种传输 */
     mcpServers: {
-      sshkit: {
+      "sshkit-streamable-http": {
         type: "http",
         url: `http://127.0.0.1:${s.port}/mcp`,
         headers: { Authorization: `Bearer ${s.token}` },
       },
-      "sshkit-sse": {
+      "sshkit-http-sse": {
         type: "sse",
         url: `http://127.0.0.1:${s.port}/sse`,
         headers: { Authorization: `Bearer ${s.token}` },
@@ -73,9 +74,24 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
   const pill = document.createElement("span");
   pill.className = `mcp-pill ${s.running ? "on" : "off"}`;
   pill.textContent = s.running ? tr("mcp.running") : tr("mcp.stopped");
-  const addr = document.createElement("span");
+  const addr = document.createElement("div");
   addr.className = "mcp-addr";
-  addr.textContent = s.running ? `http://127.0.0.1:${s.port}/mcp` : tr("mcp.offHint");
+  if (s.running) {
+    const line = (proto: string, path: string): HTMLElement => {
+      const row = document.createElement("div");
+      row.className = "mcp-addr-row";
+      const p = document.createElement("span");
+      p.className = "mcp-proto";
+      p.textContent = proto;
+      const u = document.createElement("code");
+      u.textContent = `http://127.0.0.1:${s.port}${path}`;
+      row.append(p, u);
+      return row;
+    };
+    addr.append(line(tr("mcp.protoStreamable"), "/mcp"), line(tr("mcp.protoSse"), "/sse"));
+  } else {
+    addr.textContent = tr("mcp.offHint");
+  }
   const toggle = document.createElement("button");
   toggle.className = `mcp-btn ${s.running ? "danger" : "primary"}`;
   toggle.textContent = s.running ? tr("mcp.disable") : tr("mcp.enable");

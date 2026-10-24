@@ -76,8 +76,11 @@ describe("MCP 状态卡", () => {
     const cfg = JSON.parse(mcp.clientConfig(status({ port: 9999, token: "abc" }))) as {
       mcpServers: { sshkit: { type: string; url: string; headers: { Authorization: string } } };
     };
-    expect(cfg.mcpServers.sshkit).toMatchObject({
+    expect(cfg.mcpServers["sshkit-streamable-http"]).toMatchObject({
       type: "http", url: "http://127.0.0.1:9999/mcp", headers: { Authorization: "Bearer abc" },
+    });
+    expect(cfg.mcpServers["sshkit-http-sse"]).toMatchObject({
+      type: "sse", url: "http://127.0.0.1:9999/sse", headers: { Authorization: "Bearer abc" },
     });
   });
 
@@ -89,7 +92,10 @@ describe("MCP 状态卡", () => {
     const box = document.createElement("div");
     document.body.append(box);
     mcp.paintMcp(box, status({ running: true, clients: ["Claude Code 2.0", "Codex"], error: "端口被占" }));
+    expect(text(box)).toContain("Streamable HTTP");
+    expect(text(box)).toContain("HTTP+SSE");
     expect(text(box)).toContain("http://127.0.0.1:7788/mcp");
+    expect(text(box)).toContain("http://127.0.0.1:7788/sse");
     expect(text(box)).toContain("Claude Code 2.0 · Codex");
     expect(text(box)).toContain("端口被占");
     expect(mcp.currentMcpStatus()).toMatchObject({ running: true });
