@@ -1744,10 +1744,9 @@ document.addEventListener("click", (ev) => {
      被点的按钮已经脱离文档)时,el.contains(t) 必然是 false —— 若不加这个守卫,用户每选
      一个主题/字号,整个设置面板就会被当成"点了外部"关掉,没法连续调整。 */
   if (!t || !t.isConnected) return;
-  /* 白名单必须包含**所有**开启者。之前只写了 #btn-prefs,而 Vaults 工具条上的开启者是
-     #btn-appearance —— 于是点它时:自己的监听先开、紧接着这个"点外部关闭"又把它关掉,
-     表现为"按钮点了没反应"(踩过)。 */
-  if (el.contains(t) || t.closest("#btn-prefs, #btn-appearance")) return;
+  /* 开启者(顶栏 #btn-prefs、菜单栏偏好设置、⌘,)要排除在"点外部关闭"之外,
+     否则刚打开就被同一次点击关掉(踩过)。 */
+  if (el.contains(t) || t.closest("#btn-prefs")) return;
   el.remove();
 });
 
@@ -2182,7 +2181,7 @@ void (async () => {
      (Hosts 分区就是原版的 `Vaults` tab;转发/Known Hosts 等各自成为主区视图)。 */
   document.getElementById("btn-panel-top")?.addEventListener("click", () => togglePanel());
   document.getElementById("btn-quick-term")?.addEventListener("click", () => { void openSession("local"); });
-  document.getElementById("btn-appearance")?.addEventListener("click", () => openPrefs());
+
   document.getElementById("btn-new-host-caret")?.addEventListener("click", () => {
     document.getElementById("btn-new-host")?.click();
   });

@@ -2874,7 +2874,7 @@ describe("防御守卫", () => {
     await boot({
       mutateDom: () => {
         /* 这几个是可选的顶栏/工具条按钮;移除后 boot 里的 ?.addEventListener 应安静跳过 */
-        for (const id of ["btn-panel-top", "btn-quick-term", "btn-appearance", "btn-new-host-caret"]) {
+        for (const id of ["btn-panel-top", "btn-quick-term", "btn-new-host-caret"]) {
           document.getElementById(id)?.remove();
         }
       },
@@ -3180,13 +3180,17 @@ describe("外观与设置边界", () => {
     expect(prefsBtn(".ps-val").textContent).toBe("14px");
   });
 
-  it("顶栏侧栏按钮与设置齿轮都能打开对应 UI", async () => {
+  it("顶栏侧栏按钮能开关面板;外观入口只保留侧栏与 ⌘,(旧齿轮已移除)", async () => {
     await boot();
     click(document.querySelector("#btn-panel"));
     expect(document.body.dataset.panel).toBe("1");
     click(document.querySelector("#btn-panel-top"));
     expect(document.body.dataset.panel).toBe("0");
-    click(document.querySelector("#btn-appearance"));
+
+    /* 主机页右上角不再有旧「设置/样式」齿轮 */
+    expect(document.getElementById("btn-appearance")).toBeNull();
+    /* 偏好设置仍可通过 ⌘, 打开(侧栏外观 tab 也可用) */
+    key(document, { code: "Comma", key: ",", metaKey: true });
     await waitFor(() => !!document.querySelector(".prefs"));
     expect(prefsBtn(".scheme-list")).toBeTruthy();
   });
