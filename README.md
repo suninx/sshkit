@@ -13,11 +13,11 @@ Electron + TypeScript + xterm,**独立实现**。
 
 ## 截图
 
-| 主机簿 | 终端 + 外观侧栏 |
+| 主机簿 | 终端 |
 |---|---|
-| ![主机簿](./docs/screenshots/hosts.png) | ![终端与外观侧栏](./docs/screenshots/terminal-appearance-panel.png) |
+| ![主机簿](./docs/screenshots/hosts.png) | ![终端](./docs/screenshots/terminal.png) |
 
-| 广播输入(两台同时执行,侧栏收起) | MCP(AI 接入) |
+| 广播输入(两台同时执行) | MCP(AI 接入) |
 |---|---|
 | ![广播输入](./docs/screenshots/broadcast-input.png) | ![MCP 分区](./docs/screenshots/mcp.png) |
 

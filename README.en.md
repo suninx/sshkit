@@ -14,11 +14,11 @@ sync, no telemetry. Electron + TypeScript + xterm, an **original implementation*
 
 ## Screenshots
 
-| Host book | Terminal + appearance side panel |
+| Host book | Terminal |
 |---|---|
-| ![Host book](./docs/screenshots/hosts.png) | ![Terminal and appearance panel](./docs/screenshots/terminal-appearance-panel.png) |
+| ![Host book](./docs/screenshots/hosts.png) | ![Terminal](./docs/screenshots/terminal.png) |
 
-| Broadcast input (two hosts, panel collapsed) | MCP (AI integration) |
+| Broadcast input (two hosts at once) | MCP (AI integration) |
 |---|---|
 | ![Broadcast input](./docs/screenshots/broadcast-input.png) | ![MCP section](./docs/screenshots/mcp.png) |
 
