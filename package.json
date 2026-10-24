@@ -43,7 +43,7 @@
     "node-pty": "^1.1.0",
     "ssh2": "^1.17.0"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "suninx",
   "repository": {
     "type": "git",

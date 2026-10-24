@@ -1,0 +1,10 @@
+sshkit
+Copyright 2026 suninx
+
+This product includes software developed at sshkit (https://github.com/suninx/sshkit).
+
+Bundled third-party assets:
+- MesloLGS Nerd Font Mono (Apache License 2.0; Meslo LG by André Berg, Nerd Fonts patches)
+- JetBrainsMono Nerd Font Mono (SIL Open Font License 1.1; JetBrains Mono, Nerd Fonts patches)
+- FiraCode Nerd Font Mono (SIL Open Font License 1.1; Fira Code, Nerd Fonts patches)
+See src/renderer/fonts/LICENSE.txt and THIRD-PARTY.md for details.
