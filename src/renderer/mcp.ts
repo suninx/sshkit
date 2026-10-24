@@ -53,6 +53,12 @@ export function clientConfigFor(s: McpStatus, proto: "stream" | "sse"): string {
 
 let current: McpStatus | null = null;
 
+/** 端口输入框的初值:优先当前实际端口,其次上次状态(状态里始终带 port) */
+function getStatusPort(): number {
+  /* 只在 paintMcp 内部调用,此时 current 一定是刚传入的状态 */
+  return current!.port;
+}
+
 /** 渲染整个分区(状态卡 + 活动流) */
 export function paintMcp(box: HTMLElement, s: McpStatus): void {
   current = s;
@@ -86,6 +92,12 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
       return row;
     };
     addr.append(line(tr("mcp.protoStreamable"), "/stream", "stream"), line(tr("mcp.protoSse"), "/sse", "sse"));
+    if (s.portFallbackFrom !== null) {
+      const note = document.createElement("div");
+      note.className = "mcp-port-note";
+      note.textContent = tr("mcp.portFallback", { from: String(s.portFallbackFrom), to: String(s.port) });
+      addr.append(note);
+    }
   } else {
     addr.textContent = tr("mcp.offHint");
   }
@@ -133,6 +145,18 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
     void bridge.mcp.regenerateToken().then((st) => { current = st; paintMcp(box, st); });
   });
   const stop = mk(tr("mcp.stop"), "danger", () => { void bridge.mcp.abort(); });
+  const portInput = document.createElement("input");
+  portInput.className = "mcp-port";
+  portInput.type = "number";
+  portInput.min = "1";
+  portInput.max = "65535";
+  portInput.value = String(getStatusPort());
+  portInput.title = tr("mcp.portLabel");
+  portInput.addEventListener("change", () => {
+    const n = Number(portInput.value);
+    if (!Number.isInteger(n) || n <= 0 || n >= 65_536) return;
+    void bridge.mcp.set({ port: n }).then((st) => { current = st; paintMcp(box, st); });
+  });
   const policy = document.createElement("select");
   policy.className = "mcp-policy";
   for (const p of ["read-only", "standard", "full"] as const) {
@@ -145,7 +169,7 @@ export function paintMcp(box: HTMLElement, s: McpStatus): void {
   policy.addEventListener("change", () => {
     void bridge.mcp.set({ policy: policy.value as McpPolicy }).then((st) => { current = st; paintMcp(box, st); });
   });
-  actions.append(regen, stop, policy);
+  actions.append(regen, stop, policy, portInput);
 
   const hint = document.createElement("div");
   hint.className = "mcp-hint";

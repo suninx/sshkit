@@ -1116,25 +1116,55 @@ describe("MCP 服务器接线", () => {
     await expect(fetch(`http://127.0.0.1:${port}/mcp`)).rejects.toThrow();
   });
 
-  it("端口非法值被忽略;端口被占用时如实报错(不假装在跑)", async () => {
+  it("候选端口全部失败时记录错误(不假装在跑)", async () => {
+    const port = await freePort();
+    const net = await import("node:net");
+    const blocker = net.createServer();
+    await new Promise<void>((r) => blocker.listen(port, "127.0.0.1", () => r()));
+    try {
+      const mod = (await import("../../src/main/main")) as unknown as {
+        startMcpOnPorts: (ports: number[]) => Promise<void>;
+      };
+      await mod.startMcpOnPorts([port]);
+      const st = (await em.invoke("mcp:status")) as any;
+      expect(st.running).toBe(false);
+      expect(String(st.error)).toMatch(/EADDRINUSE/);
+
+      /* 候选列表为空:没有底层错误可报,给一句通用说明 */
+      await mod.startMcpOnPorts([]);
+      expect(((await em.invoke("mcp:status")) as any).error).toBe("no available port");
+      await em.invoke("mcp:set", { enabled: false });
+    } finally {
+      await new Promise<void>((r) => blocker.close(() => r()));
+    }
+  });
+
+  it("配置端口被占用时自动顺延到下一个端口,并在状态里标出原端口", async () => {
+    const port = await freePort();
+    const net = await import("node:net");
+    const blocker = net.createServer();
+    await new Promise<void>((r) => blocker.listen(port, "127.0.0.1", () => r()));
+    try {
+      await em.invoke("mcp:set", { enabled: false, port });
+      const st = (await em.invoke("mcp:set", { enabled: true })) as any;
+      expect(st.running).toBe(true);
+      expect(st.port).not.toBe(port);
+      expect(st.portFallbackFrom).toBe(port);
+      expect(st.error).toBeNull();
+      await em.invoke("mcp:set", { enabled: false });
+    } finally {
+      await new Promise<void>((r) => blocker.close(() => r()));
+    }
+  });
+
+  it("端口非法值被忽略(0 / 超范围都保留原值)", async () => {
     const port = await freePort();
     const st1 = (await em.invoke("mcp:set", { enabled: true, port })) as any;
     expect(st1.running).toBe(true);
-
     const keep = (await em.invoke("mcp:set", { port: 0 })) as any;
     expect(keep.port).toBe(port);
     const keep2 = (await em.invoke("mcp:set", { port: 70_000 })) as any;
     expect(keep2.port).toBe(port);
-
-    await em.invoke("mcp:set", { enabled: false });
-    /* 先占住端口,再让 MCP 去监听同一个端口 */
-    const net = await import("node:net");
-    const blocker = net.createServer();
-    await new Promise<void>((r) => blocker.listen(port, "127.0.0.1", () => r()));
-    const bad = (await em.invoke("mcp:set", { enabled: true, port })) as any;
-    expect(bad.running).toBe(false);
-    expect(String(bad.error)).toMatch(/EADDRINUSE/);
-    await new Promise<void>((r) => blocker.close(() => r()));
     await em.invoke("mcp:set", { enabled: false });
   });
 

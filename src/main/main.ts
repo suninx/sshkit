@@ -24,7 +24,7 @@ import {
 import fs from "node:fs";
 import { getMcpToken, setMcpToken } from "./keystore";
 import {
-  MCP_ACTIVITY_LIMIT, MCP_SSE_PING_MS,
+  MCP_ACTIVITY_LIMIT, MCP_SSE_PING_MS, mcpPortCandidates,
   type McpActivity, type McpExecEvent, type McpPolicy, type McpStatus,
 } from "../shared/mcp";
 
@@ -409,6 +409,8 @@ const mcpActivity: McpActivity[] = [];
 const mcpStatus = (): McpStatus => ({
   running: mcpHandle !== null,
   port: mcpHandle?.port ?? getSettings().mcp.port,
+  /* 端口被占用了就顺延:告诉界面"本该是 X,实际用了 Y" */
+  portFallbackFrom: mcpHandle && mcpHandle.port !== getSettings().mcp.port ? getSettings().mcp.port : null,
   token: mcpToken,
   policy: getSettings().mcp.policy,
   clients: mcpClients,
@@ -542,32 +544,44 @@ const mcpDeps: McpToolDeps = {
   },
 };
 
-async function startMcp(): Promise<void> {
+/** 在一串候选端口上尝试启动(导出便于单测"全部失败"的兜底分支) */
+export async function startMcpOnPorts(ports: number[]): Promise<void> {
   mcpError = null;
-  try {
-    mcpHandle = await startMcpServer({
-      port: getSettings().mcp.port,
-      token: mcpToken,
-      version: app.getVersion(),
-      tools: [
-        ...buildReadTools(mcpDeps),
-        /* 只读档位下不注册写/执行工具:客户端从 tools/list 就看不到,而不是调用时才失败 */
-        ...(getSettings().mcp.policy === "read-only"
-          ? []
-          : [...buildWriteTools(mcpDeps), ...buildExecTools(mcpDeps)]),
-      ],
-      /* 标准档:写/执行前弹批准(60s 不答视为拒绝) */
-      approve: getSettings().mcp.policy === "standard" ? requestApproval : undefined,
-      pingMs: MCP_SSE_PING_MS,
-      onActivity: pushMcpActivity,
-      onClients: (clients) => { mcpClients = clients; pushMcpStatus(); },
-    });
-  } catch (err) {
-    /* 端口被占/权限不足:如实记下原因,让 UI 显示"启动失败"而不是假装在跑 */
-    mcpHandle = null;
-    mcpError = String((err as Error).message);
+  let lastErr: unknown = null;
+  for (const port of ports) {
+    try {
+      mcpHandle = await startMcpServer({
+        port,
+        token: mcpToken,
+        version: app.getVersion(),
+        tools: [
+          ...buildReadTools(mcpDeps),
+          /* 只读档位下不注册写/执行工具:客户端从 tools/list 就看不到,而不是调用时才失败 */
+          ...(getSettings().mcp.policy === "read-only"
+            ? []
+            : [...buildWriteTools(mcpDeps), ...buildExecTools(mcpDeps)]),
+        ],
+        /* 标准档:写/执行前弹批准(60s 不答视为拒绝) */
+        approve: getSettings().mcp.policy === "standard" ? requestApproval : undefined,
+        pingMs: MCP_SSE_PING_MS,
+        onActivity: pushMcpActivity,
+        onClients: (clients) => { mcpClients = clients; pushMcpStatus(); },
+      });
+      pushMcpStatus();
+      return;
+    } catch (err) {
+      /* 端口被占/无权限:继续试下一个候选(最后一个候选是 0 = 系统分配) */
+      lastErr = err;
+    }
   }
+  mcpHandle = null;
+  mcpError = String((lastErr as Error)?.message ?? "no available port");
   pushMcpStatus();
+}
+
+async function startMcp(): Promise<void> {
+  /* 配置端口 → 其后 9 个 → 系统分配,避免"装完就因为端口冲突起不来" */
+  await startMcpOnPorts(mcpPortCandidates(getSettings().mcp.port));
 }
 
 async function stopMcp(): Promise<void> {

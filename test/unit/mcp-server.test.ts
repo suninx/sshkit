@@ -2,7 +2,7 @@
    这样 Streamable HTTP 的头部/会话/通知语义都是真跑一遍。 */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startMcpServer, redactArgs, type McpServerHandle, type McpTool } from "../../src/main/mcp/server";
-import type { McpActivity } from "../../src/shared/mcp";
+import { mcpPortCandidates, type McpActivity } from "../../src/shared/mcp";
 
 const TOKEN = "test-token";
 const BASE_TOOL: McpTool = {
@@ -437,5 +437,13 @@ describe("旧版 HTTP+SSE 传输(GET /sse + POST /messages)", () => {
     expect(evt).toContain("echo:hi");
     expect(h.activities.some((a) => a.tool === "echo" && a.status === "ok")).toBe(true);
     ctl.abort();
+  });
+});
+
+describe("端口候选(占用自动顺延)", () => {
+  it("先试配置端口,再顺延 9 个,最后交给系统分配", () => {
+    expect(mcpPortCandidates(7788)).toEqual([
+      7788, 7789, 7790, 7791, 7792, 7793, 7794, 7795, 7796, 7797, 0,
+    ]);
   });
 });

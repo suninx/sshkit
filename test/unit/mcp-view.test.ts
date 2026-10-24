@@ -22,7 +22,8 @@ async function boot(overrides: Record<string, (...args: unknown[]) => unknown> =
 }
 
 const status = (patch: Partial<McpStatus> = {}): McpStatus => ({
-  running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full", ...patch,
+  running: false, port: 7788, token: "tok", clients: [], error: null, activity: [], policy: "full",
+  portFallbackFrom: null, ...patch,
 });
 
 const act = (patch: Partial<McpActivity> = {}): McpActivity => ({
@@ -173,6 +174,30 @@ describe("MCP 状态卡", () => {
     (box.querySelector('[data-act="deny"]') as HTMLElement).click();
     await new Promise((r) => setTimeout(r, 0));
     expect(calls["mcp.answerApproval"].at(-1)).toEqual(["a2", false]);
+  });
+
+  it("端口被占用自动顺延:显示提示;端口输入框改动会保存", async () => {
+    await boot({ "mcp.set": async () => status({ running: true, port: 7800 }) });
+    const box = document.createElement("div");
+    document.body.append(box);
+    mcp.paintMcp(box, status({ running: true, port: 7790, portFallbackFrom: 7788 }));
+
+    expect(text(box)).toContain("7790");
+    expect(text(box.querySelector(".mcp-port-note"))).toContain("7788");
+
+    const input = box.querySelector(".mcp-port") as HTMLInputElement;
+    expect(input.value).toBe("7790");
+    /* 非法值(0 / 超范围)不保存 */
+    const callsBefore = calls["mcp.set"]?.length ?? 0;
+    input.value = "0";
+    input.dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls["mcp.set"]?.length ?? 0).toBe(callsBefore);
+
+    input.value = "7800";
+    input.dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls["mcp.set"].at(-1)![0]).toEqual({ port: 7800 });
   });
 
   it("未启用:提示怎么开,并且没有已连接提示", async () => {

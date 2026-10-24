@@ -7,6 +7,18 @@
 /** 默认监听端口(只绑 127.0.0.1) */
 export const MCP_DEFAULT_PORT = 7788;
 
+/** 端口被占用时最多往后试几个(再不行交给系统分配随机端口) */
+export const MCP_PORT_FALLBACKS = 9;
+
+/** 启动时依次尝试的端口:配置端口 → 其后 9 个 → 0(系统分配)。
+    纯函数,便于单测"占用时顺延"的行为。 */
+export function mcpPortCandidates(configured: number): number[] {
+  const list: number[] = [];
+  for (let i = 0; i <= MCP_PORT_FALLBACKS; i++) list.push(configured + i);
+  list.push(0);
+  return list;
+}
+
 /** 支持的 MCP 协议版本(新→旧)。协商时优先用客户端要的,不支持就给最新。 */
 export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 export const MCP_LATEST_PROTOCOL = MCP_PROTOCOL_VERSIONS[0];
@@ -54,6 +66,8 @@ export interface McpStatus {
   token: string;
   /** 当前权限档 */
   policy: McpPolicy;
+  /** 配置端口被占用、实际用了别的端口时,记录原配置值(否则 null) */
+  portFallbackFrom: number | null;
   /** 已建立会话的客户端名 */
   clients: string[];
   error: string | null;

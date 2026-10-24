@@ -17,6 +17,8 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "mcp.portLabel": "Port (auto-falls back if occupied)",
+  "mcp.portFallback": "Port {from} was occupied — using {to} instead",
   "mcp.protoStreamable": "Streamable HTTP",
   "mcp.protoSse": "HTTP+SSE (legacy)",
   "tab.newTab": "New Tab",
@@ -382,6 +384,8 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "mcp.portLabel": "端口(被占用时自动顺延)",
+  "mcp.portFallback": "端口 {from} 被占用,已自动改用 {to}",
   "mcp.protoStreamable": "Streamable HTTP",
   "mcp.protoSse": "HTTP+SSE(旧版)",
   "tab.newTab": "新标签页",
