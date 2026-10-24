@@ -96,8 +96,9 @@ test("设置:⌘, 打开面板;切换语言后侧栏文案随之变化;切回中
 
 test("外观:深浅色切换与字号调节写进 localStorage", async () => {
   const { page } = ctx;
-  /* 旧主机页齿轮已移除:外观入口走顶栏偏好设置按钮(⌘, 同一路径) */
-  await page.locator("#btn-prefs").click();
+  /* 旧主机页齿轮已移除;⌘, 是主入口(与设置面板用例一致的打开方式) */
+  await page.evaluate(() => document.querySelectorAll(".prefs").forEach((n) => n.remove()));
+  await page.keyboard.press("Meta+,");
   await expect(page.locator(".prefs")).toBeVisible();
 
   await page.locator('.prefs .ui-mode[data-mode="light"]').click();
