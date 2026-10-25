@@ -1710,6 +1710,30 @@ describe("分区屏", () => {
     expect(calls["hosts.list"].length).toBeGreaterThan(before);
   });
 
+  it("备份密码弹窗:深色样式、密码可见性切换", async () => {
+    await boot({ overrides: { "hosts.list": async () => [HOST] } });
+    await openVaultMenu();
+    click([...document.querySelectorAll<HTMLElement>(".vault-menu-item")][0]);
+    await waitFor(() => !!document.querySelector(".vault-pass-dlg"));
+    const dlg = document.querySelector(".vault-pass-dlg")!;
+    /* 复用 SFTP 的深色卡片类,而不是白底 discard 框 */
+    expect(dlg.className).toContain("prompt-dlg");
+    expect(dlg.querySelector(".vault-lock")).toBeTruthy();
+    const input = dlg.querySelector(".pd-input") as HTMLInputElement;
+    input.value = "secret-value";
+    expect(input.type).toBe("password");
+    const eye = dlg.querySelector(".vault-eye") as HTMLButtonElement;
+    expect(eye.getAttribute("aria-pressed")).toBe("false");
+    click(eye);
+    expect(input.type).toBe("text");
+    expect(eye.getAttribute("aria-pressed")).toBe("true");
+    expect((dlg.querySelector(".i-eye") as HTMLElement).hasAttribute("hidden")).toBe(true);
+    expect((dlg.querySelector(".i-eye-off") as HTMLElement).hasAttribute("hidden")).toBe(false);
+    click(eye);
+    expect(input.type).toBe("password");
+    expect((dlg.querySelector(".i-eye") as HTMLElement).hasAttribute("hidden")).toBe(false);
+  });
+
   it("主机簿加密备份:桥报错时弹失败提示", async () => {
     await boot({
       overrides: {

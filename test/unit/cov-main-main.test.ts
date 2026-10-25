@@ -1570,6 +1570,7 @@ describe("MCP 服务器接线", () => {
     const { encryptVault } = await import("../../src/main/vault");
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-vault2-"));
     const prevHome = process.env.HOME;
+    const prevProfile = process.env.USERPROFILE;
     try {
       /* 无主机:导出报错 */
       const list = (await em.invoke("hosts:list")) as Array<{ id: string }>;
@@ -1579,6 +1580,7 @@ describe("MCP 服务器接线", () => {
 
       /* 构造一份带私钥的备份;导入时私钥落到临时 HOME 下的 .ssh/sshkit-imported */
       process.env.HOME = tmp;
+      process.env.USERPROFILE = tmp;   // Windows: os.homedir() 读 USERPROFILE
       const vaultFile = path.join(tmp, "key.sshkitvault");
       fs.writeFileSync(vaultFile, encryptVault({
         format: "sshkit-vault", version: 1, exportedAt: "",
@@ -1598,6 +1600,7 @@ describe("MCP 服务器接线", () => {
       expect(await keystore.getCreds(restored.id)).toEqual({ password: undefined, passphrase: "pp" });
     } finally {
       process.env.HOME = prevHome;
+      if (prevProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevProfile;
       dialogState.openResult = null;
       fs.rmSync(tmp, { recursive: true, force: true });
     }

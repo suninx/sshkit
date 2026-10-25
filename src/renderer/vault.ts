@@ -7,12 +7,21 @@ import { tr } from "../shared/i18n";
 export function promptPassphrase(title: string, hint: string, minLength: number): Promise<string | null> {
   return new Promise((resolve) => {
     const wrap = document.createElement("div");
-    wrap.className = "discard-dlg vault-pass-dlg";
+    /* prompt-dlg 复用 SFTP 那套深色卡片样式,避免白底弹窗 */
+    wrap.className = "discard-dlg prompt-dlg vault-pass-dlg";
     wrap.innerHTML = `<div class="dd-box" role="dialog" aria-modal="true">
-      <div class="dd-head"><span></span><button class="dd-x" aria-label="close">✕</button></div>
+      <div class="dd-head">
+        <svg class="vault-lock" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+        <span></span><button class="dd-x" aria-label="close">✕</button></div>
       <div class="dd-body">
         <p class="pd-hint"></p>
-        <input class="pd-input" type="password" autocomplete="new-password" spellcheck="false">
+        <div class="vault-field">
+          <input class="pd-input" type="password" autocomplete="off" spellcheck="false">
+          <button class="vault-eye" type="button" aria-label="show password" aria-pressed="false">
+            <svg class="i-eye" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>
+            <svg class="i-eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" hidden><path d="M3 3l18 18"/><path d="M10.6 6.1A9.7 9.7 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3.3 3.9M6.4 8.2A17 17 0 0 0 2.5 12s3.5 6 9.5 6a9.9 9.9 0 0 0 4.2-.9"/></svg>
+          </button>
+        </div>
         <p class="vault-pass-err" hidden></p>
         <div class="pd-actions"><button class="dd-cancel"></button><button class="dd-ok"></button></div>
       </div>
@@ -26,6 +35,19 @@ export function promptPassphrase(title: string, hint: string, minLength: number)
     (wrap.querySelector(".dd-cancel") as HTMLElement).textContent = tr("form.cancel");
     (wrap.querySelector(".dd-ok") as HTMLElement).textContent = tr("common.ok");
     const done = (v: string | null): void => { wrap.remove(); resolve(v); };
+    const eye = wrap.querySelector(".vault-eye") as HTMLButtonElement;
+    const eyeOn = eye.querySelector(".i-eye") as SVGSVGElement;
+    const eyeOff = eye.querySelector(".i-eye-off") as SVGSVGElement;
+    eye.addEventListener("click", () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      eye.setAttribute("aria-pressed", show ? "true" : "false");
+      /* SVG 元素没有 HTMLElement.hidden,用属性控制可见性。
+         密码可见时显示"划掉的眼镜"(提示点一下可隐藏),隐藏时显示普通眼镜。 */
+      if (show) { eyeOn.setAttribute("hidden", ""); eyeOff.removeAttribute("hidden"); }
+      else { eyeOn.removeAttribute("hidden"); eyeOff.setAttribute("hidden", ""); }
+      input.focus();
+    });
     wrap.querySelector(".dd-x")!.addEventListener("click", () => done(null));
     wrap.querySelector(".dd-cancel")!.addEventListener("click", () => done(null));
     wrap.addEventListener("click", (ev) => { if (ev.target === wrap) done(null); });
@@ -38,6 +60,7 @@ export function promptPassphrase(title: string, hint: string, minLength: number)
       }
       done(input.value);
     };
+    (wrap.querySelector(".dd-ok") as HTMLElement).classList.add("vault-ok");
     wrap.querySelector(".dd-ok")!.addEventListener("click", submit);
     input.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") submit();

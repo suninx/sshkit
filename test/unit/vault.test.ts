@@ -116,38 +116,16 @@ describe("收集 / 恢复", () => {
     expect(secrets).toEqual([["h_new0", { password: "x", passphrase: undefined }]]);
   });
 
-  it("writeImportedKey:写到 ~/.ssh/sshkit-imported,权限 0600,重名自动加后缀", () => {
-    const prevHome = process.env.HOME;
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-import-"));
-    process.env.HOME = tmp;
-    try {
-      /* 用相对路径验证落盘语义 */
-      const dir = path.join(tmp, "keys");
-      fs.mkdirSync(dir, { recursive: true });
-      /* 直接用同模块导出的落盘函数会写真实 HOME;改用临时目录内的独立实现验证语义 */
-      const write = (name: string, pem: string): string => {
-        const safe = path.basename(name).replace(/[^\w.-]/g, "_");
-        let target = path.join(dir, safe);
-        for (let i = 1; fs.existsSync(target); i += 1) target = path.join(dir, `${safe}.${i}`);
-        fs.writeFileSync(target, pem, { mode: 0o600 });
-        return target;
-      };
-      expect(write("id_ed25519", "A")).toContain("id_ed25519");
-      expect(write("id_ed25519", "B")).toContain("id_ed25519.1");
-      expect(fs.statSync(path.join(dir, "id_ed25519")).mode & 0o777).toBe(0o600);
-    } finally {
-      process.env.HOME = prevHome;
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-    expect(typeof writeImportedKey).toBe("function");
-  });
 });
 
 describe("导入私钥落盘", () => {
   it("写到 $HOME/.ssh/sshkit-imported,重名自动加后缀,权限 0600", () => {
-    const prev = process.env.HOME;
+    const prevHome = process.env.HOME;
+    const prevProfile = process.env.USERPROFILE;
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-home-"));
     process.env.HOME = home;
+    /* Windows 的 os.homedir() 读 USERPROFILE,不读 HOME */
+    process.env.USERPROFILE = home;
     try {
       const a = writeImportedKey("id_ed25519", "A");
       expect(a).toBe(path.join(home, ".ssh", "sshkit-imported", "id_ed25519"));
@@ -160,7 +138,8 @@ describe("导入私钥落盘", () => {
         expect(fs.statSync(path.dirname(a)).mode & 0o777).toBe(0o700);
       }
     } finally {
-      process.env.HOME = prev;
+      process.env.HOME = prevHome;
+      if (prevProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevProfile;
       fs.rmSync(home, { recursive: true, force: true });
     }
   });
