@@ -17,9 +17,9 @@ export function promptPassphrase(title: string, hint: string, minLength: number)
         <p class="pd-hint"></p>
         <div class="vault-field">
           <input class="pd-input" type="password" autocomplete="off" spellcheck="false">
-          <button class="vault-eye" type="button" aria-label="show password" aria-pressed="false">
-            <svg class="i-eye" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>
-            <svg class="i-eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" hidden><path d="M3 3l18 18"/><path d="M10.6 6.1A9.7 9.7 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3.3 3.9M6.4 8.2A17 17 0 0 0 2.5 12s3.5 6 9.5 6a9.9 9.9 0 0 0 4.2-.9"/></svg>
+          <button class="vault-eye" type="button" aria-label="show password" aria-pressed="false" title="show password">
+            <svg class="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5.5 5.5 12 5.5 22.5 12 22.5 12 18.5 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19.5C5.5 19.5 1.5 12 1.5 12a19.5 19.5 0 0 1 5-5.9"/><path d="M9.9 5.7A10.6 10.6 0 0 1 12 4.5c6.5 0 10.5 7.5 10.5 7.5a19.6 19.6 0 0 1-3.2 4.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M2 2l20 20"/></svg>
           </button>
         </div>
         <p class="vault-pass-err" hidden></p>
@@ -36,16 +36,19 @@ export function promptPassphrase(title: string, hint: string, minLength: number)
     (wrap.querySelector(".dd-ok") as HTMLElement).textContent = tr("common.ok");
     const done = (v: string | null): void => { wrap.remove(); resolve(v); };
     const eye = wrap.querySelector(".vault-eye") as HTMLButtonElement;
-    const eyeOn = eye.querySelector(".i-eye") as SVGSVGElement;
-    const eyeOff = eye.querySelector(".i-eye-off") as SVGSVGElement;
+    /* 显隐用 class 控制:SVG 不是 HTMLElement,[hidden] 在部分样式表下不生效,
+       两个图标会叠在一起(用户反馈"眼睛图标不对")。 */
+    const syncEye = (visible: boolean): void => {
+      eye.classList.toggle("showing", visible);
+      eye.setAttribute("aria-pressed", visible ? "true" : "false");
+      const label = visible ? "hide password" : "show password";
+      eye.setAttribute("aria-label", label);
+      eye.title = label;
+    };
     eye.addEventListener("click", () => {
       const show = input.type === "password";
       input.type = show ? "text" : "password";
-      eye.setAttribute("aria-pressed", show ? "true" : "false");
-      /* SVG 元素没有 HTMLElement.hidden,用属性控制可见性。
-         密码可见时显示"划掉的眼镜"(提示点一下可隐藏),隐藏时显示普通眼镜。 */
-      if (show) { eyeOn.setAttribute("hidden", ""); eyeOff.removeAttribute("hidden"); }
-      else { eyeOn.removeAttribute("hidden"); eyeOff.setAttribute("hidden", ""); }
+      syncEye(show);
       input.focus();
     });
     wrap.querySelector(".dd-x")!.addEventListener("click", () => done(null));

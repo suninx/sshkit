@@ -1727,11 +1727,12 @@ describe("分区屏", () => {
     click(eye);
     expect(input.type).toBe("text");
     expect(eye.getAttribute("aria-pressed")).toBe("true");
-    expect((dlg.querySelector(".i-eye") as HTMLElement).hasAttribute("hidden")).toBe(true);
-    expect((dlg.querySelector(".i-eye-off") as HTMLElement).hasAttribute("hidden")).toBe(false);
+    expect(eye.classList.contains("showing")).toBe(true);
+    expect(eye.getAttribute("aria-label")).toBe("hide password");
     click(eye);
     expect(input.type).toBe("password");
-    expect((dlg.querySelector(".i-eye") as HTMLElement).hasAttribute("hidden")).toBe(false);
+    expect(eye.classList.contains("showing")).toBe(false);
+    expect(eye.getAttribute("aria-label")).toBe("show password");
   });
 
   it("主机簿加密备份:桥报错时弹失败提示", async () => {

@@ -548,7 +548,10 @@
       display: flex; align-items: center; justify-content: center; border: 0; border-radius: 7px;
       background: transparent; color: var(--fg); opacity: .75; cursor: pointer; }
     .vault-eye:hover { background: var(--h09); opacity: 1; }
-    .vault-eye svg { width: 17px; height: 17px; }
+    .vault-eye svg { width: 18px; height: 18px; display: block; }
+    .vault-eye .i-eye-off { display: none; }
+    .vault-eye.showing .i-eye { display: none; }
+    .vault-eye.showing .i-eye-off { display: block; }
     .vault-pass-dlg .dd-ok { background: var(--accent); color: #fff; align-self: flex-start; }
     .vault-pass-dlg .dd-cancel { align-self: flex-start; }
 
