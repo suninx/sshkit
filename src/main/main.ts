@@ -1,4 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, nativeImage } from "electron";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PtyService, type TerminalCreateOptions } from "./pty";
@@ -10,6 +11,7 @@ import { getLocale, resolveLocale, setLocale as setI18nLocale, tr, type LocalePr
 import { ForwardService, type ForwardRule } from "./forward";
 import { importKnownHosts, listKnownHosts, removeKnownHost } from "./knownhosts";
 import { deleteCreds, getCreds, putCreds } from "./keystore";
+import { collectVault, decryptVault, encryptVault, restoreVault, writeImportedKey, VAULT_MIN_PASSPHRASE } from "./vault";
 import { SnippetStore } from "./snippets";
 import type { HostInput } from "../shared/host";
 import type { SFTPWrapper } from "ssh2";
@@ -21,7 +23,6 @@ import {
   chmodRemote, downloadFiles, listRemote, mkdirRemote, readRemote, removeRemote,
   renameRemote, statRemote, uploadFiles, writeRemote,
 } from "./mcp/remote";
-import fs from "node:fs";
 import { getMcpToken, setMcpToken } from "./keystore";
 import {
   MCP_ACTIVITY_LIMIT, MCP_SSE_PING_MS, mcpPortCandidates,
@@ -255,6 +256,61 @@ ipcMain.handle("ssh:connect", async (event, hostId: string, opts: { cols: number
 
 ipcMain.handle("clipboard:read", () => clipboard.readText());
 ipcMain.handle("clipboard:write", (_e, text: string) => { clipboard.writeText(text ?? ""); });
+
+/* ---- 主机簿加密备份:导出时手输密码(AES-256-GCM),导入时同样要求输入 ---- */
+const vaultWindow = (): BrowserWindow | null => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+
+ipcMain.handle("hosts:exportEncrypted", async (_e, passphrase: string) => {
+  const pass = String(passphrase);
+  if (pass.length < VAULT_MIN_PASSPHRASE) throw new Error(`passphrase must be at least ${VAULT_MIN_PASSPHRASE} characters`);
+  const payload = await collectVault({
+    hosts: hostStore.list(),
+    getSecrets: (id) => getCreds(id),
+    readFile: (p) => fs.readFileSync(p, "utf8"),
+  });
+  if (payload.hosts.length === 0) throw new Error("no hosts to export");
+  const stamp = new Date().toISOString().slice(0, 10);
+  const options = {
+    title: "Export Host Book",
+    defaultPath: path.join(app.getPath("documents"), `sshkit-hosts-${stamp}.sshkitvault`),
+    filters: [{ name: "sshkit vault", extensions: ["sshkitvault"] }],
+  };
+  const win = vaultWindow();
+  const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+  /* 显式 else:分支计数需要两个方向都被执行(隐式 else 下 istanbul 记成"未测量") */
+  if (result.canceled) {
+    return { canceled: true, hosts: 0 };
+  } else {
+    /* Electron 契约:未取消时必有 filePath */
+    const outFile = result.filePath as string;
+    fs.writeFileSync(outFile, encryptVault(payload, pass), { mode: 0o600 });
+    return { canceled: false, path: outFile, hosts: payload.hosts.length };
+  }
+});
+
+ipcMain.handle("hosts:importEncrypted", async (_e, passphrase: string) => {
+  const pass = String(passphrase);
+  const options = {
+    title: "Import Host Book",
+    properties: ["openFile"] as Array<"openFile">,
+    filters: [{ name: "sshkit vault", extensions: ["sshkitvault"] }],
+  };
+  const win = vaultWindow();
+  const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+  if (picked.canceled) {
+    return { canceled: true, added: 0, skipped: 0 };
+  } else {
+    const file = picked.filePaths[0] as string;
+    const payload = decryptVault(fs.readFileSync(file, "utf8"), pass);
+    const result = await restoreVault(payload, {
+      hosts: hostStore.list(),
+      createHost: (input) => hostStore.create(input),
+      putSecrets: (id, secrets) => putCreds(id, secrets),
+      writeKey: (name, pem) => writeImportedKey(name, pem),
+    });
+    return { canceled: false, ...result };
+  }
+});
 
 /* ---------- T3 端口转发 ---------- */
 

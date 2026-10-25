@@ -29,7 +29,11 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
   const onHandlers = new Map<string, (...args: unknown[]) => void>();
   const sent: Array<[string, ...unknown[]]> = [];
-  const dialogState = { openResult: null as string[] | null, messages: [] as string[] };
+  const dialogState = {
+    openResult: null as string[] | null,
+    saveResult: null as string | null,
+    messages: [] as string[],
+  };
   const clipboardState = { text: "" };
   const windows: Array<Record<string, unknown>> = [];
   const menuState = { built: [] as unknown[], applied: [] as unknown[] };
@@ -103,6 +107,7 @@ export function createElectronMock(userDataDir?: string): ElectronMock {
     },
     dialog: {
       showOpenDialog: async () => ({ canceled: !dialogState.openResult, filePaths: dialogState.openResult ?? [] }),
+      showSaveDialog: async () => ({ canceled: !dialogState.saveResult, filePath: dialogState.saveResult ?? undefined }),
       showMessageBox: async () => ({ response: 0 }),
     },
     screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1440, height: 900 } }) },

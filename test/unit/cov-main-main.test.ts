@@ -1478,6 +1478,131 @@ describe("MCP 服务器接线", () => {
     }
   });
 
+  it("主机簿加密备份:导出需要密码(AES-256-GCM),导入恢复主机并写回凭据", async () => {
+    const tmp = await import("node:fs").then((fs) => fs.mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "sshkit-vault-")));
+    const path = require("node:path") as typeof import("node:path");
+    const fs = require("node:fs") as typeof import("node:fs");
+    const { decryptVault } = await import("../../src/main/vault");
+    try {
+      /* 造一台密码主机并保存凭据(keytar mock) */
+      const host = (await em.invoke("hosts:create", hostInput({ name: "bk", host: "127.0.0.1", authType: "password" }))) as { id: string };
+      await em.invoke("creds:put", host.id, { password: "pw-from-keychain" });
+      const out = path.join(tmp, "backup.sshkitvault");
+      dialogState.saveResult = out;
+
+      /* 密码太短 → 拒绝,且不弹保存框 */
+      await expect(em.invoke("hosts:exportEncrypted", "short")).rejects.toThrow(/at least 8/);
+
+      const res = (await em.invoke("hosts:exportEncrypted", "long-enough-pass")) as { canceled: boolean; path?: string; hosts: number };
+      expect(res.canceled).toBe(false);
+      expect(res.hosts).toBeGreaterThanOrEqual(1);
+      const plain = decryptVault(fs.readFileSync(out, "utf8"), "long-enough-pass");
+      const saved = plain.hosts.find((h) => h.name === "bk")!;
+      expect(saved.secret).toEqual({ password: "pw-from-keychain", passphrase: undefined });
+      /* 导出的是整个主机簿(这个 describe 里前面用例也建过主机),导入时它们都应算"重复" */
+      const total = plain.hosts.length;
+      expect(total).toBeGreaterThanOrEqual(1);
+
+      /* 取消保存 → canceled;随后再成功一次(同一用例内覆盖两个分支) */
+      dialogState.saveResult = null;
+      expect(await em.invoke("hosts:exportEncrypted", "long-enough-pass")).toEqual({ canceled: true, hosts: 0 });
+      dialogState.saveResult = out;
+      expect(((await em.invoke("hosts:exportEncrypted", "long-enough-pass")) as { canceled: boolean }).canceled).toBe(false);
+
+      /* 导入:先删掉主机(模拟换机),再用备份恢复 */
+      await em.invoke("hosts:delete", host.id);
+      dialogState.openResult = [out];
+      const imported = (await em.invoke("hosts:importEncrypted", "long-enough-pass")) as { canceled: boolean; added: number; skipped: number };
+      expect(imported).toMatchObject({ canceled: false, added: 1, skipped: total - 1 });
+      const list = (await em.invoke("hosts:list")) as Array<{ name: string; id: string }>;
+      expect(list.some((h) => h.name === "bk")).toBe(true);
+      /* 凭据写回:导出/导入后仍能取到同一个密码 */
+      const restored = list.find((h) => h.name === "bk")!;
+      /* 凭据是"只写不读"的 IPC 面,测试里直接读 keystore(同一个 keytar mock) */
+      const keystore = await import("../../src/main/keystore");
+      expect(await keystore.getCreds(restored.id)).toEqual({ password: "pw-from-keychain", passphrase: undefined });
+
+      /* 再导入一次 → 去重跳过 */
+      expect(await em.invoke("hosts:importEncrypted", "long-enough-pass")).toMatchObject({ added: 0, skipped: total });
+
+      /* 密码错 → 明确报错;取消选择 → canceled;再成功一次覆盖另一分支 */
+      await expect(em.invoke("hosts:importEncrypted", "wrong-password")).rejects.toThrow(/invalid passphrase/);
+      dialogState.openResult = null;
+      expect(await em.invoke("hosts:importEncrypted", "long-enough-pass")).toEqual({ canceled: true, added: 0, skipped: 0 });
+      dialogState.openResult = [out];
+      expect(((await em.invoke("hosts:importEncrypted", "long-enough-pass")) as { canceled: boolean }).canceled).toBe(false);
+    } finally {
+      dialogState.saveResult = null;
+      dialogState.openResult = null;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("加密备份:主窗口销毁时仍可用(退回无父窗口对话框)", async () => {
+    const path = require("node:path") as typeof import("node:path");
+    const os = require("node:os") as typeof import("node:os");
+    const fs = require("node:fs") as typeof import("node:fs");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-vault3-"));
+    const wins = em.windows as unknown as Array<{ isDestroyed: () => boolean }>;
+    const orig = wins.map((w) => w.isDestroyed);
+    try {
+      for (const w of wins) w.isDestroyed = () => true;
+      const out = path.join(tmp, "winless.sshkitvault");
+      dialogState.saveResult = out;
+      await em.invoke("hosts:create", hostInput({ name: "winless", host: "127.0.0.1", authType: "agent" }));
+      const res = (await em.invoke("hosts:exportEncrypted", "long-enough-pass")) as { canceled: boolean; hosts: number };
+      expect(res.canceled).toBe(false);
+      expect(fs.existsSync(out)).toBe(true);
+      dialogState.openResult = [out];
+      expect(await em.invoke("hosts:importEncrypted", "long-enough-pass")).toMatchObject({ canceled: false, added: 0 });
+    } finally {
+      wins.forEach((w, i) => { w.isDestroyed = orig[i]; });
+      dialogState.saveResult = null;
+      dialogState.openResult = null;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("加密备份:无主机时不导出;私钥随包导入到 ~/.ssh/sshkit-imported", async () => {
+    const os = require("node:os") as typeof import("node:os");
+    const path = require("node:path") as typeof import("node:path");
+    const fs = require("node:fs") as typeof import("node:fs");
+    const { encryptVault } = await import("../../src/main/vault");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "sshkit-vault2-"));
+    const prevHome = process.env.HOME;
+    try {
+      /* 无主机:导出报错 */
+      const list = (await em.invoke("hosts:list")) as Array<{ id: string }>;
+      for (const h of list) await em.invoke("hosts:delete", h.id);
+      dialogState.saveResult = path.join(tmp, "x.sshkitvault");
+      await expect(em.invoke("hosts:exportEncrypted", "long-enough-pass")).rejects.toThrow(/no hosts/);
+
+      /* 构造一份带私钥的备份;导入时私钥落到临时 HOME 下的 .ssh/sshkit-imported */
+      process.env.HOME = tmp;
+      const vaultFile = path.join(tmp, "key.sshkitvault");
+      fs.writeFileSync(vaultFile, encryptVault({
+        format: "sshkit-vault", version: 1, exportedAt: "",
+        hosts: [{
+          name: "keyhost", host: "10.0.0.9", port: 22, username: "u", authType: "key",
+          keyPath: "~/.ssh/id_ed25519", privateKeyPem: "PEM-CONTENT", keyFileName: "id_ed25519",
+          secret: { passphrase: "pp" },
+        }],
+      }, "long-enough-pass"));
+      dialogState.openResult = [vaultFile];
+      expect(await em.invoke("hosts:importEncrypted", "long-enough-pass")).toMatchObject({ added: 1, skipped: 0 });
+      const written = path.join(tmp, ".ssh", "sshkit-imported", "id_ed25519");
+      expect(fs.readFileSync(written, "utf8")).toBe("PEM-CONTENT");
+      const restored = ((await em.invoke("hosts:list")) as Array<{ name: string; keyPath?: string; id: string }>).find((h) => h.name === "keyhost")!;
+      expect(restored.keyPath).toBe(written);
+      const keystore = await import("../../src/main/keystore");
+      expect(await keystore.getCreds(restored.id)).toEqual({ password: undefined, passphrase: "pp" });
+    } finally {
+      process.env.HOME = prevHome;
+      dialogState.openResult = null;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("审计:每次调用结束都追加一行 JSONL(参数脱敏)", async () => {
     const port = await freePort();
     const st = (await em.invoke("mcp:set", { enabled: true, port })) as any;

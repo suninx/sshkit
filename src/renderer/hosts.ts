@@ -31,6 +31,9 @@ interface SshkitBridge {
     create(input: HostInput): Promise<HostRecord>;
     update(id: string, patch: Partial<HostInput>): Promise<HostRecord>;
     remove(id: string): Promise<void>;
+    /** 主机簿加密备份(导出/导入都要手动输入密码,AES-256-GCM) */
+    exportEncrypted(passphrase: string): Promise<{ canceled: boolean; path?: string; hosts: number }>;
+    importEncrypted(passphrase: string): Promise<{ canceled: boolean; added: number; skipped: number }>;
   };
   creds: {
     has(hostId: string): Promise<boolean>;

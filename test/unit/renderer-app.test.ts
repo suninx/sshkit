@@ -131,6 +131,8 @@ function makeBridge(overrides: Record<string, AnyFn> = {}) {
     onData: rec("onData", o("onData", (id: number, cb: AnyFn) => { dataCbs.set(id, cb); return () => { dataCbs.delete(id); }; })),
     onExit: rec("onExit", o("onExit", (id: number, cb: AnyFn) => { exitCbs.set(id, cb); return () => { exitCbs.delete(id); }; })),
     hosts: {
+      exportEncrypted: rec("hosts.exportEncrypted", o("hosts.exportEncrypted", async () => ({ canceled: true, hosts: 0 }))),
+      importEncrypted: rec("hosts.importEncrypted", o("hosts.importEncrypted", async () => ({ canceled: true, added: 0, skipped: 0 }))),
       list: rec("hosts.list", o("hosts.list", async () => [])),
       create: rec("hosts.create", o("hosts.create", async (h: unknown) => ({ ...(h as object), id: "h_new", createdAt: "" }))),
       update: rec("hosts.update", o("hosts.update", async (id: string, p: unknown) => ({ ...(p as object), id, createdAt: "" }))),
@@ -1653,6 +1655,172 @@ describe("分区屏", () => {
     expect(document.getElementById("btn-bell")).toBeNull();
     /* 顶栏右侧仍有侧栏开关与窗口按钮,只是不再有铃铛 */
     expect(document.getElementById("btn-panel-top")).toBeTruthy();
+  });
+
+  /* ---------- 主机簿加密备份(导出/导入都要手输密码) ---------- */
+  const openVaultMenu = async (): Promise<void> => {
+    click(document.querySelector("#host-more"));
+    await waitFor(() => !!document.querySelector(".vault-menu"));
+  };
+  const openVaultPassword = async (index: 0 | 1): Promise<HTMLInputElement> => {
+    await openVaultMenu();
+    click([...document.querySelectorAll<HTMLElement>(".vault-menu-item")][index]);
+    await waitFor(() => !!document.querySelector(".vault-pass-dlg"));
+    return document.querySelector(".vault-pass-dlg .pd-input") as HTMLInputElement;
+  };
+
+  it("主机簿加密备份:更多菜单两项;导出要密码(太短不放行),成功后 toast 路径", async () => {
+    const { calls } = await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "hosts.exportEncrypted": async () => ({ canceled: false, path: "/tmp/backup.sshkitvault", hosts: 2 }),
+      },
+    });
+    await openVaultMenu();
+    expect([...document.querySelectorAll(".vault-menu-item")].map((b) => b.textContent)).toEqual([
+      "Export host book…", "Import host book…",
+    ]);
+    const input = await openVaultPassword(0);
+    input.value = "short";
+    click(document.querySelector(".vault-pass-dlg .dd-ok"));
+    await flush(2);
+    expect((document.querySelector(".vault-pass-dlg .vault-pass-err") as HTMLElement).hidden).toBe(false);
+    expect(calls["hosts.exportEncrypted"]).toBeUndefined();
+    input.value = "long-enough-pass";
+    click(document.querySelector(".vault-pass-dlg .dd-ok"));
+    await waitFor(() => (calls["hosts.exportEncrypted"]?.length ?? 0) === 1);
+    expect((calls["hosts.exportEncrypted"].at(-1) as unknown[])[0]).toBe("long-enough-pass");
+    await waitFor(() => (lastToast() ?? "").includes("/tmp/backup.sshkitvault"));
+  });
+
+  it("主机簿加密备份:导入成功后 toast 计数并刷新主机列表", async () => {
+    const { calls } = await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "hosts.importEncrypted": async () => ({ canceled: false, added: 3, skipped: 1 }),
+      },
+    });
+    const before = calls["hosts.list"].length;
+    const input = await openVaultPassword(1);
+    input.value = "p";
+    click(document.querySelector(".vault-pass-dlg .dd-ok"));
+    await waitFor(() => (calls["hosts.importEncrypted"]?.length ?? 0) === 1);
+    expect((calls["hosts.importEncrypted"].at(-1) as unknown[])[0]).toBe("p");
+    await waitFor(() => (lastToast() ?? "").includes("3"));
+    expect(calls["hosts.list"].length).toBeGreaterThan(before);
+  });
+
+  it("主机簿加密备份:桥报错时弹失败提示", async () => {
+    await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "hosts.exportEncrypted": async () => { throw new Error("no hosts to export"); },
+      },
+    });
+    const input = await openVaultPassword(0);
+    input.value = "long-enough-pass";
+    click(document.querySelector(".vault-pass-dlg .dd-ok"));
+    await waitFor(() => (lastToast() ?? "").includes("no hosts to export"));
+  });
+
+  it("主机簿加密备份:取消密码框 / 桥返回 canceled 都不提示成功", async () => {
+    const { calls } = await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "hosts.exportEncrypted": async () => ({ canceled: true, hosts: 0 }),
+      },
+    });
+    /* 取消密码框:不调桥 */
+    await openVaultPassword(0);
+    click(document.querySelector(".vault-pass-dlg .dd-cancel"));
+    await flush(2);
+    expect(calls["hosts.exportEncrypted"]).toBeUndefined();
+    /* 导入:取消密码框同样不调桥 */
+    const importInput = await openVaultPassword(1);
+    click(document.querySelector(".vault-pass-dlg .dd-cancel"));
+    await flush(2);
+    expect(calls["hosts.importEncrypted"]).toBeUndefined();
+
+    /* 桥返回 canceled:调用了但不 toast */
+    const input = await openVaultPassword(0);
+    input.value = "long-enough-pass";
+    click(document.querySelector(".vault-pass-dlg .dd-ok"));
+    await waitFor(() => (calls["hosts.exportEncrypted"]?.length ?? 0) === 1);
+    await flush(3);
+    expect(document.querySelector(".toast")).toBeNull();
+  });
+
+  it("主机簿加密备份:导入 canceled 不刷新;导入失败提示原因", async () => {
+    /* canceled:不 toast、不刷新 */
+    const { calls } = await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "hosts.importEncrypted": async () => ({ canceled: true, added: 0, skipped: 0 }),
+      },
+    });
+    const before = calls["hosts.list"].length;
+    let input = await openVaultPassword(1);
+    input.value = "p";
+    click(document.querySelector(".vault-pass-dlg .dd-ok"));
+    await waitFor(() => (calls["hosts.importEncrypted"]?.length ?? 0) === 1);
+    await flush(3);
+    expect(document.querySelector(".toast")).toBeNull();
+    expect(calls["hosts.list"].length).toBe(before);
+    void input;
+  });
+
+  it("主机簿加密备份:导入抛错(密码错)提示原因", async () => {
+    await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "hosts.importEncrypted": async () => { throw new Error("invalid passphrase or corrupted vault file"); },
+      },
+    });
+    const input = await openVaultPassword(1);
+    input.value = "wrong-pass";
+    click(document.querySelector(".vault-pass-dlg .dd-ok"));
+    await waitFor(() => (lastToast() ?? "").includes("invalid passphrase"));
+  });
+
+  it("备份密码弹窗与菜单的关闭方式:Escape / 关闭按钮 / 点遮罩 / 点菜单内部都不误触", async () => {
+    const { calls } = await boot({
+      overrides: {
+        "hosts.list": async () => [HOST],
+        "hosts.exportEncrypted": async () => ({ canceled: false, hosts: 1 }),
+      },
+    });
+    /* 菜单:点内部不关闭,Esc 关闭 */
+    await openVaultMenu();
+    document.querySelector(".vault-menu-item")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush(2);
+    expect(document.querySelector(".vault-menu")).toBeTruthy();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flush(2);
+    expect(document.querySelector(".vault-menu")).toBeNull();
+    /* 菜单:点外部关闭 */
+    await openVaultMenu();
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush(2);
+    expect(document.querySelector(".vault-menu")).toBeNull();
+
+    /* 密码框:✕ / 点遮罩 / Escape 都能关 */
+    await openVaultPassword(0);
+    click(document.querySelector(".vault-pass-dlg .dd-x"));
+    await flush(2);
+    expect(document.querySelector(".vault-pass-dlg")).toBeNull();
+    await openVaultPassword(0);
+    click(document.querySelector(".vault-pass-dlg"));
+    await flush(2);
+    expect(document.querySelector(".vault-pass-dlg")).toBeNull();
+    const input = await openVaultPassword(0);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flush(2);
+    expect(document.querySelector(".vault-pass-dlg")).toBeNull();
+    /* 回车提交 */
+    const again = await openVaultPassword(0);
+    again.value = "long-enough-pass";
+    again.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await waitFor(() => (calls["hosts.exportEncrypted"]?.length ?? 0) === 1);
   });
 
   it("多主机执行:工具栏按钮打开面板,主机来自 hosts.list", async () => {

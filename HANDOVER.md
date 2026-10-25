@@ -243,6 +243,19 @@ knownHosts.group);分区 tab 标题改用 `rail.*` 已有文案。
 真机验证(旧版 SSE 客户端):GET /sse 200 → endpoint 事件 → initialize 202 且回包走 SSE
 → tools/call `sftp_list /root` 返回 22 项。
 
+### 主机簿加密备份(2026-10-25 已交付)
+
+- 入口:主机页工具条「更多(⋯)」→ 导出主机簿… / 导入主机簿…
+- **导出**:弹密码框(至少 8 位,不回显),`AES-256-GCM + scrypt(N=2^15, r=8, p=1)` 加密整个 payload,
+  写盘权限 0600;内容含主机记录、钥匙串里的 password/passphrase、私钥认证的**私钥文件内容**
+- **导入**:同一密码解密;按 `name+host+port+username` 去重;凭据写回钥匙串,
+  私钥落到 `~/.ssh/sshkit-imported/`(0600,重名自动加后缀),主机 keyPath 指向新路径
+- 密码错 / 文件被篡改 / 不是本格式 → 明确报错;密码 <8 位在弹窗内行内提示
+- 纯逻辑在 `src/main/vault.ts`;UI 在 `src/renderer/vault.ts` + app.ts(事件委托绑定「更多」按钮)
+
+验证:单元/集成覆盖加解密往返、错密码、篡改、去重、私钥落盘、取消/失败分支;
+真机验证菜单与密码弹窗(类型 password、太短提示)。
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。

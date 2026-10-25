@@ -6,6 +6,7 @@ import { bridge, initHostPanel, markActiveHost } from "./hosts";
 import { createSftpView, type CurrentSession, type SftpView } from "./sftp";
 import { mountMcpSection, policyLabel } from "./mcp";
 import { openMultiExec } from "./multiexec";
+import { promptPassphrase, showVaultMenu } from "./vault";
 import {
   CLEAR_LINE, createBroadcastState, planWrite, removeFromBroadcast, toggleBroadcast,
 } from "./broadcast";
@@ -2180,6 +2181,41 @@ void (async () => {
   /* 新建:左导航栏(184px,6 项)。原版这 6 项是一级导航,点击后主区切到对应分区
      (Hosts 分区就是原版的 `Vaults` tab;转发/Known Hosts 等各自成为主区视图)。 */
   document.getElementById("btn-panel-top")?.addEventListener("click", () => togglePanel());
+  /* 主机簿「更多」:导出/导入加密备份(导出与导入都要求手动输入密码) */
+  async function exportHostBook(): Promise<void> {
+    const pass = await promptPassphrase(tr("vault.exportTitle"), tr("vault.passHint"), 8);
+    if (pass === null) return;
+    try {
+      const res = await bridge.hosts.exportEncrypted(pass);
+      if (!res.canceled) toast(tr("vault.exported", { n: String(res.hosts), path: res.path ?? "" }));
+    } catch (err) {
+      toast(tr("vault.failed", { reason: String((err as Error).message) }));
+    }
+  }
+  async function importHostBook(): Promise<void> {
+    const pass = await promptPassphrase(tr("vault.importTitle"), tr("vault.passHint"), 1);
+    if (pass === null) return;
+    try {
+      const res = await bridge.hosts.importEncrypted(pass);
+      if (!res.canceled) {
+        toast(tr("vault.imported", { added: String(res.added), skipped: String(res.skipped) }));
+        void hostsView.refresh();
+      }
+    } catch (err) {
+      toast(tr("vault.failed", { reason: String((err as Error).message) }));
+    }
+  }
+  /* 用事件委托:主机面板刷新可能重建工具条,直接绑节点会丢监听(踩过) */
+  document.addEventListener("click", (ev) => {
+    const btn = (ev.target as Element | null)?.closest?.("#host-more");
+    if (!btn) return;
+    ev.stopPropagation();
+    showVaultMenu(btn as HTMLElement, [
+      { label: tr("vault.export"), onClick: () => { void exportHostBook(); } },
+      { label: tr("vault.import"), onClick: () => { void importHostBook(); } },
+    ]);
+  });
+
   document.getElementById("btn-quick-term")?.addEventListener("click", () => { void openSession("local"); });
 
   document.getElementById("btn-new-host-caret")?.addEventListener("click", () => {

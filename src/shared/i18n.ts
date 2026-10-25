@@ -17,6 +17,16 @@ export type LocalePref = "system" | Locale;
 
 /** 基准表:键集合以它为准。 */
 export const en = {
+  "vault.more": "More",
+  "vault.export": "Export host book…",
+  "vault.import": "Import host book…",
+  "vault.exportTitle": "Set a backup password",
+  "vault.importTitle": "Enter backup password",
+  "vault.passHint": "This password encrypts the file (AES-256). It is not stored anywhere — if you lose it the backup cannot be recovered.",
+  "vault.passTooShort": "Too short — at least {n} characters.",
+  "vault.exported": "Exported {n} host(s) to {path}",
+  "vault.imported": "Imported {added} host(s), skipped {skipped} duplicate(s)",
+  "vault.failed": "Backup failed: {reason}",
   "panel.fontMissing": "not installed",
   "panel.fontSize": "Font size",
   "panel.font": "Font",
@@ -388,6 +398,16 @@ export type MsgKey = keyof typeof en;
 
 /** 中文映射:必须覆盖 en 的全部键(audit() 会检查)。 */
 export const zh: Record<MsgKey, string> = {
+  "vault.more": "更多",
+  "vault.export": "导出主机簿…",
+  "vault.import": "导入主机簿…",
+  "vault.exportTitle": "设置备份密码",
+  "vault.importTitle": "输入备份密码",
+  "vault.passHint": "该密码用于加密文件(AES-256),不会保存在任何地方 —— 忘记密码将无法恢复备份。",
+  "vault.passTooShort": "太短了 —— 至少 {n} 位。",
+  "vault.exported": "已导出 {n} 台主机到 {path}",
+  "vault.imported": "已导入 {added} 台,跳过 {skipped} 台重复",
+  "vault.failed": "备份失败:{reason}",
   "panel.fontMissing": "未安装",
   "panel.fontSize": "字体大小",
   "panel.font": "字体",

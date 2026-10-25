@@ -43,6 +43,9 @@ sync, no telemetry. Electron + TypeScript + xterm, an **original implementation*
 
 ### Organisation
 - **Host book**: groups, tags, search, edit/delete; credentials in the system keychain
+- **Encrypted backup**: export/import the whole host book from *Host book → More*. Export asks for a
+  password and encrypts with **AES-256-GCM** (scrypt-derived key); stored passwords/passphrases and
+  private key files are included. Import asks for the same password and dedupes by host
 - **Snippets**, **logs**, **known-hosts** management
 - **Right side panel (two-panel mode)**: appearance (font / size / themes), snippets, jump-to
 - **Appearance**: dark/light UI, terminal themes, font and size; shared with the side panel
