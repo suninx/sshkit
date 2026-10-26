@@ -150,6 +150,11 @@ jobs:
       - run: pnpm run build
       - name: 打包
         run: pnpm exec electron-builder ${{ matrix.args }}
+      # electron-builder 26.15.3 的 dmg 目标在 Electron 44 上有内部 bug,
+      # 这里改用系统 hdiutil 生成 DMG(见 scripts/make-dmg.sh)
+      - name: 生成 DMG(macOS)
+        if: matrix.name == 'mac-arm64'
+        run: bash scripts/make-dmg.sh
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}

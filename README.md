@@ -69,11 +69,11 @@ sshkit 自身可作为一个 **MCP 服务器**,让 AI 助手直接操作你的�
 
 ### 下载安装包
 
-| 平台 | 文件 |
-|---|---|
-| macOS (Apple Silicon) | `sshkit-*-arm64-mac.zip`(解压后拖进「应用程序」) |
-| Windows x64 | `sshkit Setup *.exe` 或 `sshkit-*-win.zip` |
-| Linux x64 | `sshkit-*.AppImage` 或 `.tar.gz` |
+| 平台 | 安装包 | 绿色版(免安装) |
+|---|---|---|
+| macOS (Apple Silicon) | `sshkit-*-arm64-mac.dmg`(打开后拖进「应用程序」) | `sshkit-*-arm64-mac.zip`(解压即用) |
+| Windows x64 | `sshkit Setup *.exe`(NSIS 安装包) | `sshkit *.exe`(单文件便携版)或 `sshkit-*-win.zip` |
+| Linux x64 | — | `sshkit-*.AppImage`(单文件)或 `.tar.gz` |
 
 > 预发布安装包**未签名/未公证**:macOS 首次打开需右键 → 打开;Windows SmartScreen 会提示。
 
@@ -96,7 +96,9 @@ pnpm run dist:dir        # 未打包 .app,便于排查
 ```
 
 CI 在各自原生 runner 上构建三平台产物(macOS arm64 / Windows x64 / Linux x64):
-`test`、`e2e`、`package` × 3 平台。
+`test`、`e2e`、`package` × 3 平台。每个平台同时产出**安装包与免安装版**:
+macOS 为 dmg / zip,Windows 为 NSIS Setup.exe / 单文件 portable.exe / zip,
+Linux 为 AppImage / tar.gz。
 
 ## 开发
 

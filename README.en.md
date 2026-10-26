@@ -76,11 +76,11 @@ sshkit can act as an **MCP server** so AI assistants can drive your servers:
 
 ### Prebuilt packages
 
-| Platform | Files |
-|---|---|
-| macOS (Apple Silicon) | `sshkit-*-arm64-mac.zip` (unzip, drag into Applications) |
-| Windows x64 | `sshkit Setup *.exe` or `sshkit-*-win.zip` |
-| Linux x64 | `sshkit-*.AppImage` or `.tar.gz` |
+| Platform | Installer | Portable (no install) |
+|---|---|---|
+| macOS (Apple Silicon) | `sshkit-*-arm64-mac.dmg` (open, drag into Applications) | `sshkit-*-arm64-mac.zip` (unzip and run) |
+| Windows x64 | `sshkit Setup *.exe` (NSIS installer) | `sshkit *.exe` (single-file portable) or `sshkit-*-win.zip` |
+| Linux x64 | — | `sshkit-*.AppImage` or `.tar.gz` |
 
 > Pre-release builds are **unsigned**: on macOS right-click → Open the first time; Windows
 > SmartScreen will warn.
@@ -99,9 +99,12 @@ Packaging (output in `release/`):
 
 ```sh
 pnpm dist                # current platform zip (unsigned)
-pnpm run dist:dmg        # macOS dmg
+pnpm run dist:dmg        # macOS dmg (built from release/mac-arm64/sshkit.app)
 pnpm run dist:dir        # unpacked .app for debugging
 ```
+
+CI also produces, per platform: macOS **dmg + zip**; Windows **NSIS Setup exe + portable exe + zip**;
+Linux **AppImage + tar.gz**.
 
 CI builds all three platforms on native runners (macOS arm64 / Windows x64 / Linux x64):
 `test`, `e2e`, `package` × 3 platforms.

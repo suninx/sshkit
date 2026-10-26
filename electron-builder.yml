@@ -34,13 +34,15 @@ mac:
   identity: null
   hardenedRuntime: false
 
-# Windows:NSIS 安装包 + zip 免安装包(CI 的 windows job 会构建并上传这两种)
+# Windows:NSIS 安装包(exe)+ portable 单文件绿色版 + zip 免安装包
+# (CI 的 windows job 会构建并上传;portable 与 Setup 的 exe 文件名不同,不会互相覆盖)
 win:
   # 提供原生 .ico:否则 electron-builder 会去下载"图标转换工具集",在 26.15.3 上会踩
   # resolveCacheMode 崩溃(本机 macOS 打包同样问题,用 electronDist/原生图标绕开)
   icon: build/icon.ico
   target:
     - nsis
+    - portable
     - zip
 
 # Linux:AppImage(免安装单文件)+ tar.gz;图标用 build/icons 下的多尺寸 PNG 集
