@@ -1,7 +1,7 @@
 {
   "name": "sshkit",
   "private": true,
-  "version": "0.1.0-rc.3",
+  "version": "0.1.0-rc.4",
   "description": "Lean local-first SSH terminal client (feature-equivalent rebuild study of a commercial terminal, original implementation)",
   "main": "dist/main/main.js",
   "scripts": {
