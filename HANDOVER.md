@@ -256,6 +256,22 @@ knownHosts.group);分区 tab 标题改用 `rail.*` 已有文案。
 验证:单元/集成覆盖加解密往返、错密码、篡改、去重、私钥落盘、取消/失败分支;
 真机验证菜单与密码弹窗(类型 password、太短提示)。
 
+### 打包矩阵:安装包 + 绿色版(2026-10-26 已交付)
+
+CI 的 `package` job 在每个原生 runner 上同时产出安装包与免安装版:
+
+| 平台 | 安装包 | 绿色版 |
+|---|---|---|
+| macOS arm64 | `sshkit-<ver>-arm64.dmg`(hdiutil 生成,scripts/make-dmg.sh) | `sshkit-<ver>-arm64-mac.zip` |
+| Windows x64 | `sshkit Setup <ver>.exe`(NSIS) | `sshkit <ver>.exe`(portable 单文件)+ `sshkit-<ver>-win.zip` |
+| Linux x64 | —(AppImage 即免安装) | `sshkit-<ver>.AppImage` / `.tar.gz` |
+
+- electron-builder 26.15.3 的 `dmg` 目标在 Electron 44 上有内部 bug,故 mac 用
+  `electron-builder --mac`(zip)之后再跑 `scripts/make-dmg.sh`(系统 hdiutil,无三方依赖)
+- Windows 的 `portable` 目标给单文件绿色版;与 NSIS Setup 的命名不同,不会互相覆盖
+- 本地验证:mac 构建 zip → make-dmg.sh 生成 dmg → hdiutil verify/挂载通过;
+  CI 产物已下载确认:mac 有 dmg+zip、win 有 Setup+portable+zip、linux 有 AppImage+tar.gz
+
 ## 5. 已知坑位清单(新会话先看这个)
 
 1. **esbuild externals 必含原生件**:`electron, node-pty, keytar, ssh2, cpu-features`(否则 `.node` 打包报 no loader)。
